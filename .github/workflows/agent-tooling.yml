@@ -1,0 +1,32 @@
+name: Agent tooling
+
+on:
+  pull_request:
+    paths:
+      - '.agents/skills/gh-fix-ci/**'
+      - '.github/workflows/agent-tooling.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.agents/skills/gh-fix-ci/**'
+      - '.github/workflows/agent-tooling.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-tooling-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnostic-helper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test CI diagnostics without network access
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python3 -m unittest discover -s .agents/skills/gh-fix-ci/scripts -p 'test_*.py' -v

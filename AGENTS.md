@@ -1,79 +1,69 @@
 # Working on hiewbie
 
-## Project contract
+`hiewbie` is an independent, MIT-licensed Rust implementation of console HIEW.
+This repository currently contains specifications, not a Cargo workspace or
+application. Update that status when implementation lands. Do not present planned
+commands, features, tests, or releases as available or verified.
 
-The repository and application name is `hiewbie`, in lowercase. The project is a
-Rust implementation of the console HIEW workflow, licensed under MIT. Native
-macOS use and the complete ArtCraft-derived release matrix are requirements.
-Read `docs/compatibility.md`, `docs/architecture.md`, and
-`docs/build-and-release.md` before choosing implementation shortcuts.
+## Invariants
 
-This repository is initially a specification bootstrap. Do not describe planned
-features or a proposed command as implemented, and do not create release badges
-or installation claims for artifacts that do not exist.
+- Preserve HIEW's command model, default keys, modes, layout, and workflow.
+  Keep improvements additive; make familiar-behavior changes explicit and
+  configurable.
+- Preserve native macOS support and the complete required release matrix.
+  Keep host targets, file formats, and instruction architectures independent.
+  Never silently drop legacy parity, targets, or acceptance requirements because
+  a dependency lacks support; record the gap and implementation plan.
+- Share document and command semantics across native, browser, and headless
+  frontends. Isolate platform APIs. Start with small modules; split crates only
+  for an actual platform, dependency, testing, or compilation boundary.
+- Treat inspected files as untrusted. Use explicit address/offset types, checked
+  arithmetic, bounded work and allocations, and precise errors without panics.
+  Preserve raw-byte access when interpretation fails and untouched bytes on save.
+- Keep original code MIT-licensed. Review exact source revisions, file-specific
+  licenses, and native engines behind wrappers before reuse. Record provenance
+  and retain required source and distribution notices. Do not copy proprietary
+  HIEW code, binaries, graphics, or manual text.
 
-## Implementation priorities
+## Read the affected contract
 
-1. Preserve the HIEW command model, default bindings, modes, layout, and workflow.
-   Improvements should be additive and configurable when they change familiar
-   behavior.
-2. Treat host targets, executable formats, and instruction architectures as
-   separate capability matrices. A native backend must not restrict analysis to
-   its own CPU architecture.
-3. Keep document operations and commands independent of terminal, browser, and
-   operating-system APIs. Frontends dispatch the same commands.
-4. Start with the smallest useful modules; split crates only where an actual
-   platform, dependency, test, or compilation boundary justifies it.
-5. Use explicit types and checked arithmetic for file offsets, addresses, sizes,
-   and slices. User-controlled files and lengths must not cause panics or
-   unbounded allocations.
-6. Preserve raw-byte access when format parsing or an instruction backend cannot
-   handle a file. Report unsupported capabilities precisely.
-7. Never silently drop legacy parity work, a release target, an instruction
-   architecture, or an acceptance requirement because a selected dependency does
-   not support it. Record the gap and the implementation plan.
+The specifications remain authoritative. Read relevant sections before changing
+their subject; expand for dependencies or uncertainty. Reuse context already read.
 
-## Licensing and reuse
+| Change | Required context |
+| --- | --- |
+| Wording or links only | Edited document and affected references |
+| Document model, commands, storage, persistence | `docs/architecture.md` sections 2–4; affected `docs/compatibility.md` requirements |
+| Modes, keys, rendering, terminal lifecycle | `docs/compatibility.md` sections 2, 8, 11; `docs/architecture.md` section 6 |
+| Formats, addresses, decoding, assembly | `docs/compatibility.md` sections 4–6; `docs/architecture.md` section 5 |
+| Dependencies, upstream reuse, fixtures | `docs/references-and-reuse.md`; affected architecture and target requirements |
+| Workspace, toolchain, CI, packaging, release | Affected `docs/build-and-release.md` sections and its complete required target matrix |
 
-- Keep original hiewbie source MIT-licensed.
-- Before copying or substantially adapting upstream code, inspect the license at
-  the exact source commit, check file-specific notices, and record provenance.
-- Preserve upstream copyright and license notices in copied source and release
-  distributions where required.
-- ArtCraft is not one license grant. GridCraft offers an MIT option; the inspected
-  `craft-common-actions` repository did not expose a license grant. Use the latter
-  as platform evidence, not as an assumed MIT source donor.
-- Do not copy HIEW proprietary code, binaries, graphics, or manual text.
-- Inspect complete dependency licenses, including native libraries behind Rust
-  wrappers. In particular, Keystone is not MIT, and iced-x86's code-assembler API
-  is not a textual assembly parser.
+Update affected contracts, rationale, references, and acceptance criteria when a
+decision changes documented behavior. See `docs/development-workflow.md` for check
+selection and command status.
 
-## Verification
+## Select skills by task
 
-- Automate recurring validation. A manual screenshot or interactive check may
-  discover a problem, but does not replace regression coverage.
-- For behavioral fixes, add a regression test reproducing the actual defect.
-  Avoid tests that merely duplicate implementation structure.
-- Test editing against expected file bytes, not only UI state. Cover discard,
-  failed saves, boundaries, large offsets, and relative instruction encoding.
-- Run command scenarios headlessly and through PTY/ConPTY where appropriate;
-  include rendered terminal snapshots for mode and keymap changes.
-- Maintain redistributable fixtures and document their origin. Do not commit
-  proprietary executable samples or the original HIEW application.
-- When the workspace exists, use the documented formatter, linter, test, and
-  packaging commands. Clearly state any unrun platform tests.
-- Compile-only, emulated, VM-tested, and native-tested are different statuses.
-  Do not convert a missing artifact, skipped target, or failed mandatory check
-  into a successful release.
+- Nontrivial Rust implementation or review: [rust-best-practices](.agents/skills/rust-best-practices/SKILL.md).
+- Cause unclear after initial inspection, nondeterminism, or failed fixes: [systematic-debugging](.agents/skills/systematic-debugging/SKILL.md).
+- Failing GitHub Actions checks: [gh-fix-ci](.agents/skills/gh-fix-ci/SKILL.md).
 
-## Pull requests
+Load only relevant guidance and references. Reuse equivalent guidance already
+loaded instead of loading duplicate personal and project copies.
 
-Explain the user-visible problem, changed behavior, requirement IDs, and relevant
-validation. Include a simple before/after diagram for a changed workflow,
-architecture, or data flow. For a change without meaningful flow, use a compact
-before/after table and explain why a diagram would add no information.
+## Verify and report
 
-State remaining compatibility gaps precisely. Do not mark the implementation
-epic complete until its required platform and feature matrices have evidence.
-Update the specification when an implementation decision changes a documented
-contract; retain the rationale and references.
+Automate recurring validation. Behavioral fixes need a regression reproducing
+the defect; edit tests assert expected bytes and transaction state. Fixtures must
+be generated or redistributable, with provenance. Manual checks do not replace
+regression coverage. Run focused checks plus mandatory repository gates.
+
+Report affected requirement IDs, checks actually run, and remaining gaps.
+Distinguish compilation, emulation, VM, native, and browser evidence. Missing
+artifacts and skipped mandatory checks remain incomplete. Full parity and epic
+completion require evidence for the required feature and platform matrices.
+
+Follow `.github/pull_request_template.md`: include a before/after diagram for
+workflow, architecture, or data-flow changes; otherwise use a compact table and
+explain why a diagram adds no information.
