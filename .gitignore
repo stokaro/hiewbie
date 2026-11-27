@@ -1,0 +1,14 @@
+# Rust build outputs. Cargo.lock is intentionally tracked for this application.
+/target/
+**/target/
+/dist/
+/coverage/
+
+# Local temporary editor artifacts.
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Runtime sessions and local binary workspaces must not become fixtures by accident.
+/.hiewbie-local/
