@@ -67,13 +67,54 @@ class SmokeFailure(RuntimeError):
 
 
 def child_session() -> None:
-    """Give the child a controlling terminal and its own process group.
+    """Give the supervisor a controlling terminal and its own process group.
 
     This pre-exec hook only calls Unix session/terminal APIs. The harness is
     single-threaded, and stdin already refers to the slave PTY at this point.
     """
     os.setsid()
     fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+
+
+def supervise_editor(status_fd: int, release_fd: int, arguments: list[str]) -> int:
+    """Own the controlling session until the parent validates terminal cleanup.
+
+    Darwin revokes a controlling terminal when its session leader exits. The
+    editor therefore inherits this supervisor's session and foreground group.
+    Only the supervisor inherits these pipes; it sends the editor's exact signed
+    returncode, then waits for validation acknowledgement. EOF cancels the run.
+    """
+    editor: subprocess.Popen[bytes] | None = None
+    deadline = time.monotonic() + SESSION_SECONDS + 5.0
+    reported = False
+    try:
+        editor = subprocess.Popen(arguments, close_fds=True)
+        while time.monotonic() < deadline:
+            returncode = editor.poll()
+            if returncode is not None and not reported:
+                # Four bytes fit atomically in the otherwise empty status pipe.
+                os.write(status_fd, struct.pack("!i", returncode))
+                os.close(status_fd)
+                status_fd = -1
+                reported = True
+            ready, _, _ = select.select([release_fd], [], [], 0.025)
+            if ready:
+                acknowledgement = os.read(release_fd, 1)
+                return 0 if reported and acknowledgement == b"V" else 1
+        return 1
+    finally:
+        # Parent cancellation closes release_fd's writer. Reap the editor before
+        # exiting the controlling session; a group-kill remains the outer bound.
+        if editor is not None and editor.poll() is None:
+            editor.terminate()
+            try:
+                editor.wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                editor.kill()
+                editor.wait(timeout=1.0)
+        for descriptor in (status_fd, release_fd):
+            if descriptor >= 0:
+                os.close(descriptor)
 
 
 class PtySession:
@@ -94,6 +135,10 @@ class PtySession:
         self.master: int | None = None
         self.slave: int | None = None
         self.process: subprocess.Popen[bytes] | None = None
+        self.status_reader: int | None = None
+        self.release_writer: int | None = None
+        self.status_bytes = bytearray()
+        self.editor_returncode: int | None = None
         self.original_termios: list | None = None
         self.output = bytearray()
         self.events: list[list] = []
@@ -115,16 +160,31 @@ class PtySession:
             environment = dict(os.environ, TERM="xterm-256color")
             # The controlled terminal/recording has a stable color capability.
             environment.pop("NO_COLOR", None)
-            self.process = subprocess.Popen(
-                arguments,
-                stdin=self.slave,
-                stdout=self.slave,
-                stderr=self.slave,
-                cwd=self.fixture.parent,
-                env=environment,
-                preexec_fn=child_session,
-                close_fds=True,
-            )
+            self.status_reader, status_writer = os.pipe()
+            release_reader, self.release_writer = os.pipe()
+            os.set_blocking(self.status_reader, False)
+            try:
+                self.process = subprocess.Popen(
+                    [
+                        sys.executable,
+                        str(Path(__file__).resolve()),
+                        "--pty-supervisor",
+                        str(status_writer),
+                        str(release_reader),
+                        *arguments,
+                    ],
+                    stdin=self.slave,
+                    stdout=self.slave,
+                    stderr=self.slave,
+                    cwd=self.fixture.parent,
+                    env=environment,
+                    preexec_fn=child_session,
+                    close_fds=True,
+                    pass_fds=(status_writer, release_reader),
+                )
+            finally:
+                os.close(status_writer)
+                os.close(release_reader)
             self.wait_started()
             return self
         except BaseException:
@@ -146,6 +206,27 @@ class PtySession:
     def event(self, kind: str, text: str) -> None:
         if self.record and text:
             self.events.append([round(time.monotonic() - self.started, 6), kind, text])
+
+    def poll_editor(self) -> int | None:
+        """Read the editor status independently of its deliberately live owner."""
+        if self.status_reader is not None:
+            while len(self.status_bytes) < 4:
+                try:
+                    chunk = os.read(self.status_reader, 4 - len(self.status_bytes))
+                except BlockingIOError:
+                    break
+                except InterruptedError:
+                    continue
+                if not chunk:
+                    self.fail("PTY supervisor closed its pipe without an editor exit status")
+                self.status_bytes.extend(chunk)
+            if len(self.status_bytes) == 4:
+                self.editor_returncode = struct.unpack("!i", self.status_bytes)[0]
+                os.close(self.status_reader)
+                self.status_reader = None
+        if self.process is None or self.process.poll() is not None:
+            self.fail("PTY supervisor exited before terminal restoration was validated")
+        return self.editor_returncode
 
     def read_available(self, wait: float = 0.0) -> int:
         if self.master is None:
@@ -178,8 +259,9 @@ class PtySession:
         deadline = min(self.deadline, time.monotonic() + 5.0)
         while time.monotonic() < deadline:
             self.read_available(0.05)
-            if self.process is not None and self.process.poll() is not None:
-                self.fail(f"exited during startup with {self.process.returncode}")
+            returncode = self.poll_editor()
+            if returncode is not None:
+                self.fail(f"editor exited during startup with {returncode}")
             if all(entered in self.output for entered, _, _ in TERMINAL_MODES):
                 self.settle(require_output=False)
                 current = termios.tcgetattr(self.slave)
@@ -203,11 +285,12 @@ class PtySession:
             if self.read_available(0.025):
                 received = True
                 last_output = time.monotonic()
-            if self.process is not None and self.process.poll() is not None:
+            returncode = self.poll_editor()
+            if returncode is not None:
                 self.read_available()
                 if allow_exit:
                     return
-                self.fail(f"unexpected exit with {self.process.returncode}")
+                self.fail(f"unexpected editor exit with {returncode}")
             now = time.monotonic()
             if (
                 now - started >= 0.15
@@ -227,7 +310,7 @@ class PtySession:
     ) -> None:
         self.steps.append(label)
         self.event("m", label)
-        if self.process is None or self.process.poll() is not None:
+        if self.poll_editor() is not None:
             self.fail("cannot send input to an exited application")
         deadline = min(self.deadline, time.monotonic() + ACTION_SECONDS)
         pending = memoryview(data)
@@ -273,38 +356,56 @@ class PtySession:
 
     def finish(self) -> None:
         deadline = min(self.deadline, time.monotonic() + 5.0)
-        while self.process is not None and self.process.poll() is None:
+        while self.poll_editor() is None:
             if time.monotonic() >= deadline:
                 self.fail("exit deadline expired")
             self.read_available(0.05)
         self.read_available()
-        if self.process is None or self.process.returncode != 0:
-            code = None if self.process is None else self.process.returncode
-            self.fail(f"expected successful exit, received {code}")
+        if self.editor_returncode != 0:
+            self.fail(f"expected successful editor exit, received {self.editor_returncode}")
+        # Keep the controlling session leader alive through this exact assertion.
+        # Skipping ENOTTY would hide both harness errors and failed restoration.
         if termios.tcgetattr(self.slave) != self.original_termios:
             self.fail("termios attributes were not restored exactly")
         for entered, restored, name in TERMINAL_MODES:
             if self.output.rfind(restored) <= self.output.rfind(entered):
                 self.fail(f"missing final {name} restoration sequence")
         self.event("o", self.decoder.decode(b"", final=True))
+        os.write(self.release_writer, b"V")
+        os.close(self.release_writer)
+        self.release_writer = None
+        try:
+            supervisor_code = self.process.wait(timeout=2.0)
+        except subprocess.TimeoutExpired:
+            self.fail("PTY supervisor did not exit after terminal validation")
+        if supervisor_code != 0:
+            self.fail(f"PTY supervisor exited with {supervisor_code} after validation")
 
     def close(self) -> None:
         try:
+            if self.release_writer is not None:
+                os.close(self.release_writer)
+                self.release_writer = None
             if self.process is not None and self.process.poll() is None:
-                with contextlib.suppress(ProcessLookupError):
-                    os.killpg(self.process.pid, signal.SIGTERM)
                 try:
-                    self.process.wait(timeout=1.0)
+                    # EOF lets the supervisor terminate and reap its child first.
+                    self.process.wait(timeout=3.0)
                 except subprocess.TimeoutExpired:
                     with contextlib.suppress(ProcessLookupError):
-                        os.killpg(self.process.pid, signal.SIGKILL)
-                    self.process.wait(timeout=1.0)
+                        os.killpg(self.process.pid, signal.SIGTERM)
+                    try:
+                        self.process.wait(timeout=1.0)
+                    except subprocess.TimeoutExpired:
+                        with contextlib.suppress(ProcessLookupError):
+                            os.killpg(self.process.pid, signal.SIGKILL)
+                        self.process.wait(timeout=1.0)
         finally:
-            for descriptor in (self.master, self.slave):
+            for descriptor in (self.master, self.slave, self.status_reader):
                 if descriptor is not None:
                     os.close(descriptor)
             self.master = None
             self.slave = None
+            self.status_reader = None
 
 
 def fixture(directory: Path) -> tuple[Path, int]:
@@ -475,4 +576,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) >= 5 and sys.argv[1] == "--pty-supervisor":
+        raise SystemExit(supervise_editor(int(sys.argv[2]), int(sys.argv[3]), sys.argv[4:]))
     raise SystemExit(main())

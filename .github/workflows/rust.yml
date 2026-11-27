@@ -100,6 +100,9 @@ jobs:
           cargo build --package hiewbie --locked
           cargo run --quiet --package hiewbie --locked -- --help
           cargo run --quiet --package hiewbie --locked -- --version
+      - name: Test Unix PTY supervision and failure detection
+        if: ${{ matrix.pty }}
+        run: python3 -m unittest discover -s scripts -p 'test_pty_smoke.py' -v
       - name: Exercise Unix terminal editing and cleanup
         if: ${{ matrix.pty }}
         run: python3 scripts/pty_smoke.py --binary target/debug/hiewbie
