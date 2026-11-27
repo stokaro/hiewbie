@@ -376,6 +376,36 @@ class PtySession:
         if termios.tcgetattr(self.slave) != self.original_termios:
             self.fail("termios attributes were not restored exactly")
 
+    def wait_for_supervisor(self, timeout: float, *, capture: bool) -> int:
+        """Reap while consuming PTY output, including canonical-mode echo.
+
+        Darwin's session-leader exit calls ttywait before revoking the terminal.
+        Waiting without reading the master can therefore block exit itself.
+        Cleanup discards fixed-size chunks so a prior output-budget failure is
+        not raised again while the owned processes are being reaped.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            returncode = self.process.poll()
+            remaining = deadline - time.monotonic()
+            if returncode is None and remaining <= 0:
+                raise subprocess.TimeoutExpired(self.process.args, timeout)
+            wait = min(0.025, max(0.0, remaining)) if returncode is None else 0.0
+            if capture:
+                self.read_available(wait)
+            elif self.master is not None:
+                ready, _, _ = select.select([self.master], [], [], wait)
+                if ready:
+                    try:
+                        os.read(self.master, 65536)
+                    except (BlockingIOError, InterruptedError):
+                        pass
+                    except OSError as error:
+                        if error.errno != errno.EIO:
+                            raise
+            if returncode is not None:
+                return returncode
+
     def finish(self) -> None:
         deadline = min(self.deadline, time.monotonic() + 5.0)
         while self.poll_editor() is None:
@@ -391,16 +421,16 @@ class PtySession:
         for entered, restored, name in TERMINAL_MODES:
             if self.output.rfind(restored) <= self.output.rfind(entered):
                 self.fail(f"missing final {name} restoration sequence")
-        self.event("o", self.decoder.decode(b"", final=True))
         os.write(self.release_writer, b"V")
         os.close(self.release_writer)
         self.release_writer = None
         try:
-            supervisor_code = self.process.wait(timeout=2.0)
+            supervisor_code = self.wait_for_supervisor(2.0, capture=True)
         except subprocess.TimeoutExpired:
             self.fail("PTY supervisor did not exit after terminal validation")
         if supervisor_code != 0:
             self.fail(f"PTY supervisor exited with {supervisor_code} after validation")
+        self.event("o", self.decoder.decode(b"", final=True))
 
     def close(self) -> None:
         try:
@@ -410,16 +440,16 @@ class PtySession:
             if self.process is not None and self.process.poll() is None:
                 try:
                     # EOF lets the supervisor terminate and reap its child first.
-                    self.process.wait(timeout=3.0)
+                    self.wait_for_supervisor(3.0, capture=False)
                 except subprocess.TimeoutExpired:
                     with contextlib.suppress(ProcessLookupError):
                         os.killpg(self.process.pid, signal.SIGTERM)
                     try:
-                        self.process.wait(timeout=1.0)
+                        self.wait_for_supervisor(1.0, capture=False)
                     except subprocess.TimeoutExpired:
                         with contextlib.suppress(ProcessLookupError):
                             os.killpg(self.process.pid, signal.SIGKILL)
-                        self.process.wait(timeout=1.0)
+                        self.wait_for_supervisor(1.0, capture=False)
         finally:
             for descriptor in (self.master, self.slave, self.status_reader):
                 if descriptor is not None:

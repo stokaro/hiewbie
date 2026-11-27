@@ -51,6 +51,9 @@ supervisor. This preserves an inspectable terminal for macOS as well as Linux;
 an unavailable post-exit terminal is never treated as a successful cleanup check.
 The lifecycle rule is documented in the inspected
 [Darwin session-leader exit implementation](https://github.com/apple-oss-distributions/xnu/blob/43a90889846e00bfb5cf1d255cdc0a701a1e05a4/bsd/kern/kern_exit.c).
+That exit path also waits for terminal output to drain. The parent therefore
+keeps consuming master output while reaping the supervisor on both successful
+completion and cancellation, with bounded deadlines and cleanup escalation.
 Before comparing every termios field, one nonblocking slave read lets Darwin
 process its transient `PENDIN` state after returning to canonical input, as
 described in the inspected

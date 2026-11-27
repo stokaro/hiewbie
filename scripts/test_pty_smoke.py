@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import select
 import signal
+import subprocess
 import sys
 import tempfile
 import time
@@ -14,6 +15,7 @@ import unittest
 from unittest import mock
 
 if os.name == "posix":
+    import pty
     import termios
 
 import pty_smoke
@@ -63,6 +65,39 @@ class PtyLifecycleTests(unittest.TestCase):
 
     def process_info(self) -> dict:
         return json.loads((self.directory / "process.json").read_text())
+
+    def output_blocked_owner(self) -> pty_smoke.PtySession:
+        """Create a session owner whose output exceeds the PTY queue capacity."""
+        session = pty_smoke.PtySession(Path(sys.executable), self.directory / "unused", self.id())
+        session.master, session.slave = pty.openpty()
+        os.set_blocking(session.master, False)
+        session.process = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import os\npending = b'x' * 131072\n"
+                "while pending:\n    pending = pending[os.write(1, pending):]\n",
+            ],
+            stdin=session.slave,
+            stdout=session.slave,
+            stderr=session.slave,
+            preexec_fn=pty_smoke.child_session,
+            close_fds=True,
+        )
+        self.addCleanup(session.close)
+        return session
+
+    def test_normal_reap_captures_output_instead_of_blocking_its_owner(self) -> None:
+        session = self.output_blocked_owner()
+        self.assertEqual(session.wait_for_supervisor(2.0, capture=True), 0)
+        self.assertEqual(session.output, b"x" * 131072)
+
+    def test_failure_cleanup_drains_without_retriggering_the_output_limit(self) -> None:
+        session = self.output_blocked_owner()
+        session.output.extend(b"y" * pty_smoke.MAX_OUTPUT_BYTES)
+        session.close()
+        self.assertEqual(session.process.returncode, 0)
+        self.assertEqual(len(session.output), pty_smoke.MAX_OUTPUT_BYTES)
 
     def test_owner_survives_editor_until_exact_terminal_inspection(self) -> None:
         with self.session() as session:
