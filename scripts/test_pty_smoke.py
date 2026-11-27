@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import select
 import signal
 import sys
 import tempfile
@@ -72,6 +73,7 @@ class PtyLifecycleTests(unittest.TestCase):
             session.send(b"q", "exit mock editor", allow_exit=True)
             self.assertEqual(session.poll_editor(), 0)
             self.assertIsNone(session.process.poll(), "terminal owner exited before validation")
+            session.verify_termios_restored()
             self.assertEqual(termios.tcgetattr(session.slave), session.original_termios)
             session.finish()
             self.assertEqual(session.process.returncode, 0)
@@ -97,6 +99,15 @@ class PtyLifecycleTests(unittest.TestCase):
             session.send(b"q", "exit without restoring raw mode", allow_exit=True)
             with self.assertRaisesRegex(pty_smoke.SmokeFailure, "termios attributes"):
                 session.finish()
+
+    def test_observational_read_rejects_unexpected_input(self) -> None:
+        with self.session() as session:
+            session.send(b"q", "exit mock editor", allow_exit=True)
+            os.write(session.master, b"unexpected\n")
+            ready, _, _ = select.select([session.slave], [], [], 1.0)
+            self.assertTrue(ready, "fixture input did not reach the canonical queue")
+            with self.assertRaisesRegex(pty_smoke.SmokeFailure, "unexpected input remained"):
+                session.verify_termios_restored()
 
     def test_action_timeout_terminates_and_reaps_a_stubborn_editor(self) -> None:
         session = self.session()

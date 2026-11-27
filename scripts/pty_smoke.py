@@ -354,6 +354,28 @@ class PtySession:
         if mtime_ns is not None and self.fixture.stat().st_mtime_ns != mtime_ns:
             self.fail("file modification time changed without a successful save")
 
+    def verify_termios_restored(self) -> None:
+        """Observe the completed canonical transition without rewriting flags.
+
+        Darwin sets the kernel PENDIN state when raw mode returns to canonical.
+        A nonblocking read processes that state before reporting an empty queue.
+        See XNU 43a90889846e00bfb5cf1d255cdc0a701a1e05a4, tty.c:1358-1391,
+        2073-2088, and 2117-2188. Keep every termios field in the exact comparison.
+        """
+        flags = fcntl.fcntl(self.slave, fcntl.F_GETFL)
+        try:
+            fcntl.fcntl(self.slave, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+            try:
+                pending = os.read(self.slave, 1)
+            except BlockingIOError:
+                pending = b""
+        finally:
+            fcntl.fcntl(self.slave, fcntl.F_SETFL, flags)
+        if pending:
+            self.fail(f"unexpected input remained after editor exit: {pending!r}")
+        if termios.tcgetattr(self.slave) != self.original_termios:
+            self.fail("termios attributes were not restored exactly")
+
     def finish(self) -> None:
         deadline = min(self.deadline, time.monotonic() + 5.0)
         while self.poll_editor() is None:
@@ -365,8 +387,7 @@ class PtySession:
             self.fail(f"expected successful editor exit, received {self.editor_returncode}")
         # Keep the controlling session leader alive through this exact assertion.
         # Skipping ENOTTY would hide both harness errors and failed restoration.
-        if termios.tcgetattr(self.slave) != self.original_termios:
-            self.fail("termios attributes were not restored exactly")
+        self.verify_termios_restored()
         for entered, restored, name in TERMINAL_MODES:
             if self.output.rfind(restored) <= self.output.rfind(entered):
                 self.fail(f"missing final {name} restoration sequence")

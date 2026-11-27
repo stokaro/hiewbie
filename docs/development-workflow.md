@@ -51,8 +51,15 @@ supervisor. This preserves an inspectable terminal for macOS as well as Linux;
 an unavailable post-exit terminal is never treated as a successful cleanup check.
 The lifecycle rule is documented in the inspected
 [Darwin session-leader exit implementation](https://github.com/apple-oss-distributions/xnu/blob/43a90889846e00bfb5cf1d255cdc0a701a1e05a4/bsd/kern/kern_exit.c).
+Before comparing every termios field, one nonblocking slave read lets Darwin
+process its transient `PENDIN` state after returning to canonical input, as
+described in the inspected
+[terminal read implementation](https://github.com/apple-oss-distributions/xnu/blob/43a90889846e00bfb5cf1d255cdc0a701a1e05a4/bsd/kern/tty.c).
+The read rejects any returned input and does not reset, mask, or flush terminal
+attributes; the descriptor's original file-status flags are restored afterwards.
 The harness regressions use real child processes to check supervisor lifetime,
-nonzero/signal exit status, missing raw-mode restoration, and timeout cleanup.
+nonzero/signal exit status, missing raw-mode restoration, unexpected queued input,
+and timeout cleanup.
 
 ## Select meaningful checks
 
