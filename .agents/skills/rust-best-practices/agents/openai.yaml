@@ -1,0 +1,5 @@
+interface:
+  display_name: Rust Best Practices
+  short_description: Focused Rust ownership, errors and API review
+  default_prompt: Use $rust-best-practices to review this Rust change and run the
+    relevant checks.

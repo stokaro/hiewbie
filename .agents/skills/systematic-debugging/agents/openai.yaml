@@ -1,0 +1,5 @@
+interface:
+  display_name: Systematic Debugging
+  short_description: Find root causes with bounded, targeted checks
+  default_prompt: Use $systematic-debugging to find the root cause of this unexplained
+    failure and verify a minimal fix.

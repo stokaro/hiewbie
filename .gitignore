@@ -12,3 +12,7 @@
 
 # Runtime sessions and local binary workspaces must not become fixtures by accident.
 /.hiewbie-local/
+
+# Python development helpers.
+__pycache__/
+*.py[cod]

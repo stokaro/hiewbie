@@ -20,6 +20,7 @@ layout, navigation, and executable awareness are part of compatibility.
 - [Build, release, and platform matrix](docs/build-and-release.md)
 - [Reference projects and reuse policy](docs/references-and-reuse.md)
 - [Contributor and agent instructions](AGENTS.md)
+- [Development workflow and verification](docs/development-workflow.md)
 
 ## Product goals
 
@@ -77,4 +78,5 @@ architecture and release coverage. Their licensing is evaluated per repository
 and per reused file; see [reuse notes](docs/references-and-reuse.md).
 
 hiewbie's original source and documentation are licensed under the [MIT
-License](LICENSE). Third-party components retain their own licenses and notices.
+License](LICENSE). Third-party components retain their own licenses and notices;
+see [third-party development material](THIRD_PARTY_NOTICES.md).
