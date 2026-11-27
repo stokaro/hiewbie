@@ -1,7 +1,9 @@
 # Architecture and implementation plan
 
-Status: proposed implementation contract, 2026-11-27. No application modules,
-Cargo workspace, build commands, or CI jobs described here are implemented yet.
+Status: implementation contract with an initial native editor slice. The
+workspace, raw-byte core, terminal adapter, and build checks exist; analysis
+backends, the browser adapter, and full releases remain planned. The
+[compatibility ledger](compatibility-status.md) separates evidence from scope.
 
 ## 1. Design objective
 
@@ -47,6 +49,11 @@ Suggested boundaries, to become modules or crates when justified:
 Prefer a small initial workspace with a core library, a terminal application,
 and `xtask`. Add separate backends or frontend crates as actual dependency and
 platform boundaries appear. Do not create empty crates merely to match this table.
+
+Current boundaries are `crates/hiewbie-core` (document, offsets, commands, search),
+`crates/hiewbie` (native storage, CLI, Ratatui frontend), and `xtask` (checks and
+target builds). The current implementation has no format or instruction engine.
+The diagram also contains planned consumers; it does not claim a browser UI.
 
 ## 3. Document and storage contracts
 
@@ -112,11 +119,11 @@ Cache keys include document generation, instruction architecture, mode,
 endianness, base address, and selected Mach-O slice. Changing any of these must
 not leave stale addresses or decoded instructions visible.
 
-Initial dependency candidates, not selections:
+Selected terminal stack and remaining dependency candidates:
 
 | Area | Candidate | Decision to resolve |
 | --- | --- | --- |
-| Terminal | Ratatui and Crossterm | Modified keys, Unix/Windows support, restoration and browser separation |
+| Terminal | Ratatui 0.29.0 / Crossterm 0.28.1 selected | [Input ADR](adr/0002-terminal-input.md); enhanced keys and ConPTY remain gaps |
 | x86 | iced-x86 | Decoder/encoder coverage; textual ASM parser is additional work |
 | Other ISAs | Capstone or suitable Rust decoders | Native C build burden, host-target matrix, WASM feasibility |
 | Executable parsing | Goblin, object, or focused readers | Format gaps, malformed-input behavior, resource limits |
@@ -200,3 +207,10 @@ The first implementation work should record concise ADRs for:
 
 Use concrete experiments to settle these decisions. A dependency name alone is
 not an implementation plan or proof of compatibility.
+
+Implemented decisions: [bounded storage and saving](adr/0001-document-storage.md),
+[terminal/input](adr/0002-terminal-input.md), and
+[build-target strategies](adr/0003-build-targets.md). Analysis and textual assembly
+remain unselected; [their decision gate](adr/0004-analysis-backends.md) records
+the experiments required before selection. M0 and M1 are partial until their full
+exit criteria and affected platform coverage are satisfied.

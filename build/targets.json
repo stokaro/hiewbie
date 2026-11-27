@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "toolchain_source": "rust-toolchain.toml",
+  "evidence_policy": "This manifest records required artifacts, configured checks, and remaining work. It does not assert that any build, runtime test, package, or release has succeeded. Evidence belongs to the identified commit's CI logs and release manifest. Compile checks do not produce linked executables or runtime evidence.",
+  "targets": [
+    {
+      "triple": "aarch64-apple-darwin",
+      "display_name": "macOS Apple Silicon",
+      "required": true,
+      "artifact_template": "hiewbie-{version}-aarch64-apple-darwin.tar.gz",
+      "build": {
+        "package": "hiewbie",
+        "scope": "application",
+        "rust_std": "rustup",
+        "prerequisites": "Native Apple Silicon macOS with the pinned Rust toolchain and Xcode command-line tools."
+      },
+      "ci": { "mode": "native", "runner": "macos-15", "host": "aarch64-apple-darwin", "pty": true },
+      "runtime_plan": "Run workspace tests, help/version, and Unix PTY editing/cleanup smoke on the named native runner. Retain CI logs per commit; minimum OS and complete terminal scenarios remain to be validated.",
+      "release_blockers": ["Packaging and checksums are not implemented.", "Minimum macOS release and universal CLI packaging are not validated."]
+    },
+    {
+      "triple": "x86_64-apple-darwin",
+      "display_name": "macOS Intel",
+      "required": true,
+      "artifact_template": "hiewbie-{version}-x86_64-apple-darwin.tar.gz",
+      "build": {
+        "package": "hiewbie",
+        "scope": "application",
+        "rust_std": "rustup",
+        "prerequisites": "Native Intel macOS with the pinned Rust toolchain and Xcode command-line tools."
+      },
+      "ci": { "mode": "native", "runner": "macos-15-intel", "host": "x86_64-apple-darwin", "pty": true },
+      "runtime_plan": "Run workspace tests, help/version, and Unix PTY editing/cleanup smoke on the named native runner. Do not substitute Apple Silicon cross-compilation or lipo inspection for Intel execution.",
+      "release_blockers": ["Packaging and checksums are not implemented.", "Minimum macOS release and universal CLI packaging are not validated."]
+    },
+    {
+      "triple": "x86_64-pc-windows-msvc",
+      "display_name": "Windows x64",
+      "required": true,
+      "artifact_template": "hiewbie-{version}-x86_64-pc-windows-msvc.zip",
+      "build": {
+        "package": "hiewbie",
+        "scope": "application",
+        "rust_std": "rustup",
+        "prerequisites": "Native Windows x64 with the pinned MSVC Rust toolchain, Visual Studio C++ build tools, and Windows SDK."
+      },
+      "ci": { "mode": "native", "runner": "windows-2022", "host": "x86_64-pc-windows-msvc", "pty": false },
+      "runtime_plan": "Run workspace tests and help/version on the named native runner. ConPTY startup, keyboard, resize, edit/save, and terminal restoration coverage remains required.",
+      "release_blockers": ["Packaging and checksums are not implemented.", "ConPTY interaction tests and supported Windows/console baselines are not validated."]
+    },
+    {
+      "triple": "aarch64-pc-windows-msvc",
+      "display_name": "Windows ARM64",
+      "required": true,
+      "artifact_template": "hiewbie-{version}-aarch64-pc-windows-msvc.zip",
+      "build": {
+        "package": "hiewbie",
+        "scope": "application",
+        "rust_std": "rustup",
+        "prerequisites": "Native Windows ARM64 with the pinned ARM64-host MSVC Rust toolchain, Visual Studio ARM64 build tools, and Windows SDK."
+      },
+      "ci": { "mode": "native", "runner": "windows-11-arm", "host": "aarch64-pc-windows-msvc", "pty": false },
+      "runtime_plan": "Verify rustc's host is ARM64, then run workspace tests and help/version on the named native runner. ConPTY interaction and terminal restoration coverage remains required.",
+      "release_blockers": ["Packaging and checksums are not implemented.", "ConPTY interaction tests and supported Windows/console baselines are not validated."]
+    },
+    {
+      "triple": "x86_64-unknown-linux-gnu",
+      "display_name": "Linux x86_64",
+      "required": true,
+      "artifact_template": "hiewbie-{version}-x86_64-unknown-linux-gnu.tar.gz",
+      "build": {
+        "package": "hiewbie",
+        "scope": "application",
+        "rust_std": "rustup",
+        "prerequisites": "Native GNU Linux x86_64 with the pinned Rust toolchain, system linker, and libc development files."
+      },
+      "ci": { "mode": "native", "runner": "ubuntu-22.04", "host": "x86_64-unknown-linux-gnu", "pty": true },
+      "runtime_plan": "Run workspace tests, help/version, and Unix PTY editing/cleanup smoke on the named native runner. Inspect release ABI requirements before claiming a minimum glibc or kernel.",
+      "release_blockers": ["Packaging and checksums are not implemented.", "Linked ABI requirements and minimum Linux/glibc baseline are not validated."]
+    },
+    {
+      "triple": "aarch64-unknown-linux-gnu",
+      "display_name": "Linux ARM64",
+      "required": true,
+      "artifact_template": "hiewbie-{version}-aarch64-unknown-linux-gnu.tar.gz",
+      "build": {
+        "package": "hiewbie",
+        "scope": "application",
+        "rust_std": "rustup",
+        "prerequisites": "Native GNU Linux ARM64 with the pinned Rust toolchain, system linker, and libc development files."
+      },
+      "ci": { "mode": "native", "runner": "ubuntu-22.04-arm", "host": "aarch64-unknown-linux-gnu", "pty": true },
+      "runtime_plan": "Run workspace tests, help/version, and Unix PTY editing/cleanup smoke on the named native runner. Inspect release ABI requirements before claiming a minimum glibc or kernel.",
+      "release_blockers": ["Packaging and checksums are not implemented.", "Linked ABI requirements and minimum Linux/glibc baseline are not validated."]
+    },
+    {
+      "triple": "riscv64gc-unknown-linux-gnu",
+      "display_name": "Linux RISC-V 64",
+      "required": true,
+      "artifact_template": "hiewbie-{version}-riscv64gc-unknown-linux-gnu.tar.gz",
+      "build": {
+        "package": "hiewbie",
+        "scope": "application",
+        "rust_std": "rustup",
+        "prerequisites": "Install the target with rustup. A release link also needs a RISC-V GNU linker and matching libc sysroot, configured through CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER. The CI cargo check leg does not link."
+      },
+      "ci": { "mode": "check", "runner": "ubuntu-24.04", "host": "x86_64-unknown-linux-gnu" },
+      "runtime_plan": "Add a pinned GNU cross-toolchain, inspect ELF machine and ABI, then exercise the editor on RISC-V hardware or an identified QEMU guest. Record emulated execution separately from native execution.",
+      "release_blockers": ["A reproducible linker/sysroot and linked release artifact are not configured.", "Runtime and PTY validation are not configured.", "Packaging, checksums, and minimum Linux/glibc baseline are not validated."]
+    },
+    {
+      "triple": "x86_64-unknown-freebsd",
+      "display_name": "FreeBSD x86_64",
+      "required": true,
+      "artifact_template": "hiewbie-{version}-x86_64-unknown-freebsd.tar.gz",
+      "build": {
+        "package": "hiewbie",
+        "scope": "application",
+        "rust_std": "rustup",
+        "prerequisites": "Install the target with rustup for compile checks. A release link requires a matching FreeBSD sysroot and linker, or a native FreeBSD VM with the pinned toolchain."
+      },
+      "ci": { "mode": "check", "runner": "ubuntu-24.04", "host": "x86_64-unknown-linux-gnu" },
+      "runtime_plan": "Pin a supported x86_64 FreeBSD VM image and Rust toolchain, build and inspect ELF architecture, then run workspace tests and PTY editing/cleanup scenarios inside the guest.",
+      "release_blockers": ["A pinned FreeBSD VM or cross sysroot and linked release artifact are not configured.", "Runtime and PTY validation are not configured.", "Packaging, checksums, and minimum FreeBSD release are not validated."]
+    },
+    {
+      "triple": "aarch64-unknown-freebsd",
+      "display_name": "FreeBSD ARM64",
+      "required": true,
+      "artifact_template": "hiewbie-{version}-aarch64-unknown-freebsd.tar.gz",
+      "build": {
+        "package": "hiewbie",
+        "scope": "application",
+        "rust_std": "not-distributed",
+        "prerequisites": "Rust 1.90.0 does not distribute this target's standard library. Supply a verified matching compiler/std from a pinned FreeBSD ports build, an ARM64 sysroot, and clang/lld, or separately review a toolchain upgrade."
+      },
+      "ci": { "mode": "blocked", "reason": "The pinned Rust 1.90.0 release does not distribute aarch64-unknown-freebsd std. Matching compiler/std packages, a pinned sysroot, and a runtime environment remain unresolved; no passing placeholder job is created." },
+      "runtime_plan": "After compiler/std and sysroot provenance are fixed, link and inspect an ARM64 ELF executable, then run tests and PTY scenarios on ARM64 FreeBSD hardware or an explicitly identified ARM64 guest/emulator.",
+      "release_blockers": ["Matching pinned compiler and ARM64 standard library are unavailable through rustup 1.90.0.", "A verified FreeBSD ARM64 sysroot, linker setup, and runtime environment are not configured.", "Packaging, checksums, and minimum FreeBSD release are not validated."]
+    },
+    {
+      "triple": "wasm32-unknown-unknown",
+      "display_name": "Browser/WebAssembly",
+      "required": true,
+      "artifact_template": "hiewbie-{version}-web.tar.gz",
+      "build": {
+        "package": "hiewbie-core",
+        "scope": "portable-core",
+        "rust_std": "rustup",
+        "prerequisites": "Install wasm32-unknown-unknown with rustup. Only hiewbie-core is compiled; the native terminal/storage adapter is excluded."
+      },
+      "ci": { "mode": "check", "runner": "ubuntu-24.04", "host": "x86_64-unknown-linux-gnu" },
+      "runtime_plan": "Implement a browser terminal/storage adapter, then exercise local-file import, shared navigation/edit commands, and export in real browser tests. Core compilation supplies no browser runtime evidence.",
+      "release_blockers": ["The browser terminal/storage adapter and static-site archive are not implemented.", "Browser keyboard, import/edit/export, and capability tests are not configured.", "Packaging and checksums are not implemented."]
+    }
+  ],
+  "supplemental_artifacts": [
+    {
+      "name": "macOS universal CLI",
+      "required": true,
+      "artifact_template": "hiewbie-{version}-universal-apple-darwin.tar.gz",
+      "inputs": ["aarch64-apple-darwin", "x86_64-apple-darwin"],
+      "blocker": "Combine validated architecture-specific executables with lipo, inspect both slices, and package licenses/checksums. Both native runtime legs remain independently required."
+    }
+  ]
+}

@@ -71,9 +71,11 @@ wrapper's license does not replace the native engine's license.
 
 ## Provenance policy
 
-No upstream implementation code or build scripts were copied in this bootstrap.
-The initial repository contains independently written planning documents and
-repository templates.
+No upstream ArtCraft or HIEW implementation code or build scripts were copied.
+The original specifications, editor, and build orchestration are independently
+written. Selected Cargo dependency versions and license review are recorded in
+[dependencies.md](dependencies.md); optional development-skill adaptations retain
+their separate [provenance and notices](../THIRD_PARTY_NOTICES.md).
 
 For future copied or substantially adapted material, record the source repository,
 file, exact commit, original license, retained notice, destination file, and local

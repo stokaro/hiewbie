@@ -1,9 +1,10 @@
 # Working on hiewbie
 
 `hiewbie` is an independent, MIT-licensed Rust implementation of console HIEW.
-This repository currently contains specifications, not a Cargo workspace or
-application. Update that status when implementation lands. Do not present planned
-commands, features, tests, or releases as available or verified.
+The workspace contains a portable raw-byte core, an initial native terminal
+editor, and `xtask`. Read `docs/compatibility-status.md` for implemented scope and
+remaining requirements. Do not present planned commands, features, targets, or
+releases as available or verified.
 
 ## Invariants
 

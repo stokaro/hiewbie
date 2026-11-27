@@ -1,7 +1,9 @@
 # HIEW compatibility and acceptance specification
 
-Status: **Planned**. This document specifies intended behavior.
-No feature, platform, dependency, or test below is claimed as implemented or validated.
+Status: **Contract with partial implementation**. This document specifies the
+complete intended behavior; it is not a completion checklist. Per-requirement
+implementation, tests, and remaining differences are recorded in the
+[compatibility ledger](compatibility-status.md).
 Project name, repository name, and executable name are **hiewbie**.
 
 ## 1. Purpose and evidence
@@ -56,7 +58,8 @@ ARM64, broader endianness, and additional instruction sets are hiewbie additions
 ### 2.1 Initial binding inventory
 
 This is a condensed community-documented baseline, not a complete keymap. Source: [S2].
-Bindings remain **Planned**. Validate their contextual details before declaring parity.
+The implemented subset is documented in [commands.md](commands.md). Remaining
+bindings stay planned. Validate contextual details before declaring HIEW parity.
 
 | Context | Keys | Action |
 |---|---|---|
@@ -253,7 +256,9 @@ All capabilities are **Planned**; each requires independent fixtures and accepta
 
 ## 10. Dependency candidates and licensing
 
-Choices below are **candidates**, not committed dependencies or completed licence reviews.
+Ratatui/Crossterm are selected for the native frontend; other engines below are
+still candidates. Exact selected versions and license review are recorded in
+[dependencies.md](dependencies.md).
 
 - Ratatui/Crossterm: MIT terminal components; assess input coverage and terminal restoration [S4].
 - iced-x86: MIT x86 decoder/encoder; its CodeAssembler API is not a text parser [S5].

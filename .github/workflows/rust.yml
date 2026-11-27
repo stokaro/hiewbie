@@ -1,0 +1,131 @@
+name: Rust
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  matrix:
+    name: Read required target strategies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      native: ${{ steps.manifest.outputs.native }}
+      check: ${{ steps.manifest.outputs.check }}
+      toolchain: ${{ steps.manifest.outputs.toolchain }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Derive matrices from the manifest
+        id: manifest
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import tomllib
+
+          manifest = json.loads(Path("build/targets.json").read_text())
+          assert manifest["schema_version"] == 1
+          toolchain = tomllib.loads(Path(manifest["toolchain_source"]).read_text())
+          outputs = {"toolchain": toolchain["toolchain"]["channel"]}
+          for mode in ("native", "check"):
+              entries = [
+                  {
+                      "target": target["triple"],
+                      "runner": target["ci"]["runner"],
+                      "host": target["ci"]["host"],
+                      "package": target["build"]["package"],
+                      "pty": target["ci"].get("pty", False),
+                  }
+                  for target in manifest["targets"]
+                  if target["ci"]["mode"] == mode
+              ]
+              assert entries, f"No {mode} strategies in target manifest"
+              outputs[mode] = json.dumps({"include": entries}, separators=(",", ":"))
+          for target in manifest["targets"]:
+              if target["ci"]["mode"] == "blocked":
+                  print(f"Required target remains blocked: {target['triple']}: {target['ci']['reason']}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              for key, value in outputs.items():
+                  output.write(f"{key}={value}\n")
+          PY
+
+  native:
+    name: Native · ${{ matrix.target }}
+    needs: matrix
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.native) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    env:
+      RUSTUP_TOOLCHAIN: ${{ needs.matrix.outputs.toolchain }}-${{ matrix.host }}
+      EXPECTED_HOST: ${{ matrix.host }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned native Rust toolchain
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
+      - name: Verify native compiler architecture
+        run: |
+          rustc --version --verbose
+          actual_host="$(rustc --version --verbose | tr -d '\r' | sed -n 's/^host: //p')"
+          if [ "$actual_host" != "$EXPECTED_HOST" ]; then
+            echo "::error::Expected native Rust host $EXPECTED_HOST; found $actual_host"
+            exit 1
+          fi
+      - name: Check formatting, Clippy, and workspace tests
+        run: cargo xtask check
+      - name: Build and exercise the native command
+        run: |
+          cargo build --package hiewbie --locked
+          cargo run --quiet --package hiewbie --locked -- --help
+          cargo run --quiet --package hiewbie --locked -- --version
+      - name: Test Unix PTY supervision and failure detection
+        if: ${{ matrix.pty }}
+        run: python3 -m unittest discover -s scripts -p 'test_pty_smoke.py' -v
+      - name: Exercise Unix terminal editing and cleanup
+        if: ${{ matrix.pty }}
+        run: python3 scripts/pty_smoke.py --binary target/debug/hiewbie
+
+  compile:
+    name: Compile only · ${{ matrix.target }} · ${{ matrix.package }}
+    needs: matrix
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.check) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    env:
+      RUSTUP_TOOLCHAIN: ${{ needs.matrix.outputs.toolchain }}-${{ matrix.host }}
+      BUILD_TARGET: ${{ matrix.target }}
+      BUILD_PACKAGE: ${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust and the target standard library
+        run: |
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+          rustup target add --toolchain "$RUSTUP_TOOLCHAIN" "$BUILD_TARGET"
+      - name: Check target compilation without linking or runtime claims
+        run: cargo check --locked --package "$BUILD_PACKAGE" --target "$BUILD_TARGET"

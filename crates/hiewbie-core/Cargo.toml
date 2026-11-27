@@ -1,0 +1,11 @@
+[package]
+name = "hiewbie-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Portable bounded document and command model for hiewbie"
+
+[lints]
+workspace = true
