@@ -1,8 +1,11 @@
 # Build and release specification
 
-**Status: Planned.** This document specifies the intended build and release system.
-The repository bootstrap does not yet contain a Rust application, build workflows,
-or release artifacts. Every hiewbie target below is **Planned**, not verified.
+**Status: build foundation implemented; release distribution planned.** A pinned
+Rust workspace, native editor, `xtask`, and matrix-derived CI are present.
+[build/targets.json](../build/targets.json) records each required target's
+configured strategy and remaining blockers. Actual verification belongs to the
+identified commit's CI results. No release archives or full-platform claims are
+made by this configuration.
 
 ## 1. Objective and reference baseline
 
@@ -40,21 +43,22 @@ Backend capabilities must be reported and tested independently for each build ta
 
 ## 3. Required build matrix
 
-All rows are planned requirements. ArtCraft runner choices describe the reference;
-hiewbie may use different runners while preserving the resulting target coverage.
+All rows remain required. ArtCraft arrangements describe the reference;
+hiewbie uses its own runners while preserving the complete target contract.
+The state column records configured checks, not successful releases.
 
 | Host platform | Rust target | Reference build arrangement | hiewbie state |
 | --- | --- | --- | --- |
-| macOS, Apple Silicon | `aarch64-apple-darwin` | macOS build; combined into universal binary | Planned |
-| macOS, Intel | `x86_64-apple-darwin` | macOS build; combined into universal binary | Planned |
-| Windows, x64 | `x86_64-pc-windows-msvc` | Native Windows x64 runner | Planned |
-| Windows, ARM64 | `aarch64-pc-windows-msvc` | Native Windows ARM64 release runner | Planned |
-| Linux, x86_64 | `x86_64-unknown-linux-gnu` | Native Ubuntu 22.04 runner | Planned |
-| Linux, ARM64 | `aarch64-unknown-linux-gnu` | Native Ubuntu 22.04 ARM runner | Planned |
-| Linux, RISC-V 64 | `riscv64gc-unknown-linux-gnu` | Cross-build on Ubuntu 24.04 | Planned |
-| FreeBSD, x86_64 | `x86_64-unknown-freebsd` | FreeBSD VM on a Linux runner | Planned |
-| FreeBSD, ARM64 | `aarch64-unknown-freebsd` | Cross-build inside an x86_64 FreeBSD VM | Planned |
-| Browser/WebAssembly | `wasm32-unknown-unknown` | Web build and static-site archive | Planned |
+| macOS, Apple Silicon | `aarch64-apple-darwin` | macOS build; combined into universal binary | Native tests and Unix PTY configured |
+| macOS, Intel | `x86_64-apple-darwin` | macOS build; combined into universal binary | Native tests and Unix PTY configured |
+| Windows, x64 | `x86_64-pc-windows-msvc` | Native Windows x64 runner | Native tests/CLI configured; ConPTY pending |
+| Windows, ARM64 | `aarch64-pc-windows-msvc` | Native Windows ARM64 release runner | Native tests/CLI configured; ConPTY pending |
+| Linux, x86_64 | `x86_64-unknown-linux-gnu` | Native Ubuntu 22.04 runner | Native tests and Unix PTY configured |
+| Linux, ARM64 | `aarch64-unknown-linux-gnu` | Native Ubuntu 22.04 ARM runner | Native tests and Unix PTY configured |
+| Linux, RISC-V 64 | `riscv64gc-unknown-linux-gnu` | Cross-build on Ubuntu 24.04 | Compile check configured; linking/runtime pending |
+| FreeBSD, x86_64 | `x86_64-unknown-freebsd` | FreeBSD VM on a Linux runner | Compile check configured; VM/linking/runtime pending |
+| FreeBSD, ARM64 | `aarch64-unknown-freebsd` | Cross-build inside an x86_64 FreeBSD VM | Blocked under pinned Rust 1.90.0 |
+| Browser/WebAssembly | `wasm32-unknown-unknown` | Web build and static-site archive | Core compile check configured; browser product pending |
 
 The GNU Linux triples describe the native reference runners; their native packaging
 commands do not explicitly pass `--target`. hiewbie must record target triples
@@ -80,14 +84,23 @@ Keep build orchestration portable across Windows, macOS and Unix environments.
 - Separate compilation, packaging, signing, validation and publication steps.
 - Do not make ordinary local builds depend on signing credentials or hosted services.
 
-Suggested command surface, to be implemented rather than assumed available:
+Implemented command surface:
 
 ```text
 cargo xtask check
 cargo xtask build --target <rust-triple>
-cargo xtask package --target <rust-triple>
-cargo xtask verify-release --manifest <release-manifest>
+cargo xtask targets
 ```
+
+The Cargo alias itself uses locked resolution. `check` validates the manifest,
+formatting, workspace Clippy with denied warnings, and workspace tests. `build`
+selects the declared package, release profile, lockfile, and explicit target.
+The WebAssembly target selects `hiewbie-core` only and emits a limitation notice.
+Toolchain and MSRV are 1.90.0 / 1.90; see [ADR 0003](adr/0003-build-targets.md).
+
+`cargo xtask package --target TRIPLE` and
+`cargo xtask verify-release --manifest PATH` deliberately return failure until
+packaging and release verification exist. They cannot produce a false pass.
 
 The manifest should be the shared source of truth for target names, artifact names,
 build expectations and release completeness checks. Do not duplicate divergent lists
@@ -119,9 +132,13 @@ Format/architecture inspection must reject a host binary packaged under a target
 
 ## 6. FreeBSD ARM64 toolchain investigation
 
-At the inspected reference snapshot, `aarch64-unknown-freebsd` does not have the normal
-rustup-distributed target toolchain. A workflow that only runs `rustup target add` is
-not an adequate implementation plan.
+For hiewbie's pinned **Rust 1.90.0**, `aarch64-unknown-freebsd` does not have a
+rustup-distributed standard library. This is a version-specific blocker;
+current stable documentation may describe a newer support level. A workflow
+that only runs `rustup target add` under this pin is not an implementation plan.
+See the exact Rust source references and alternatives in
+[ADR 0003](adr/0003-build-targets.md), including a separately reviewed toolchain
+upgrade as an alternative to a pinned FreeBSD ports compiler/std route.
 
 The reference cross-builds in an x86_64 FreeBSD VM. It obtains matching FreeBSD
 `lang/rust` compiler and ARM64 standard-library packages, supplies an ARM64 sysroot,
@@ -206,7 +223,8 @@ code/scripts may be adapted under the MIT option while retaining required notice
 At the inspected snapshot, `craft-common-actions` has no top-level license file and
 GitHub reports no detected license. Do not assume an MIT grant for copying that code.
 Write independent orchestration or reuse explicitly licensed app-local material.
-**No upstream ArtCraft code has been copied into this bootstrap.**
+**No upstream ArtCraft code has been copied.** The workspace, `xtask`, and CI
+are independently written implementations of this target contract.
 
 - [GridCraft workspace and license declaration](https://github.com/storytold/gridcraft/blob/97f2754c1ddf4caddff865015563d7f342b34c52/Cargo.toml)
 - [GridCraft MIT license](https://github.com/storytold/gridcraft/blob/97f2754c1ddf4caddff865015563d7f342b34c52/LICENSE-MIT)

@@ -10,9 +10,12 @@ Identify changed behavior and requirement IDs. Read existing code and nearby
 tests first. Use `rg` and bounded reads; follow dependencies when relevant. Avoid
 unrelated refactors, speculative abstractions, and repeated context dumps.
 
-This bootstrap has no Cargo workspace, Rust tests, `xtask`, or application CI.
-The small `agent-tooling.yml` workflow runs the CI helper's offline regression
-tests when that helper or its workflow changes.
+The workspace pins Rust 1.90.0. `cargo xtask check` validates the target manifest
+and runs `cargo fmt --all -- --check`, workspace Clippy with warnings denied,
+and locked workspace tests. `rust.yml` runs native and compile-only jobs derived
+from `build/targets.json`; inspect the identified commit's runs for actual
+results. The separate `agent-tooling.yml` workflow runs the CI helper's offline
+regressions when that helper or its workflow changes.
 For documentation changes, review affected links, requirement references, and
 status claims; run `git diff --check` in a Git checkout. Do not create tooling
 merely to validate a documentation edit.
@@ -23,9 +26,23 @@ Run the same helper checks locally with Python 3.10+:
 python3 -m unittest discover -s .agents/skills/gh-fix-ci/scripts -p 'test_*.py'
 ```
 
-The `cargo xtask check`, `build`, `package`, and `verify-release` interfaces in
-`build-and-release.md` are **proposed**, not runnable project commands. Update this
-section when M0 supplies actual tooling and its documented gates.
+`cargo xtask build --target TRIPLE` builds the declared application in release
+mode with locked dependencies; the WebAssembly row builds only the core.
+`cargo xtask targets` prints the validated manifest. `package` and
+`verify-release` fail explicitly because release tooling is not implemented.
+
+Run the real Unix terminal scenarios after building the CLI:
+
+```sh
+cargo build --locked --package hiewbie
+python3 scripts/pty_smoke.py --binary target/debug/hiewbie
+```
+
+If `CARGO_TARGET_DIR` is set, pass the executable from that directory. The PTY
+script uses Python's standard library and generated temporary fixtures. Its
+`--record PATH` option records the successful edit workflow as asciinema v2.
+The checked-in [recording](evidence/native-editor.cast) is evidence of that
+scenario; byte/state assertions and cleanup checks remain the regression gate.
 
 ## Select meaningful checks
 
@@ -44,7 +61,7 @@ terminal snapshots. Editor workflow changes need the specified screenshot or rec
 manual evidence supplements automated regression coverage. Assert observable
 behavior, not implementation structure.
 
-Once Cargo exists, use the repository's formatter, linter, focused tests, and
+Use the repository's formatter, linter, focused tests, and
 required gates with its pinned toolchain and locked dependency resolution. Do not
 assume package names or blindly enable all features. Tests provide compilation
 evidence only for the code and configuration they build; additional checks need

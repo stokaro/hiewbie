@@ -1,8 +1,38 @@
-# Third-party development material
+# Third-party notices
 
 hiewbie's original application code and documentation remain MIT-licensed.
+
+## Application and workspace dependencies
+
+The initial native application uses the locked registry packages below. These
+licenses apply to the dependencies themselves. Exact source revisions, purposes,
+inspected license files, and the native/core boundary are recorded in the
+[dependency inventory](docs/dependencies.md).
+
+| Component | Locked version | Published license options |
+| --- | --- | --- |
+| Ratatui | `0.29.0` | MIT |
+| Crossterm, through Ratatui | `0.28.1` | MIT |
+| tempfile | `3.23.0` | MIT OR Apache-2.0 |
+| same-file | `1.0.6` | Unlicense OR MIT; the older manifest spells this `Unlicense/MIT`, and `COPYING` confirms the choice |
+| libc, Unix only | `0.2.191` | MIT OR Apache-2.0 |
+| winapi-util, Windows only | `0.1.11` | Unlicense OR MIT |
+| Serde, `xtask` only | `1.0.229` | MIT OR Apache-2.0 |
+| Serde JSON, `xtask` only | `1.0.154` | MIT OR Apache-2.0 |
+
+The complete transitive graph is not exclusively MIT. Notable distinctions are
+`foldhash 0.1.5` (Zlib), `unicode-ident 1.0.27` (`(MIT OR Apache-2.0) AND
+Unicode-3.0`), and `ryu 1.0.23` (`Apache-2.0 OR BSL-1.0`). Their inspected notices
+and dependency paths are documented in the inventory.
+
+No application dependency source is vendored here. Release packaging and complete
+target-specific notice aggregation remain unimplemented; this summary is not a
+complete distribution notice bundle or a full audit of the dependency graph.
+
+## Optional agent-development material
+
 The following optional agent-development material retains its upstream license.
-No component listed here is an application runtime dependency.
+No component in this section is an application runtime dependency.
 
 | Destination | Source revision | License and retained notice |
 | --- | --- | --- |
