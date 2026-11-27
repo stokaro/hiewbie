@@ -73,7 +73,7 @@ impl Fingerprint {
     }
 }
 
-/// A read-only file handle with a fixed length and external-change checks.
+/// A read-only byte adapter with a fixed length and external-change checks.
 #[derive(Debug)]
 pub struct FileSource {
     path: PathBuf,
@@ -123,20 +123,36 @@ impl FileSource {
     }
 
     fn check_save_policy(&self) -> Result<Metadata, SaveError> {
-        self.check_unchanged()?;
-        if fs::symlink_metadata(&self.path)?.file_type().is_symlink() {
+        save_io(
+            "checking source identity and metadata",
+            self.check_unchanged(),
+        )?;
+        if save_io(
+            "checking the source directory entry",
+            fs::symlink_metadata(&self.path),
+        )?
+        .file_type()
+        .is_symlink()
+        {
             return Err(SaveError::Unsupported(
                 "saving through a symbolic link is not supported; open its target directly",
             ));
         }
-        let metadata = self.handle.as_file().metadata()?;
+        let metadata = save_io(
+            "reading source permissions",
+            self.handle.as_file().metadata(),
+        )?;
         if metadata.permissions().readonly() {
             return Err(SaveError::Unsupported("the source file is read-only"));
         }
         #[cfg(unix)]
         let links = metadata.nlink();
         #[cfg(windows)]
-        let links = winapi_util::file::information(self.handle.as_file())?.number_of_links();
+        let links = save_io(
+            "checking the source hard-link count",
+            winapi_util::file::information(self.handle.as_file()),
+        )?
+        .number_of_links();
         #[cfg(any(unix, windows))]
         if links != 1 {
             return Err(SaveError::Unsupported(
@@ -222,6 +238,33 @@ impl From<hiewbie_core::Error> for SaveError {
     }
 }
 
+#[derive(Debug)]
+struct SaveIoContext {
+    operation: &'static str,
+    error: io::Error,
+}
+
+impl fmt::Display for SaveIoContext {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}: {}", self.operation, self.error)
+    }
+}
+
+impl std::error::Error for SaveIoContext {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+
+fn save_io<T>(operation: &'static str, result: io::Result<T>) -> Result<T, SaveError> {
+    result.map_err(|error| {
+        SaveError::Io(io::Error::new(
+            error.kind(),
+            SaveIoContext { operation, error },
+        ))
+    })
+}
+
 /// Stream logical bytes to a sibling temporary file, sync it, check the source
 /// again, and atomically replace the original path. The document is not rebased
 /// here: call `Editor::complete_save` only after this returns `Ok`.
@@ -235,17 +278,23 @@ pub fn save_document(document: &mut Document<FileSource>) -> Result<FileSource, 
     let path = document.source().path().to_path_buf();
     if !document.is_dirty() {
         // A clean edit session must not rewrite the file or change its mtime.
-        return Ok(FileSource::open(path)?);
+        return save_io("refreshing the clean edit session", FileSource::open(path));
     }
     let parent = path.parent().ok_or(SaveError::Unsupported(
         "the source path has no parent directory",
     ))?;
-    let mut temporary = tempfile::Builder::new()
-        .prefix(".hiewbie-")
-        .tempfile_in(parent)?;
+    let mut temporary = save_io(
+        "creating the temporary save file",
+        tempfile::Builder::new()
+            .prefix(".hiewbie-")
+            .tempfile_in(parent),
+    )?;
     #[cfg(unix)]
     {
-        let temp_metadata = temporary.as_file().metadata()?;
+        let temp_metadata = save_io(
+            "checking temporary file ownership",
+            temporary.as_file().metadata(),
+        )?;
         if temp_metadata.uid() != metadata.uid() || temp_metadata.gid() != metadata.gid() {
             return Err(SaveError::Unsupported(
                 "replacement would change file ownership; this save strategy cannot preserve it",
@@ -253,16 +302,61 @@ pub fn save_document(document: &mut Document<FileSource>) -> Result<FileSource, 
         }
     }
     copy_document(document, temporary.as_file_mut())?;
-    temporary
-        .as_file()
-        .set_permissions(metadata.permissions())?;
-    temporary.as_file().sync_all()?;
+    save_io(
+        "preserving file permissions",
+        temporary.as_file().set_permissions(metadata.permissions()),
+    )?;
+    #[cfg(windows)]
+    let temporary = normalize_temporary_attributes(temporary)?;
+    save_io(
+        "syncing the temporary save file",
+        temporary.as_file().sync_all(),
+    )?;
     document.source().check_save_policy()?;
-    check_temporary_identity(&temporary)?;
-    let persisted = temporary
-        .persist(&path)
-        .map_err(|error| SaveError::Io(error.error))?;
+    save_io(
+        "checking temporary file identity",
+        check_temporary_identity(&temporary),
+    )?;
+    let persisted = commit_temporary(temporary, &path)?;
     FileSource::from_file(path, persisted).map_err(SaveError::ReplacedButRefreshFailed)
+}
+
+#[cfg(windows)]
+fn normalize_temporary_attributes(
+    temporary: tempfile::NamedTempFile,
+) -> Result<tempfile::NamedTempFile, SaveError> {
+    save_io(
+        "checking temporary file identity before clearing its attribute",
+        check_temporary_identity(&temporary),
+    )?;
+    // Keep removes FILE_ATTRIBUTE_TEMPORARY on Windows. Restore automatic
+    // cleanup immediately; it must remain enabled until replacement succeeds.
+    let (file, path) = save_io(
+        "clearing the temporary file attribute",
+        temporary.keep().map_err(|error| error.error),
+    )?;
+    Ok(tempfile::NamedTempFile::from_parts(
+        file,
+        tempfile::TempPath::from_path(path),
+    ))
+}
+
+fn commit_temporary(temporary: tempfile::NamedTempFile, path: &Path) -> Result<File, SaveError> {
+    #[cfg(windows)]
+    {
+        // tempfile 3.23 uses MoveFileExW alone, which cannot replace our open
+        // source. Rust 1.90 fs::rename retries access-denied with POSIX rename
+        // semantics while retaining existing handles to the original bytes.
+        let (file, mut cleanup) = temporary.into_parts();
+        save_io("replacing the original file", fs::rename(&cleanup, path))?;
+        cleanup.disable_cleanup(true);
+        Ok(file)
+    }
+    #[cfg(not(windows))]
+    save_io(
+        "replacing the original file",
+        temporary.persist(path).map_err(|error| error.error),
+    )
 }
 
 fn check_temporary_identity(temporary: &tempfile::NamedTempFile) -> io::Result<()> {
@@ -294,7 +388,10 @@ fn copy_document<S: ByteSource>(
             )
             .into());
         }
-        output.write_all(&buffer[..read])?;
+        save_io(
+            "writing the temporary save file",
+            output.write_all(&buffer[..read]),
+        )?;
         offset += read as u64;
     }
     Ok(())
@@ -304,6 +401,40 @@ fn copy_document<S: ByteSource>(
 mod tests {
     use super::*;
     use hiewbie_core::MemorySource;
+
+    #[test]
+    fn save_io_errors_retain_the_operation_kind_and_original_error() {
+        let error = save_io::<()>(
+            "replacing the original file",
+            Err(io::Error::from(io::ErrorKind::PermissionDenied)),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("replacing the original file"));
+        let SaveError::Io(error) = error else {
+            panic!("expected an I/O error")
+        };
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        let context = error.get_ref().unwrap();
+        assert!(context.source().unwrap().is::<io::Error>());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn failed_windows_replacement_cleans_up_the_normalized_temporary() {
+        let directory = tempfile::tempdir().unwrap();
+        let temporary = tempfile::NamedTempFile::new_in(directory.path()).unwrap();
+        let original_path = temporary.path().to_path_buf();
+        let destination = directory.path().join("nonempty-directory");
+        fs::create_dir(&destination).unwrap();
+        fs::write(destination.join("original"), b"untouched").unwrap();
+        let temporary = normalize_temporary_attributes(temporary).unwrap();
+        assert!(commit_temporary(temporary, &destination).is_err());
+        assert!(!original_path.exists());
+        assert_eq!(
+            fs::read(destination.join("original")).unwrap(),
+            b"untouched"
+        );
+    }
 
     #[test]
     fn replaced_temporary_path_is_rejected_before_commit() {

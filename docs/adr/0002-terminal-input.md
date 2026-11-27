@@ -10,6 +10,11 @@ terminal dependency. The CLI preserves OS-native paths through `args_os`; file
 bytes and filename/error controls are escaped before rendering. Interactive
 operation requires terminal stdin and stdout. `--dump` is a separate bounded
 noninteractive inspection path that uses the same document reads.
+Native filename bytes are forwarded to the filesystem. Filesystems such as
+APFS can reject non-UTF-8 names; the CLI reports that error without interpreting
+filename control bytes as terminal commands. Tests cover both accepted names
+and an explicit filesystem encoding rejection instead of assuming every Unix
+filesystem accepts arbitrary byte names.
 
 The first UI is a blue/cyan, keyboard-driven byte grid. At 80 columns it shows
 16 bytes per row, their fixed-width ASCII representation, a 64-bit file offset,

@@ -66,19 +66,29 @@ fn invalid_offset_and_missing_file_return_failure() {
 
 #[cfg(unix)]
 #[test]
-fn dump_opens_non_utf8_filename_and_escapes_error_paths() {
+fn dump_handles_native_filename_bytes_and_escapes_error_paths() {
     use std::os::unix::ffi::OsStrExt;
     let directory = tempfile::tempdir().unwrap();
     let path = directory
         .path()
         .join(std::ffi::OsStr::from_bytes(b"file-\xFF\x1B.bin"));
-    fs::write(&path, b"A").unwrap();
-    assert!(
-        invoke(&["--dump".as_ref(), path.as_os_str()])
-            .status
-            .success()
+    let created = match fs::write(&path, b"A") {
+        Ok(()) => true,
+        // APFS rejects a non-UTF-8 filename. That is a filesystem constraint,
+        // not an argument-decoding failure; the CLI must report it cleanly.
+        Err(error) if error.raw_os_error() == Some(libc::EILSEQ) => false,
+        Err(error) => panic!("unexpected fixture creation failure: {error}"),
+    };
+    let result = invoke(&["--dump".as_ref(), path.as_os_str()]);
+    assert_eq!(
+        result.status.success(),
+        created,
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
     );
-    fs::remove_file(&path).unwrap();
+    if created {
+        fs::remove_file(&path).unwrap();
+    }
     let result = invoke(&["--dump".as_ref(), path.as_os_str()]);
     assert!(!result.status.success());
     assert!(!result.stderr.contains(&0x1B));

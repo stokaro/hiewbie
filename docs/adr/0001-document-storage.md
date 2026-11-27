@@ -45,8 +45,10 @@ The frontend scans one bounded step per event-loop iteration.
 4. Stream the logical document in 64 KiB blocks, including pending patches.
 5. Preserve ordinary permissions; require unchanged Unix owner/group.
 6. Sync the temporary file; recheck the source and temporary-file identities.
-7. Persist the temporary file over the source path. This is the replacement
-   commit point.
+7. Replace the source path with the temporary file. This is the replacement
+   commit point. Unix uses `NamedTempFile::persist`; Windows uses the pinned
+   standard library's `fs::rename` after clearing the temporary file attribute.
+   A cleanup guard remains active until the rename succeeds.
 8. Verify the new handle/path and return it. Only then does the editor clear its
    overlay and history, leave edit mode, and display success.
 
@@ -66,6 +68,17 @@ independent external writer's changes. A failure after replacement uses a
 distinct error and persistent UI state: the file was replaced, further editing
 is blocked, and Esc exits so the user can reopen it. The application never
 reports that an already completed replacement was rolled back.
+
+The Windows distinction is required while readers retain open handles.
+`tempfile` 3.23.0's Windows `persist` calls `MoveFileExW` alone;
+[Rust 1.90.0's implementation](https://github.com/rust-lang/rust/blob/1.90.0/library/std/src/sys/fs/windows.rs)
+can retry an access-denied replacement with `FileRenameInfoEx` and POSIX
+replacement semantics. [Microsoft documents](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information)
+that existing handles then retain access to the old file while new opens use
+the replacement. Native CI exposed this difference: ordinary `fs::rename`
+replacement passed, but the original tempfile-based save failed. The regression
+now asserts both readers' byte sequences. Source/link/conflict checks remain in
+place, and operation-specific I/O errors identify the failed save stage.
 
 ## Initial policy and limits
 

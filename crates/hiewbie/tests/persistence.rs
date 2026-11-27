@@ -40,6 +40,26 @@ fn save_preserves_untouched_bytes_across_copy_boundaries() {
 }
 
 #[test]
+fn save_replaces_the_path_while_existing_readers_retain_original_bytes() {
+    use std::io::Read;
+
+    let (_directory, path, mut document) = fixture(b"original bytes");
+    let mut original_reader = fs::File::open(&path).unwrap();
+    document.overwrite(FileOffset::new(0), b"EDIT").unwrap();
+    let replacement = save_document(&mut document).unwrap();
+    assert_eq!(fs::read(&path).unwrap(), b"EDITinal bytes");
+    let mut original = Vec::new();
+    original_reader.read_to_end(&mut original).unwrap();
+    assert_eq!(original, b"original bytes");
+    assert!(document.is_dirty());
+    document.rebase(replacement);
+    assert!(!document.is_dirty());
+    let mut saved = [0; 4];
+    document.read_at(FileOffset::new(0), &mut saved).unwrap();
+    assert_eq!(&saved, b"EDIT");
+}
+
+#[test]
 fn discard_and_clean_save_do_not_rewrite_the_original() {
     let (_directory, path, mut document) = fixture(b"original");
     let modified = fs::metadata(&path).unwrap().modified().unwrap();
