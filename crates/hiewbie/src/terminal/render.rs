@@ -604,7 +604,7 @@ impl<S: ByteSource> Ui<S> {
                         "Help", "PutBlk", "Edit", "Mode", "Goto", "DatRef", "Search", "Header",
                         "Files", "Quit", "Hem", "Names",
                     ],
-                    &[6, 9, 10, 11, 12],
+                    &[6, 10, 11, 12],
                 )
             };
             render_full_function_bar(frame, area, &labels, disabled);
@@ -623,7 +623,7 @@ impl<S: ByteSource> Ui<S> {
                 "Files",
                 "Quit",
             ];
-            render_function_slots(frame, area, &labels, &[8, 9, 10]);
+            render_function_slots(frame, area, &labels, &[8, 10]);
             return;
         }
         let labels = if self.editor.is_editing() {
@@ -642,14 +642,14 @@ impl<S: ByteSource> Ui<S> {
                 "--"
             };
             [
-                "Help", put, "Edit", "Mode", "Goto", "Refs-", "Search", "Header", "Open-", "--",
+                "Help", put, "Edit", "Mode", "Goto", "Refs-", "Search", "Header", "Files", "--",
             ]
         };
         render_function_slots(frame, area, &labels, &[]);
     }
 }
 
-fn render_full_function_bar(
+pub(super) fn render_full_function_bar(
     frame: &mut Frame<'_>,
     area: Rect,
     labels: &[&str; 12],

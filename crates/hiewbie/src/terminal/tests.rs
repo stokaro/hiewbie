@@ -113,8 +113,7 @@ fn hex_digits_are_atomic_and_motion_cancels_a_partial_byte() {
 #[test]
 fn contextual_save_ascii_undo_and_redo_use_shared_commands() {
     let mut ui = ui(b"ABC");
-    assert_eq!(key(&mut ui, KeyCode::F(9)), UiAction::Continue);
-    assert!(ui.message.contains("F9 Open"));
+    assert_eq!(key(&mut ui, KeyCode::F(9)), UiAction::BrowseFiles);
     assert!(!ui.editor.is_editing());
     control(&mut ui, KeyCode::Char('e'));
     key(&mut ui, KeyCode::Tab);

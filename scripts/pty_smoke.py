@@ -17,12 +17,15 @@ from __future__ import annotations
 
 import argparse
 import codecs
+from collections.abc import Iterator
 import contextlib
 import errno
 import json
+from itertools import count
 import os
 from pathlib import Path
 import select
+import shutil
 import signal
 import struct
 import subprocess
@@ -53,6 +56,7 @@ F5 = b"\x1b[15~"
 F7 = b"\x1b[18~"
 F8 = b"\x1b[19~"
 F9 = b"\x1b[20~"
+F10 = b"\x1b[21~"
 SHIFT_F7 = b"\x1b[18;2~"
 UP = b"\x1b[A"
 DOWN = b"\x1b[B"
@@ -143,12 +147,14 @@ class PtySession:
         *,
         read_only: bool = False,
         record: bool = False,
+        start_in_picker: bool = False,
     ) -> None:
         self.binary = binary
         self.fixture = fixture
         self.name = name
         self.read_only = read_only
         self.record = record
+        self.start_in_picker = start_in_picker
         self.master: int | None = None
         self.slave: int | None = None
         self.process: subprocess.Popen[bytes] | None = None
@@ -173,7 +179,8 @@ class PtySession:
             arguments = [str(self.binary)]
             if self.read_only:
                 arguments.append("--read-only")
-            arguments.extend(["--", self.fixture.name])
+            if not self.start_in_picker:
+                arguments.extend(["--", self.fixture.name])
             environment = dict(os.environ, TERM="xterm-256color")
             # The controlled terminal/recording has a stable color capability.
             environment.pop("NO_COLOR", None)
@@ -509,6 +516,63 @@ def fixture(directory: Path) -> tuple[Path, int]:
     return path, path.stat().st_mtime_ns
 
 
+@contextlib.contextmanager
+def file_recording_workspace(parent: Path) -> Iterator[Path]:
+    """Give the file-list recording a synthetic path before rendering it."""
+    for number in count():
+        name = "hiewbie-files-demo" if number == 0 else f"hiewbie-files-demo-{number}"
+        directory = parent / name
+        try:
+            directory.mkdir(mode=0o700)
+            break
+        except FileExistsError:
+            continue
+    try:
+        yield directory
+    finally:
+        shutil.rmtree(directory)
+
+
+def file_picker(binary: Path, directory: Path, *, record: bool) -> list[list]:
+    path, mtime_ns = fixture(directory)
+    nested = directory / "alpha"
+    nested.mkdir()
+    target = nested / "chosen.bin"
+    target.write_bytes(b"abc")
+    for entry in (target, nested):
+        os.utime(entry, ns=(mtime_ns, mtime_ns))
+    with PtySession(binary, path, "startup and F9 file picker", record=record, start_in_picker=True) as session:
+        def expect_input(data: bytes, label: str, *checks: bytes) -> None:
+            before = len(session.output)
+            session.send(data, label)
+            for code in checks:
+                if code not in session.output[before:]:
+                    session.fail(f"missing file picker output {code!r} after {label}")
+
+        if b">UP---DIR<" not in session.output or b"alpha" not in session.output:
+            session.fail("startup did not list the working directory")
+        expect_input(F10, "Open the file mask dialog", b"Enter filter", b"\x1b[4 q")
+        expect_input(b"\x1b[5~*.bin\r", "Apply the mask and restore cursor shape", b"\x1b[0 q")
+        session.send(DOWN, "Select the child directory")
+        expect_input(b"\r", "Enter the child directory", b"chosen.bin")
+        session.send(DOWN, "Select the child file")
+        expect_input(b"\r", "Open the selected file", b"chosen.bin")
+        expect_input(F9, "Reopen Files from the selected document", b">UP---DIR<")
+        session.send(ESC, "Cancel Files and preserve the document")
+        session.send(b"\r", "Switch the opened file from Text to Hex")
+        session.send(F3, "Start editing the selected file")
+        session.send(b"A5", "Change the selected file's first byte")
+        session.send(F9, "In edit mode F9 saves the selected file")
+        session.send(ESC, "Exit from view", expect_exit=True)
+        session.finish()
+        session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
+        if target.read_bytes() != b"\xa5bc":
+            session.fail("F9 did not save exactly the selected file's first byte")
+        # Cursor-addressed differential updates refer to the original cells.
+        # Keep the wire output intact because the fixture path was synthesized.
+        return session.events
+
+
 def edit_save(binary: Path, directory: Path, *, record: bool) -> list[list]:
     path, mtime_ns = fixture(directory)
     with PtySession(binary, path, "edit/save and paste rejection", record=record) as session:
@@ -707,7 +771,8 @@ def read_only(binary: Path, directory: Path) -> None:
     with PtySession(binary, path, "read-only refusal", read_only=True) as session:
         session.send(F3, "F3: refused read-only edit")
         session.send(b"DE", "typed hex must not enter an edit", require_output=False)
-        session.send(F9, "F9: view binding must not persist")
+        session.send(F9, "Open file picker in read-only view")
+        session.send(ESC, "Return to the same read-only file")
         session.send(CTRL_E, "Ctrl+E: refused read-only edit fallback")
         session.send(b"AD", "typed hex remains inert", require_output=False)
         session.send(CTRL_S, "Ctrl+S: refused read-only save", require_output=False)
@@ -877,8 +942,8 @@ def write_recording(
     """Write v2 output/marker events without host paths or environment secrets.
 
     Format: https://docs.asciinema.org/manual/asciicast/v2/
-    The header uses a fixed command; output events have their generated fixture
-    directory redacted without changing the editor actions or file assertions.
+    The header uses a fixed command. Callers use generated display paths or
+    sanitize other paths before writing.
     """
     header = {
         "version": 2,
@@ -918,6 +983,7 @@ def main() -> int:
     parser.add_argument("--record-symbols", type=Path, help="record import/export target and metadata navigation with exact byte saves")
     parser.add_argument("--record-search", type=Path, help="record the two-field search, backward repeat, and exact byte save")
     parser.add_argument("--record-block", type=Path, help="record reverse selection, scoped search, and raw block export")
+    parser.add_argument("--record-files", type=Path, help="record startup Files, filtering, selection, F9 cancellation, and save")
     parser.add_argument("--record-cursor", type=Path, help="record native editing and search focus, Help, and mode selection")
     parser.add_argument("--record-calculator", type=Path, help="record calculator focus, evaluation, errors, and return to Hex editing")
     options = parser.parse_args()
@@ -945,6 +1011,12 @@ def main() -> int:
             print("PASS: narrow resize, 80x25 restoration, discard preserves bytes and mtime")
             read_only(binary, root / "readonly")
             print("PASS: read-only edit/save refusal preserves bytes and mtime")
+            if options.record_files is None:
+                file_events = file_picker(binary, root / "files", record=False)
+            else:
+                with file_recording_workspace(Path("/tmp")) as demo:
+                    file_events = file_picker(binary, demo / "files", record=True)
+            print("PASS: startup and F9 file picker, directory and mask, cancel, exact save to selected file")
             analysis_events = analyze_edit_save(binary, root / "analysis", record=options.record_analysis is not None)
             print("PASS: PE headers/entry, Code, branch/return, virtual goto, exact byte save")
             symbol_events = symbols_edit_save(binary, root / "symbols", record=options.record_symbols is not None)
@@ -984,6 +1056,13 @@ def main() -> int:
                 filename=FIXTURE_NAME,
             )
             print(f"Block recording: {options.record_block}")
+        if options.record_files is not None:
+            write_recording(
+                options.record_files,
+                file_events,
+                title="hiewbie Files: startup, directory navigation, filtering, and a byte save",
+            )
+            print(f"Files recording: {options.record_files}")
         if options.record_cursor is not None:
             write_recording(
                 options.record_cursor,

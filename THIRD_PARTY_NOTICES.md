@@ -11,10 +11,11 @@ inspected license files, and the native/core boundary are recorded in the
 
 | Component | Locked version | Published license options |
 | --- | --- | --- |
-| Ratatui | `0.29.0` | MIT |
-| Crossterm, through Ratatui | `0.28.1` | MIT |
+| Ratatui | `0.30.2` | MIT |
+| Crossterm, through Ratatui | `0.29.0` | MIT |
 | tempfile | `3.23.0` | MIT OR Apache-2.0 |
 | same-file | `1.0.6` | Unlicense OR MIT; the older manifest spells this `Unlicense/MIT`, and `COPYING` confirms the choice |
+| time and its date conversion dependencies | `0.3.55` | MIT OR Apache-2.0 |
 | libc, Unix only | `0.2.191` | MIT OR Apache-2.0 |
 | winapi-util, Windows only | `0.1.11` | Unlicense OR MIT |
 | winconsole, Windows only | `0.11.1` | MIT OR Apache-2.0 |

@@ -12,11 +12,13 @@ hiewbie-core.workspace = true
 ratatui.workspace = true
 tempfile.workspace = true
 same-file.workspace = true
+time = { version = "=0.3.55", default-features = false, features = ["std"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "=0.2.191"
 
 [target.'cfg(windows)'.dependencies]
+time = { version = "=0.3.55", default-features = false, features = ["local-offset"] }
 winapi-util = "=0.1.11"
 winconsole = "=0.11.1"
 

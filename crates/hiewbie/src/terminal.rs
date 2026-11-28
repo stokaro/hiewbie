@@ -14,13 +14,17 @@ mod text_view;
 #[cfg(windows)]
 mod windows_cursor;
 
+mod file_picker;
+
 use std::io::{self, Stdout};
 use std::path::Path;
 use std::time::Duration;
 
 use hiewbie::file::{BlockExport, ExportProgress, FileSource, SaveError, save_document};
 use hiewbie_core::formats::{BinaryFormat, VirtualAddress};
-use hiewbie_core::{BlockBoundary, ByteSource, Command, Editor, Effect, FileOffset, ViewMode};
+use hiewbie_core::{
+    BlockBoundary, ByteSource, Command, Document, Editor, Effect, FileOffset, ViewMode,
+};
 use ratatui::Terminal;
 use ratatui::backend::{Backend, CrosstermBackend};
 use ratatui::crossterm::{
@@ -153,14 +157,21 @@ impl Drop for TerminalGuard {
     }
 }
 
-pub(crate) fn run(editor: Editor<FileSource>, path: &Path) -> io::Result<()> {
-    let mut ui = Ui::new(editor, path.to_string_lossy().into_owned());
+pub(crate) fn run(start: Option<(Editor<FileSource>, &Path)>, read_only: bool) -> io::Result<()> {
     let mut guard = TerminalGuard::enter()?;
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal: Terminal<CrosstermBackend<Stdout>> = Terminal::new(backend)?;
     // Both buffers are empty. Clear the alternate screen without querying
     // cursor position from terminals that cannot answer the report request.
     terminal.backend_mut().clear()?;
+    let mut picker = None;
+    let mut ui = match start {
+        Some((editor, path)) => Ui::new(editor, path.to_string_lossy().into_owned()),
+        None => match file_picker::browse(&mut terminal, &mut guard, &mut picker, None)? {
+            Some(source) => ui_for_picked_file(source, read_only),
+            None => return Ok(()),
+        },
+    };
     let mut redraw = true;
     let mut export: Option<BlockExport> = None;
 
@@ -188,6 +199,16 @@ pub(crate) fn run(editor: Editor<FileSource>, path: &Path) -> io::Result<()> {
             redraw = true;
             match action {
                 UiAction::Exit => break,
+                UiAction::BrowseFiles => {
+                    match file_picker::browse(&mut terminal, &mut guard, &mut picker, Some(&mut ui))
+                    {
+                        Ok(Some(source)) => {
+                            ui = ui_for_picked_file(source, read_only);
+                        }
+                        Ok(None) => {}
+                        Err(error) => return Err(error),
+                    }
+                }
                 UiAction::Save => match save_document(ui.editor.document_mut()) {
                     Ok(source) => {
                         ui.editor.complete_save(source);
@@ -247,9 +268,17 @@ pub(crate) fn run(editor: Editor<FileSource>, path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+fn ui_for_picked_file(source: FileSource, read_only: bool) -> Ui<FileSource> {
+    let label = source.path().to_string_lossy().into_owned();
+    let mut ui = Ui::new(Editor::new(Document::new(source), read_only), label);
+    ui.dispatch(Command::SetMode(ViewMode::Text));
+    ui
+}
+
 #[derive(Debug, Eq, PartialEq)]
 enum UiAction {
     Continue,
+    BrowseFiles,
     Save,
     ExportBlock(BlockExportRequest),
     CancelBlockExport,
@@ -366,6 +395,7 @@ impl<S: ByteSource> Ui<S> {
         }
         match self.editor.dispatch(command) {
             Ok(Effect::None) => UiAction::Continue,
+            Ok(Effect::BrowseFiles) => UiAction::BrowseFiles,
             Ok(Effect::Save) => UiAction::Save,
             Ok(Effect::ExportBlock(range)) => {
                 self.dialog = Some(Dialog::BlockWrite(BlockWrite::new(range)));
@@ -671,10 +701,7 @@ impl<S: ByteSource> Ui<S> {
             KeyCode::Char(number @ '1'..='9') if self.code_navigation() => {
                 self.dispatch(Command::FollowBranch((number as u8 - b'0') as usize))
             }
-            KeyCode::F(9) => {
-                self.notice("F9 Open is not implemented; start hiewbie with another file path");
-                UiAction::Continue
-            }
+            KeyCode::F(9) => self.dispatch(Command::BrowseFiles),
             KeyCode::Tab => {
                 self.notice("Tab next-file is not implemented; only one file is open");
                 UiAction::Continue

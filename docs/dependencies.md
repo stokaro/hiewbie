@@ -18,7 +18,7 @@ notices in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 | Workspace component | Third-party dependency boundary |
 | --- | --- |
 | `hiewbie-core` | Three exact-pinned Rust dependencies provide instruction decoding: `iced-x86`, `yaxpeax-arm`, and `yaxpeax-arch`. The document model, bounded executable readers, address mapping, and application commands are hiewbie code. No native filesystem, terminal adapter, or C engine enters this crate. |
-| `hiewbie` | Ratatui/Crossterm provide terminal rendering and input; `tempfile`, `same-file`, and target-specific platform helpers support native persistence. The application depends on the local MIT-licensed `hiewbie-core`. |
+| `hiewbie` | Ratatui/Crossterm provide terminal rendering and input; `tempfile`, `same-file`, and target-specific platform helpers support native persistence. `time` formats Files timestamps. The application depends on the local MIT-licensed `hiewbie-core`. |
 | `xtask` | Serde and Serde JSON read and validate the checked-in target manifest. These are workspace-tool dependencies, not direct dependencies of the editor executable. |
 
 The native editor enables only Ratatui's `crossterm` feature and disables
@@ -38,9 +38,19 @@ as exclusively MIT. Native dependency versions are exact manifest pins.
 | [ratatui](https://docs.rs/ratatui/0.30.2/ratatui/) | `0.30.2` | Terminal cells, widgets, bounded viewport rendering, and deterministic `TestBackend` tests | `MIT`; `LICENSE`, including Florian Dehau and The Ratatui Developers notices |
 | [tempfile](https://docs.rs/tempfile/3.23.0/tempfile/) | `3.23.0` | Sibling temporary files, replacement persistence, and generated test fixtures | `MIT OR Apache-2.0`; `LICENSE-MIT` and `LICENSE-APACHE`; MIT notice names Steven Allen |
 | [same-file](https://docs.rs/same-file/1.0.6/same_file/) | `1.0.6` | Compare opened-file identity with path identity before reads and replacement | Manifest spells the choice `Unlicense/MIT`; `COPYING` explicitly permits either license. Inspected `LICENSE-MIT` and `UNLICENSE`; MIT notice names Andrew Gallant |
+| [time](https://docs.rs/time/0.3.55/time/) | `0.3.55` | Checked date conversion for Files timestamps. Uses `std` and enables `local-offset` on Windows. | `MIT OR Apache-2.0`. Inspected `LICENSE-MIT` and `LICENSE-Apache`. |
 | [libc](https://docs.rs/libc/0.2.191/libc/) | `0.2.191` | `cfg(unix)` only: supplies `O_NONBLOCK` to avoid blocking while opening a path that may be a FIFO | `MIT OR Apache-2.0`; `LICENSE-MIT` and `LICENSE-APACHE`; MIT notice names The Rust Project Developers |
 | [winapi-util](https://docs.rs/winapi-util/0.1.11/winapi_util/) | `0.1.11` | `cfg(windows)` only: safe file information used to reject replacement saves through hard-linked files | `Unlicense OR MIT`; `COPYING`, `LICENSE-MIT`, and `UNLICENSE`; MIT notice names Andrew Gallant |
 | [winconsole](https://omarkmu.github.io/docs/winconsole/console/index.html) | `0.11.1` | `cfg(windows)` only: safe wrappers for [reading](https://learn.microsoft.com/en-us/windows/console/getconsolecursorinfo) and [setting](https://learn.microsoft.com/en-us/windows/console/setconsolecursorinfo) console cursor height | `MIT OR Apache-2.0`; `LICENSE-MIT` and `LICENSE-APACHE`; MIT notice names Omar M. |
+
+The registry archive for [time](https://github.com/time-rs/time/tree/857d9c404c5b6f6cb64d1bfa604c695be3369e12)
+records that revision. Its date conversion dependencies in the lockfile are
+[time-core 0.1.9](https://github.com/time-rs/time/tree/5d8737c39b9170c36c99cfc1f9f49cf0c059c63a),
+[num-conv 0.2.2](https://github.com/jhpratt/num-conv/tree/b022fe87ac3ad5b0d7606ea7465549eaa92efe97),
+[powerfmt 0.2.1](https://github.com/jhpratt/powerfmt/tree/3dd45162a7e64d6b354675e4282d0550dce8bfc8),
+and [deranged 0.5.9](https://github.com/jhpratt/deranged/tree/aeb03a4be17fe287d5fdd509e9ae134d4b9999fc).
+Each archive includes `LICENSE-MIT` and `LICENSE-Apache` and declares
+`MIT OR Apache-2.0`.
 
 The Windows-only cursor dependency also resolves `rgb 0.8.53` (MIT, `LICENSE`,
 Kornel) and its `bytemuck 1.25.2` dependency (Zlib OR Apache-2.0 OR MIT,

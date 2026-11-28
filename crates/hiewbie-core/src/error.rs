@@ -28,6 +28,8 @@ pub enum Error {
     ReadOnly,
     /// A mutation or save requires an active edit transaction.
     NotEditing,
+    /// Opening another document requires leaving the current edit transaction.
+    EditingInProgress,
     /// A search pattern is empty or invalid.
     InvalidPattern(&'static str),
     /// A search belongs to an older document generation.
@@ -62,6 +64,7 @@ impl fmt::Display for Error {
             Self::Analysis(reason) => formatter.write_str(reason),
             Self::Block(reason) => formatter.write_str(reason),
             Self::ReadOnly => formatter.write_str("the document is open read-only"),
+            Self::EditingInProgress => formatter.write_str("finish editing before opening a file"),
             Self::NotEditing => formatter.write_str("begin an edit transaction first"),
             Self::InvalidPattern(reason) => write!(formatter, "invalid search pattern: {reason}"),
             Self::StaleSearch { expected, actual } => write!(
