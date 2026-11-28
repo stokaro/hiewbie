@@ -605,10 +605,10 @@ def native_cursor(binary: Path, directory: Path, *, record: bool) -> list[list]:
                 if code not in output:
                     session.fail(f"missing native cursor output {code!r} after {label}")
 
-        expect_input(F3, "Begin Hex edit at the high nibble", b"\x1b[4 q", b"\x1b[3;19H")
-        expect_input(b"A", "Advance to the pending byte's low nibble", b"\x1b[3;20H")
+        expect_input(F3, "Begin Hex edit at the high nibble", b"\x1b[4 q", b"\x1b[2;14H")
+        expect_input(b"A", "Advance to the pending byte's low nibble", b"\x1b[2;15H")
         session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
-        expect_input(b"\t", "Switch to the ASCII overwrite column", b"\x1b[3;60H")
+        expect_input(b"\t", "Switch to the ASCII overwrite column", b"\x1b[2;63H")
         expect_input(ESC, "Discard edit and restore the terminal cursor shape", b"\x1b[0 q", b"\x1b[?25l")
         expect_input(F7, "Open the Search Hex field with a native underline", b"\x1b[4 q", b"\x1b[14;14H")
         expect_input(b"\t", "Move the caret to the text search field", b"\x1b[12;14H")
