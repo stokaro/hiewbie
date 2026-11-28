@@ -1,6 +1,6 @@
 # ADR 0002: a thin native terminal and explicit legacy-key fallbacks
 
-Status: accepted for the first raw-byte editor. Related requirements:
+Status: accepted for the native byte editor and initial executable analysis. Related requirements:
 UI-001..015, KEY-001..007, TERM-001..013, TEST-001/011.
 
 ## Decision
@@ -8,8 +8,9 @@ UI-001..015, KEY-001..007, TERM-001..013, TEST-001/011.
 Use Ratatui 0.29.0 with its Crossterm 0.28.1 re-export. The portable core has no
 terminal dependency. The CLI preserves OS-native paths through `args_os`; file
 bytes and filename/error controls are escaped before rendering. Interactive
-operation requires terminal stdin and stdout. `--dump` is a separate bounded
-noninteractive inspection path that uses the same document reads.
+operation requires terminal stdin and stdout. `--dump`, `--headers`, and
+`--disassemble` are bounded noninteractive paths through the same logical
+document and analysis commands.
 Native filename bytes are forwarded to the filesystem. Filesystems such as
 APFS can reject non-UTF-8 names; the CLI reports that error without interpreting
 filename control bytes as terminal commands. Tests cover both accepted names
@@ -20,8 +21,9 @@ The first UI is a blue/cyan, keyboard-driven byte grid. At 80 columns it shows
 16 bytes per row, their fixed-width ASCII representation, a 64-bit file offset,
 mode, view/edit state, readonly capability, and dirty state. Narrow layouts
 reduce row width; extremely small terminals show a resize message. Text mode
-shows a printable-ASCII byte grid, not decoded Unicode text. Both views keep the
-same cursor and transaction.
+shows a printable-ASCII byte grid, not decoded Unicode text. Code adds bounded
+instruction rows with distinct file and interpreted address domains. All three
+views keep the same cursor and transaction.
 
 Input resolves by context: active recovery state, incremental search, dialog,
 then view/edit commands. The frontend dispatches portable commands for mutations
@@ -32,12 +34,12 @@ effect. See [commands.md](../commands.md) for the actual inventory.
 
 - View F3 begins editing. Edit F9 saves; edit Esc discards. View F9 remains the
   planned Open command and never silently becomes Save.
-- Enter cycles the implemented Hex and Text views. F4 opens a chooser and
+- Enter cycles Hex, Text, and Code. F4 opens a chooser for all three modes and
   dispatches the shared SetMode command on confirmation; Esc leaves the mode
-  unchanged. Code is visibly unavailable. Hiew 8.63 documents F4 as mode
-  selection; hiewbie chooses an explicit selector instead of the initial Enter
-  alias. This is a design decision, not observed original behavior: the original
-  F4 interaction has not been established by the supplied command label alone.
+  unchanged. Code uses the selected executable image or explicit raw profile;
+  unsupported interpretations retain raw-byte access. Hiew 8.63 documents F4
+  as mode selection; the explicit chooser is a hiewbie design decision, not
+  observed original behavior.
 - Edit F3 restores the source byte at the cursor. Backspace restores the
   preceding source byte and moves there, except that a pending first hex digit
   is cancelled without moving or restoring. Previous-byte restore at offset
@@ -50,8 +52,12 @@ effect. See [commands.md](../commands.md) for the actual inventory.
   by byte value; Unicode text insertion is not implied.
 - Ctrl+E/G/F/S/Z/Y provide edit/goto/search/save/undo/redo alternatives. Shift+F7
   and Ctrl+Enter repeat search; Ctrl+R is an alternative because legacy terminals
-  often cannot distinguish Ctrl+Enter. Context is resolved before this alias;
-  other modified function keys remain unavailable.
+  often cannot distinguish Ctrl+Enter. Context is resolved before these aliases.
+- F8/Ctrl+O opens headers, with F5 entry, F6 regions, F4 fields, and S slices.
+  Imports/exports remain explicitly unavailable in that context.
+- Shift+F1/Ctrl+A opens architecture/endian/raw-base settings. Ctrl+F1/Ctrl+B
+  cycles x86 bitness in Code. Outside edit mode, Code branch numbers follow
+  direct targets, Backspace returns, and `/` resynchronizes at the selected byte.
 - Esc cancels a search or dialog before discarding an edit, then exits from view.
   Search is forward literal bytes or explicit UTF-8 text, with repeat and no
   wrap. Wildcards, instructions, backward/selection search remain planned.
@@ -77,9 +83,15 @@ mode, alternate screen, and raw mode on normal return, propagated errors, and
 ordinary Rust unwinding. It does not claim recovery from abort, SIGKILL, a dead
 terminal connection, or every process-level signal. Mouse capture is not enabled.
 
-Rendering is limited to the viewport and a 64 KiB read. Active search performs
+Byte-grid rendering is limited to the viewport and a 64 KiB read. Executable
+inspection uses the separate budgets in ADR 0004. Active search performs
 one bounded step per event iteration and remains cancellable. Normal redraws
 are driven by input, resizing, or search progress, not full-file scanning.
+Code shows up to eight opcode bytes followed by `..` for longer instructions;
+Hex remains available for their complete bytes. Unknown, truncated, and
+unsupported states precede instruction text so an 80-column viewport retains
+the distinction. Parser and decoder budgets are specified in
+[ADR 0004](0004-analysis-backends.md).
 
 ## Unresolved terminal work
 
@@ -103,3 +115,8 @@ viewports, and the post-replacement recovery state.
 verify output bytes and termios restoration, and produce a
 [terminal recording](../evidence/native-editor.cast). They are automated
 terminal evidence, not manual validation of every terminal application.
+The [analysis recording](../evidence/executable-analysis.cast) covers generated
+PE headers, entry navigation, direct branch follow/return, dotted VA goto, and
+an exact one-byte save. Generated parser, decoder, application, and
+[analysis CLI tests](../../crates/hiewbie/tests/analysis_cli.rs) exercise the same
+portable interpretation outside the terminal.

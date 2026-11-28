@@ -1,4 +1,5 @@
-use hiewbie_core::{ByteSource, FileOffset, MAX_READ_BYTES, ViewMode};
+use hiewbie_core::instructions::DecodeStatus;
+use hiewbie_core::{ByteSource, FileOffset, MAX_CODE_ROWS, MAX_READ_BYTES, ViewMode};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -9,17 +10,21 @@ use super::{
     Dialog, EntryColumn, InputDialog, ModeChoice, PromptKind, Ui, escaped_text, printable,
 };
 
-const BASE: Style = Style::new().fg(Color::Gray).bg(Color::Blue);
+pub(super) const BASE: Style = Style::new().fg(Color::Gray).bg(Color::Blue);
 const ADDRESS: Style = Style::new().fg(Color::Cyan).bg(Color::Blue);
 const SELECTED: Style = Style::new().fg(Color::Black).bg(Color::Cyan);
 const ACTIVE: Style = Style::new().fg(Color::Black).bg(Color::Yellow);
-const HEADER: Style = Style::new().fg(Color::Black).bg(Color::Cyan);
+pub(super) const HEADER: Style = Style::new().fg(Color::Black).bg(Color::Cyan);
 
 impl<S: ByteSource> Ui<S> {
     pub(super) fn render(&mut self, frame: &mut Frame<'_>) {
         let area = frame.area();
         if area.width == 0 || area.height == 0 {
             return;
+        }
+        if self.editor.mode() == ViewMode::Code || matches!(self.dialog, Some(Dialog::Analysis(_)))
+        {
+            self.editor.refresh_analysis();
         }
         frame.render_widget(Block::default().style(BASE), area);
         let header = format!(" hiewbie {} | {}", env!("CARGO_PKG_VERSION"), self.label);
@@ -39,6 +44,7 @@ impl<S: ByteSource> Ui<S> {
         let mode = match self.editor.mode() {
             ViewMode::Hex => "HEX",
             ViewMode::Text => "TEXT",
+            ViewMode::Code => "CODE",
         };
         let state = if self.reopen_required {
             "REOPEN"
@@ -65,14 +71,41 @@ impl<S: ByteSource> Ui<S> {
         } else {
             ""
         };
-        let status = format!(
-            "{:016X} / {:016X}  {mode} {state} {capability} {dirty}{entry}",
-            self.editor.cursor().get(),
-            self.editor.document().len()
-        );
+        let status = if self.editor.mode() == ViewMode::Code {
+            let context = self.editor.decode_context();
+            let architecture = context
+                .mode
+                .map_or_else(|| "SELECT ISA".to_owned(), |mode| mode.to_string());
+            let provenance = if context.raw {
+                format!(
+                    "RAW@{:X}{}",
+                    context.base.get(),
+                    if context.overridden { "!" } else { "" }
+                )
+            } else if context.overridden {
+                "OVERRIDE".to_owned()
+            } else {
+                "AUTO".to_owned()
+            };
+            format!(
+                "FO {:016X} {mode} {state} {capability} {dirty} {architecture} {} {provenance}{entry}",
+                self.editor.cursor().get(),
+                context.endian
+            )
+        } else {
+            format!(
+                "{:016X} / {:016X}  {mode} {state} {capability} {dirty}{entry}",
+                self.editor.cursor().get(),
+                self.editor.document().len()
+            )
+        };
         frame.render_widget(Paragraph::new(status).style(ADDRESS), row(area, 1));
 
-        self.render_bytes(frame, area);
+        if self.editor.mode() == ViewMode::Code {
+            self.render_code(frame, area);
+        } else {
+            self.render_bytes(frame, area);
+        }
         frame.render_widget(
             Paragraph::new(self.message.as_str()).style(BASE.fg(Color::Yellow)),
             row(area, area.height - 2),
@@ -82,17 +115,25 @@ impl<S: ByteSource> Ui<S> {
             Some(Dialog::Help) => render_help(frame, area),
             Some(Dialog::Input(input)) => render_prompt(frame, area, input),
             Some(Dialog::Mode(selected)) => render_mode_picker(frame, area, *selected),
+            Some(Dialog::Analysis(dialog)) => self.render_analysis_dialog(frame, area, dialog),
             None => {}
         }
     }
 
     fn update_viewport(&mut self, area: Rect) {
+        if self.editor.mode() == ViewMode::Code {
+            self.bytes_per_row = 1;
+            self.visible_rows = usize::from(area.height.saturating_sub(4)).clamp(1, MAX_CODE_ROWS);
+            self.top = self.editor.cursor().get();
+            return;
+        }
         self.bytes_per_row = match self.editor.mode() {
             ViewMode::Text => (area.width as usize).saturating_sub(18).clamp(1, 256),
             ViewMode::Hex => [64, 32, 16, 8, 4, 2, 1]
                 .into_iter()
                 .find(|count| 20 + 3 * count + (count - 1) / 2 <= area.width as usize)
                 .unwrap_or(1),
+            ViewMode::Code => 1,
         };
         self.visible_rows = (area.height.saturating_sub(4) as usize)
             .min(MAX_READ_BYTES / self.bytes_per_row)
@@ -107,6 +148,91 @@ impl<S: ByteSource> Ui<S> {
             let cursor_row = cursor / per_row;
             self.top = cursor_row.saturating_sub(self.visible_rows as u64 - 1) * per_row;
         }
+    }
+
+    fn render_code(&mut self, frame: &mut Frame<'_>, area: Rect) {
+        let body = Rect::new(area.x, area.y + 2, area.width, area.height - 4);
+        if self.reopen_required {
+            frame.render_widget(
+                Paragraph::new("<file was replaced; exit and reopen before analysis>").style(BASE),
+                body,
+            );
+            return;
+        }
+        if self.editor.document().is_empty() {
+            frame.render_widget(
+                Paragraph::new("<empty file - no instructions>").style(BASE),
+                body,
+            );
+            return;
+        }
+        let rows = match self.editor.code_rows(self.visible_rows) {
+            Ok(rows) => rows,
+            Err(error) => {
+                self.notice(format!("Code unavailable; raw bytes: {error}"));
+                self.render_bytes(frame, area);
+                return;
+            }
+        };
+        // Clear only this renderer's transient failure notice after recovery;
+        // keep unrelated save, search, or navigation notices intact.
+        if self.message.starts_with("Code unavailable; raw bytes:") {
+            self.notice("Code analysis available; byte editing does not assemble instructions");
+        }
+        let raw = self.editor.decode_context().raw;
+        let mut lines = Vec::with_capacity(rows.len());
+        for (index, row) in rows.iter().enumerate() {
+            let domain = if raw {
+                "R:"
+            } else if row.mapped {
+                "V:"
+            } else {
+                "F:"
+            };
+            let mut encoded = row
+                .instruction
+                .bytes()
+                .iter()
+                .take(8)
+                .map(|byte| format!("{byte:02X}"))
+                .collect::<String>();
+            if row.instruction.bytes().len() > 8 {
+                encoded.truncate(14);
+                encoded.push_str("..");
+            }
+            if index == 0 && self.pending_nibble.is_some() && !encoded.is_empty() {
+                encoded.replace_range(..2, &format!("{:X}_", self.pending_nibble.unwrap_or(0)));
+            }
+            let branch = row
+                .branch_number
+                .map_or_else(|| "  ".to_owned(), |number| format!("{number}>"));
+            let state = match row.instruction.status {
+                DecodeStatus::Decoded => "",
+                DecodeStatus::Unknown => "unknown: ",
+                DecodeStatus::Truncated => "truncated: ",
+                DecodeStatus::Unsupported => "unsupported: ",
+            };
+            let selected = if index == 0 { SELECTED } else { ADDRESS };
+            let byte_style = if index == 0 && self.editor.is_editing() {
+                ACTIVE
+            } else {
+                BASE
+            };
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!(
+                        "{:08X} {domain}{:016X} ",
+                        row.offset.get(),
+                        row.instruction.address.get()
+                    ),
+                    selected,
+                ),
+                Span::styled(format!("{branch} "), BASE.fg(Color::Yellow)),
+                Span::styled(format!("{encoded:<16} "), byte_style),
+                Span::raw(format!("{state}{}", escaped_text(&row.instruction.text))),
+            ]));
+        }
+        frame.render_widget(Paragraph::new(lines).style(BASE), body);
     }
 
     fn render_bytes(&mut self, frame: &mut Frame<'_>, area: Rect) {
@@ -155,7 +281,7 @@ impl<S: ByteSource> Ui<S> {
 
     fn byte_line(&self, offset: u64, bytes: &[u8]) -> Line<'static> {
         let mut spans = vec![Span::styled(format!("{offset:016X}  "), ADDRESS)];
-        if self.editor.mode() == ViewMode::Hex {
+        if matches!(self.editor.mode(), ViewMode::Hex | ViewMode::Code) {
             for index in 0..self.bytes_per_row {
                 if index > 0 && index % 2 == 0 {
                     spans.push(Span::raw(" "));
@@ -205,7 +331,20 @@ impl<S: ByteSource> Ui<S> {
         } else {
             match self.dialog.as_ref() {
                 Some(Dialog::Help) => Some(" F1 / Enter / Esc close help "),
-                Some(Dialog::Input(input)) if input.kind != PromptKind::Goto => {
+                Some(Dialog::Analysis(dialog)) if dialog.page == super::AnalysisPage::Profiles => {
+                    Some(
+                        " 0..6 / Arrows select | Enter apply | L/B/E endian | R raw | V base | Esc ",
+                    )
+                }
+                Some(Dialog::Analysis(_)) => Some(
+                    " F5 entry | F6 regions | F4 fields | S slices | Enter follow | Esc close ",
+                ),
+                Some(Dialog::Input(input)) if input.kind == PromptKind::RawBase => {
+                    Some(" Enter sets raw base | Ctrl+U clear | Esc cancel ")
+                }
+                Some(Dialog::Input(input))
+                    if matches!(input.kind, PromptKind::SearchHex | PromptKind::SearchText) =>
+                {
                     Some(" Enter search | Tab hex/text | Ctrl+U clear | Esc cancel ")
                 }
                 Some(Dialog::Input(_)) => Some(" Enter goto | Ctrl+U clear | Esc cancel "),
@@ -223,7 +362,7 @@ impl<S: ByteSource> Ui<S> {
             ]
         } else {
             [
-                "Help", "--", "Edit", "Mode", "Goto", "Refs-", "Search", "Hdr-", "Open-", "--",
+                "Help", "--", "Edit", "Mode", "Goto", "Refs-", "Search", "Header", "Open-", "--",
             ]
         };
         let mut spans = Vec::with_capacity(20);
@@ -248,7 +387,7 @@ fn row(area: Rect, relative_y: u16) -> Rect {
     Rect::new(area.x, area.y.saturating_add(relative_y), area.width, 1)
 }
 
-fn popup(area: Rect, width: u16, height: u16) -> Rect {
+pub(super) fn popup(area: Rect, width: u16, height: u16) -> Rect {
     let width = width.min(area.width);
     let height = height.min(area.height);
     Rect::new(
@@ -260,27 +399,28 @@ fn popup(area: Rect, width: u16, height: u16) -> Rect {
 }
 
 fn render_help(frame: &mut Frame<'_>, area: Rect) {
-    let popup = popup(area, 78, 24);
+    let popup = popup(area, 80, 25);
     let lines = [
-        "Raw-byte Hex and fixed-width ASCII Text views share one cursor.",
-        "",
-        "View  Enter cycle      F4 select mode    F3/Ctrl+E edit",
-        "      Esc quit         F5/Ctrl+G goto     F7/Ctrl+F search",
+        "Hex, ASCII Text, and Code share one document and file cursor.",
+        "View  Enter cycle; F4 select mode; F3/Ctrl+E edit; Esc quit",
+        "      F5/Ctrl+G goto; F7/Ctrl+F search; F8/Ctrl+O headers",
         "      Shift+F7 / Ctrl+Enter / Ctrl+R repeat (forward, no wrap)",
-        "",
-        "Edit  F9/Ctrl+S save     Esc discard the transaction",
-        "      Tab hex/ASCII     Ctrl+Z undo      Ctrl+Y redo",
-        "      F3 restore current byte; Backspace restore previous byte",
-        "      Backspace cancels an incomplete hex digit first",
-        "",
-        "Move  Arrows bytes/rows  PgUp/PgDn pages",
-        "      Home/End row edges  Ctrl+Home/End file edges",
-        "",
-        "Goto  Hex default, 0x optional, decimal suffix t, +/- relative",
-        "Find  Tab changes hex/UTF-8 text; Esc cancels incremental scan",
-        "Paste is rejected. Type printable ASCII; use hex for other bytes.",
-        "",
-        "Planned: Code, executable formats, assembly, blocks, multi-file.",
+        "Code  1..9 direct branch; Backspace return; / resynchronize",
+        "      Up/Down instructions; Left/Right bytes; PgUp/PgDn pages",
+        "      Unknown backward boundaries use one byte/ISA alignment.",
+        "      Ctrl+F1/Ctrl+B x86 bitness; Shift+F1/Ctrl+A decoder",
+        "Profile 0 Auto; 1..3 x86 16/32/64; 4 ARM; 5 Thumb; 6 AArch64",
+        "      L/B/E little/big/automatic endian; R raw; V raw base",
+        "      Big-endian decode unsupported; raw bytes remain available.",
+        "Headers F5 entry; F6 regions; F4 fields; S slices; Enter follows",
+        "Edit  F9/Ctrl+S save; Esc discard; Tab hex/ASCII; Ctrl+Z/Y undo/redo",
+        "      F3 restores current byte; Backspace restores previous byte.",
+        "      Two digits commit one byte; Backspace cancels a digit first.",
+        "      Code editing changes bytes; textual assembly is planned.",
+        "Goto  Hex default, decimal suffix t, +/- relative; .address is VA",
+        "      V: image VA; R: raw base address; F: unmapped file offset",
+        "Find  Tab hex/UTF-8 text; Esc cancels scan; Ctrl+Home/End file edges",
+        "Paste rejected. Blocks, global references and multi-file planned.",
         "F9 in view means Open (planned), never Save. '-' means planned.",
         "Legacy terminals may intercept keys; use the Ctrl alternatives.",
         "Close help with F1, Enter, or Esc.",
@@ -305,7 +445,7 @@ fn render_mode_picker(frame: &mut Frame<'_>, area: Rect, selected: ModeChoice) {
     let mut lines = [
         (ModeChoice::Text, "Text"),
         (ModeChoice::Hex, "Hex"),
-        (ModeChoice::Code, "Code (unavailable)"),
+        (ModeChoice::Code, "Code"),
     ]
     .into_iter()
     .map(|(choice, label)| {
@@ -332,8 +472,12 @@ fn render_prompt(frame: &mut Frame<'_>, area: Rect, input: &InputDialog) {
     let popup = popup(area, 74, 8);
     let (title, hint) = match input.kind {
         PromptKind::Goto => (
-            " Goto file offset ",
-            "Hex default; decimal suffix t; +/- relative. Virtual addresses planned.",
+            " Goto file offset or virtual address ",
+            "Hex default; decimal suffix t; +/- relative; .address maps a VA.",
+        ),
+        PromptKind::RawBase => (
+            " Raw virtual base ",
+            "Absolute hexadecimal or decimal suffix t. Enables raw address mapping.",
         ),
         PromptKind::SearchHex => (
             " Search HEX (Tab: Text) ",

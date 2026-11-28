@@ -2,6 +2,9 @@
 
 Comparison date: **2026-11-28**. Audited hiewbie baseline:
 [`3410f36`](https://github.com/stokaro/hiewbie/tree/3410f369e0abdc185409c646524f8f221a39b2fd).
+Implementation notes also incorporate the analysis merged in
+[`8d74d74`](https://github.com/stokaro/hiewbie/tree/8d74d74512c3ad659eee3cc92628e7f80b97962c)
+and its integration with these reference controls.
 This is a comparison of the supplied original documentation with hiewbie's
 source, followed by hiewbie regression tests. **The original application did
 not start in the available environment; there is no observed runtime parity.**
@@ -55,14 +58,16 @@ execution restriction, not an application defect or a Hiew/Wine incompatibility.
 
 ## Corrections to the existing editor
 
-These changes address existing M1 commands; they do not claim completion of
-the Code/format work in [issue #5](https://github.com/stokaro/hiewbie/issues/5).
+These changes address existing M1 commands and coexist with the initial
+Code/format implementation from [PR #6](https://github.com/stokaro/hiewbie/pull/6).
+The remaining analysis and parity requirements stay in
+[the implementation epic](https://github.com/stokaro/hiewbie/issues/1).
 
 | Command | Baseline behavior | Refined hiewbie behavior and evidence |
 | --- | --- | --- |
 | Edit Backspace | Moves left and leaves the edited byte changed | Restore the preceding byte from the transaction's source, then move there. A pending first hex digit is cancelled separately. Documented: `hiew8.hlp`, `[HexEdit]`, line 337. |
 | Edit F3 | Reports byte restore as unavailable | Restore the byte at the cursor to its source value, preserving other edits. Documented: `[HexEdit]`, line 323. |
-| View F4 | Shares Enter's immediate mode cycle | Hiew documents F4 as mode selection. Hiewbie implements an explicit chooser using the shared `view.set-mode` command; Enter still cycles. The chooser is a hiewbie design decision; the original F4 interaction remains unobserved. Sources: H `[Text]`, `[Hex]`, `[Code]`. |
+| View F4 | Shares Enter's immediate mode cycle | Hiew documents F4 as mode selection. Hiewbie implements an explicit Text/Hex/Code chooser using the shared `view.set-mode` command; Enter cycles all three. The chooser is a hiewbie design decision; the original F4 interaction remains unobserved. Sources: H `[Text]`, `[Hex]`, `[Code]`. |
 | View Shift+F7 | Rejected as an unsupported modified key | Invoke the same repeat-search path as Ctrl+Enter and Ctrl+R. Documented: `[Text]`, line 232; `[Hex]`, line 295. Original search continuation semantics remain a separate gap. |
 
 Restore is deliberately distinct from undo history. For example, change byte 0
@@ -75,12 +80,17 @@ baseline for later transactions.
 The hiewbie boundary policy is explicit: previous-byte restore at offset zero is
 a no-op; a source read failure changes neither bytes, history, nor cursor. The
 exact original offset-zero, nibble, buffer-boundary and cursor behavior still
-needs observation. Code remains unavailable in the chooser, and Text editing
-remains a hiewbie addition rather than a verified original Text-mode command.
+needs observation. Code is available in the chooser and uses the same byte
+transaction. In Code view, Backspace returns from a followed branch; in Code
+edit mode it restores the previous byte. Text editing remains a hiewbie addition
+rather than a verified original Text-mode command.
 
-### Validation of these changes
+### Initial reference-controls validation
 
-On Linux x86_64 with pinned Rust 1.90.0:
+The initial controls commit
+[`c4ded29`](https://github.com/stokaro/hiewbie/tree/c4ded2970784df2d9b6d087f9891a0ecb58c1a0d),
+before integration with the analysis implementation, was checked on Linux
+x86_64 with pinned Rust 1.90.0:
 
 - `cargo xtask check` passed formatting, workspace Clippy with warnings denied,
   target-manifest validation and all **79 Rust tests**.
@@ -90,11 +100,15 @@ On Linux x86_64 with pinned Rust 1.90.0:
   docs/evidence/native-editor.cast` passed **4 real PTY sessions**: mode
   selection/byte restoration/save, Shift+F7 repeat/save, discard/resize, and
   read-only refusal. They also checked exact terminal restoration.
-- The updated [terminal recording](../evidence/native-editor.cast) shows the
-  hiewbie workflow on a generated fixture. It is not a recording of Hiew.
+- The [terminal recording](../evidence/native-editor.cast) shows the hiewbie
+  workflow on a generated fixture and is refreshed when that workflow changes.
+  It is not a recording of Hiew.
 
-This is native Linux hiewbie evidence. It does not establish original Hiew,
-Windows ConPTY, macOS terminal-application, browser or release-matrix parity.
+Those counts describe the initial commit, not the combined analysis/controls
+suite. [PR #7](https://github.com/stokaro/hiewbie/pull/7) records validation of the
+integrated head, including the executable-analysis PTY scenario. Native hiewbie
+evidence does not establish original Hiew, Windows ConPTY, macOS terminal-
+application, browser or release-matrix parity.
 
 ## Next development priorities
 
@@ -139,10 +153,14 @@ display remains planned; existing UTF-8 input and Unicode paths stay supported.
 Original bookmarks preserve eight screen states independently for each mode.
 Backspace in view returns after navigation/search; it is distinct from edit
 Backspace (`hiew_en.txt`, lines 211-217; `hiew8.hlp`, `[Bookmark]`, lines 137-144).
-Implement per-mode bookmarks and navigation returns as shared state, with
-bounded histories and separate tests for each key context.
+Hiewbie now has bounded direct-branch return history restoring file position and
+interpretation in Code. General goto/search return, per-mode bookmarks and exact
+reference viewport behavior remain open, with separate tests needed for each
+key context. The documented configurable target labels and `0` return key also
+remain distinct from hiewbie's current `1`–`9` targets and Code-view Backspace.
 
-Address work belongs to issue #5. A dotted PE address can mean a VA or an
+The initial analysis supports checked absolute dotted VAs and explicit raw
+bases. A dotted PE address can mean a VA or an
 offset within the current section under the original's documented alignment
 rules (`hiew_en.txt`, Local and Global offsets, lines 345-379). Display base is
 another independent operation. Test raw `220`, VA `.401020` and section-relative
@@ -152,8 +170,10 @@ the original goto contract. Exact ambiguity/boundary handling needs observation.
 
 ### Preserve contextual and version-specific scope
 
-F8 in Text selects a translation table; in Hex/Code it opens executable
-information. F9 in view opens the file list; in edit it saves changes. F10 in
+F8 in the original Text view selects a translation table; in Hex/Code it opens
+executable information. Hiewbie currently opens executable metadata in all
+three views; the Text translation-table context remains unimplemented. F9 in
+view opens the file list; in edit it saves changes. F10 in
 edit truncates at the cursor; it must never be treated as a universal Quit key.
 The view Escape/F10 timestamp wording and the state immediately after edit F9
 need measurement before changing persistence policy.

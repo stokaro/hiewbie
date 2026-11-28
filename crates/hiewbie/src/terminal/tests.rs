@@ -69,8 +69,8 @@ fn hex_view_has_stable_dense_cells_at_eighty_columns() {
         format!("{:<59}Z", "0000000000000010  5A"),
         String::new(),
         String::new(),
-        "F1 help | Enter cycle | F4 select mode | Esc quit | Code planned".into(),
-        " 1Help   2--     3Edit   4Mode   5Goto   6Refs-  7Search 8Hdr-   9Open- 10--".into(),
+        "F1 help | Enter cycle | F4 select mode | F8 headers | Esc quit".into(),
+        " 1Help   2--     3Edit   4Mode   5Goto   6Refs-  7Search 8Header 9Open- 10--".into(),
     ]
     .join("\n");
     assert_eq!(output, expected);
@@ -216,7 +216,7 @@ fn byte_restore_keys_preserve_other_edits_and_support_undo_redo() {
 }
 
 #[test]
-fn mode_picker_cancels_selects_and_keeps_unavailable_code_explicit() {
+fn mode_picker_cancels_and_selects_all_views_without_moving_or_editing() {
     let mut ui = ui(b"0123456789");
     key(&mut ui, KeyCode::Right);
     key(&mut ui, KeyCode::F(4));
@@ -237,7 +237,7 @@ fn mode_picker_cancels_selects_and_keeps_unavailable_code_explicit() {
             format!("┌ View mode {}┐", "─".repeat(21)),
             format!("│{:<32}│", "  Text"),
             format!("│{:<32}│", "> Hex"),
-            format!("│{:<32}│", "  Code (unavailable)"),
+            format!("│{:<32}│", "  Code"),
             format!("│{:<32}│", ""),
             format!("│{:<32}│", "Enter selects; Esc cancels"),
             format!("└{}┘", "─".repeat(32)),
@@ -251,9 +251,12 @@ fn mode_picker_cancels_selects_and_keeps_unavailable_code_explicit() {
     key(&mut ui, KeyCode::F(4));
     key(&mut ui, KeyCode::Down);
     key(&mut ui, KeyCode::Enter);
-    assert!(matches!(ui.dialog, Some(Dialog::Mode(_))));
-    assert_eq!(ui.editor.mode(), ViewMode::Hex);
-    assert!(ui.message.contains("Code mode is not implemented"));
+    assert!(ui.dialog.is_none());
+    assert_eq!(ui.editor.mode(), ViewMode::Code);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(1));
+    assert!(screen(&mut ui, 80, 25).contains("SELECT ISA"));
+    key(&mut ui, KeyCode::F(4));
+    assert!(matches!(ui.dialog, Some(Dialog::Mode(ModeChoice::Code))));
     key(&mut ui, KeyCode::Up);
     key(&mut ui, KeyCode::Up);
     key(&mut ui, KeyCode::Enter);
@@ -261,13 +264,16 @@ fn mode_picker_cancels_selects_and_keeps_unavailable_code_explicit() {
     assert_eq!(ui.editor.mode(), ViewMode::Text);
     assert_eq!(ui.editor.cursor(), FileOffset::new(1));
     key(&mut ui, KeyCode::Enter);
+    assert_eq!(ui.editor.mode(), ViewMode::Code);
+    key(&mut ui, KeyCode::Enter);
     assert_eq!(ui.editor.mode(), ViewMode::Hex);
 
     key(&mut ui, KeyCode::F(4));
     for (width, height) in [(23, 5), (40, 10), (80, 25)] {
         let output = screen(&mut ui, width, height);
         assert!(output.contains("View mode"));
-        assert!(output.contains("Code (unavailable)"));
+        assert!(output.contains("Code"));
+        assert!(!output.contains("unavailable"));
     }
     key(&mut ui, KeyCode::Enter);
     assert!(ui.dialog.is_none());
@@ -412,6 +418,18 @@ fn key_release_and_modifier_collisions_do_not_trigger_default_bindings() {
     assert!(!ui.editor.is_editing());
     ui.key(KeyEvent::new(KeyCode::F(1), KeyModifiers::CONTROL));
     assert!(ui.dialog.is_none());
+    ui.dispatch(Command::SetMode(ViewMode::Code));
+    ui.dispatch(Command::SetDecodeMode(Some(
+        hiewbie_core::instructions::DecodeMode::X86_64,
+    )));
+    ui.key(KeyEvent::new(
+        KeyCode::F(1),
+        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+    ));
+    assert_eq!(
+        ui.editor.decode_context().mode,
+        Some(hiewbie_core::instructions::DecodeMode::X86_64)
+    );
 }
 
 #[test]
@@ -473,4 +491,322 @@ fn large_offsets_and_large_windows_only_read_a_bounded_viewport() {
     ui.dispatch(Command::Goto(FileOffset::new(u64::MAX - 1)));
     let output = screen(&mut ui, 80, 25);
     assert!(output.contains("FFFFFFFFFFFFFFFE"));
+}
+
+/// Independently generated PE32+ headers and bytes; no executable is distributed.
+fn pe_fixture() -> Vec<u8> {
+    let mut bytes = vec![0; 0x400];
+    bytes[..2].copy_from_slice(b"MZ");
+    bytes[0x3c..0x40].copy_from_slice(&0x80_u32.to_le_bytes());
+    bytes[0x80..0x84].copy_from_slice(b"PE\0\0");
+    bytes[0x84..0x86].copy_from_slice(&0x8664_u16.to_le_bytes());
+    bytes[0x86..0x88].copy_from_slice(&1_u16.to_le_bytes());
+    bytes[0x94..0x96].copy_from_slice(&0xf0_u16.to_le_bytes());
+    let optional = 0x98;
+    bytes[optional..optional + 2].copy_from_slice(&0x20b_u16.to_le_bytes());
+    bytes[optional + 16..optional + 20].copy_from_slice(&0x1000_u32.to_le_bytes());
+    bytes[optional + 24..optional + 32].copy_from_slice(&0x1_4000_0000_u64.to_le_bytes());
+    bytes[optional + 32..optional + 36].copy_from_slice(&0x1000_u32.to_le_bytes());
+    bytes[optional + 36..optional + 40].copy_from_slice(&0x200_u32.to_le_bytes());
+    bytes[optional + 56..optional + 60].copy_from_slice(&0x2000_u32.to_le_bytes());
+    bytes[optional + 60..optional + 64].copy_from_slice(&0x200_u32.to_le_bytes());
+    let section = optional + 0xf0;
+    bytes[section..section + 5].copy_from_slice(b".text");
+    bytes[section + 8..section + 12].copy_from_slice(&0x20_u32.to_le_bytes());
+    bytes[section + 12..section + 16].copy_from_slice(&0x1000_u32.to_le_bytes());
+    bytes[section + 16..section + 20].copy_from_slice(&0x200_u32.to_le_bytes());
+    bytes[section + 20..section + 24].copy_from_slice(&0x200_u32.to_le_bytes());
+    bytes[section + 36..section + 40].copy_from_slice(&0x6000_0020_u32.to_le_bytes());
+    bytes[0x200..0x208].copy_from_slice(&[0xeb, 0x04, 0x90, 0x90, 0x90, 0x90, 0xc3, 0x90]);
+    bytes
+}
+
+fn code_at_entry() -> Ui<MemorySource> {
+    let mut ui = ui(&pe_fixture());
+    key(&mut ui, KeyCode::F(8));
+    key(&mut ui, KeyCode::F(5));
+    key(&mut ui, KeyCode::F(4));
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::Enter);
+    assert_eq!(ui.editor.mode(), ViewMode::Code);
+    ui
+}
+
+#[test]
+fn raw_code_requires_an_explicit_profile_and_shows_its_context() {
+    let mut ui = ui(&[0x90, 0xc3]);
+    ui.dispatch(Command::SetMode(ViewMode::Code));
+    assert!(screen(&mut ui, 80, 25).contains("SELECT ISA"));
+    assert!(ui.message.contains("select an instruction architecture"));
+    control(&mut ui, KeyCode::Char('a'));
+    assert!(screen(&mut ui, 80, 25).contains("Decoder and raw addressing"));
+    key(&mut ui, KeyCode::Char('3'));
+    key(&mut ui, KeyCode::Enter);
+    let output = screen(&mut ui, 80, 25);
+    assert!(output.contains("CODE VIEW RW CLEAN x86-64 little RAW@0!"));
+    assert!(output.contains("R:0000000000000000"));
+    assert!(output.contains("nop"));
+    assert!(output.contains("ret"));
+    control(&mut ui, KeyCode::Char('b'));
+    assert!(screen(&mut ui, 80, 25).contains("x86-16"));
+    ui.key(KeyEvent::new(KeyCode::F(1), KeyModifiers::CONTROL));
+    assert!(screen(&mut ui, 80, 25).contains("x86-32"));
+    ui.key(KeyEvent::new(KeyCode::F(1), KeyModifiers::SHIFT));
+    assert!(matches!(ui.dialog, Some(Dialog::Analysis(_))));
+}
+
+#[test]
+fn headers_navigate_entry_regions_and_exact_field_bytes() {
+    let mut ui = ui(&pe_fixture());
+    control(&mut ui, KeyCode::Char('o'));
+    let output = screen(&mut ui, 80, 25);
+    assert!(output.contains("Format PE32+ | machine x86-64 | 64 bit"));
+    assert!(output.contains("Entry VA 0000000140001000"));
+    key(&mut ui, KeyCode::F(5));
+    assert!(ui.dialog.is_none());
+    assert_eq!(ui.editor.cursor().get(), 0x200);
+    key(&mut ui, KeyCode::F(8));
+    key(&mut ui, KeyCode::F(6));
+    assert!(screen(&mut ui, 80, 25).contains(".text FO 200+200 VA 140001000+20"));
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::Enter);
+    assert_eq!(ui.editor.cursor().get(), 0x200);
+    key(&mut ui, KeyCode::F(8));
+    key(&mut ui, KeyCode::F(4));
+    assert!(screen(&mut ui, 80, 25).contains("DOS.e_lfanew = 80  FO 3C+4"));
+    key(&mut ui, KeyCode::Enter);
+    assert_eq!(ui.editor.cursor().get(), 0x3c);
+    assert_eq!(bytes(&mut ui), pe_fixture());
+}
+
+#[test]
+fn virtual_goto_refuses_unmapped_addresses_without_moving() {
+    let mut ui = ui(&pe_fixture());
+    key(&mut ui, KeyCode::F(5));
+    type_text(&mut ui, ".140001006");
+    key(&mut ui, KeyCode::Enter);
+    assert_eq!(ui.editor.cursor().get(), 0x206);
+    key(&mut ui, KeyCode::F(5));
+    type_text(&mut ui, ".140002000");
+    key(&mut ui, KeyCode::Enter);
+    assert_eq!(ui.editor.cursor().get(), 0x206);
+    assert!(matches!(
+        ui.dialog,
+        Some(Dialog::Input(InputDialog { error: Some(_), .. }))
+    ));
+    assert!(screen(&mut ui, 80, 25).contains("no file-backed mapping"));
+    key(&mut ui, KeyCode::Esc);
+    assert_eq!(bytes(&mut ui), pe_fixture());
+}
+
+#[test]
+fn code_branch_follow_return_and_instruction_steps_use_shared_commands() {
+    let mut ui = code_at_entry();
+    let output = screen(&mut ui, 80, 25);
+    assert!(output.contains("V:0000000140001000 1> EB04"));
+    assert!(output.contains("jmp"));
+    assert!(output.contains("x86-64 little AUTO"));
+    key(&mut ui, KeyCode::Char('1'));
+    assert_eq!(ui.editor.cursor().get(), 0x206);
+    key(&mut ui, KeyCode::Backspace);
+    assert_eq!(ui.editor.cursor().get(), 0x200);
+    key(&mut ui, KeyCode::Down);
+    assert_eq!(ui.editor.cursor().get(), 0x202);
+    key(&mut ui, KeyCode::Up);
+    assert_eq!(ui.editor.cursor().get(), 0x200);
+    key(&mut ui, KeyCode::Right);
+    assert_eq!(ui.editor.cursor().get(), 0x201);
+    key(&mut ui, KeyCode::Char('/'));
+    assert_eq!(ui.editor.cursor().get(), 0x201);
+    assert_eq!(bytes(&mut ui), pe_fixture());
+}
+
+#[test]
+fn code_edit_restore_keys_preserve_the_view_branch_return_history() {
+    let original = pe_fixture();
+    let mut ui = code_at_entry();
+    screen(&mut ui, 80, 25);
+    key(&mut ui, KeyCode::Char('1'));
+    assert_eq!(ui.editor.cursor().get(), 0x206);
+
+    key(&mut ui, KeyCode::F(3));
+    type_text(&mut ui, "CC");
+    assert_eq!(ui.editor.cursor().get(), 0x207);
+    assert_eq!(bytes(&mut ui)[0x206], 0xcc);
+    key(&mut ui, KeyCode::Backspace);
+    assert!(ui.editor.is_editing());
+    assert_eq!(ui.editor.cursor().get(), 0x206);
+    assert_eq!(bytes(&mut ui), original);
+    assert!(!ui.editor.document().is_dirty());
+
+    type_text(&mut ui, "CC");
+    key(&mut ui, KeyCode::Left);
+    key(&mut ui, KeyCode::F(3));
+    assert_eq!(ui.editor.cursor().get(), 0x206);
+    assert_eq!(bytes(&mut ui), original);
+    assert!(screen(&mut ui, 80, 25).contains("CODE EDIT RW CLEAN"));
+    assert!(ui.editor.is_editing());
+
+    key(&mut ui, KeyCode::Esc);
+    key(&mut ui, KeyCode::Backspace);
+    assert!(!ui.editor.is_editing());
+    assert_eq!(ui.editor.cursor().get(), 0x200);
+    assert_eq!(bytes(&mut ui), original);
+}
+
+#[test]
+fn code_edit_refreshes_branch_bytes_and_undo_without_assembly() {
+    let mut ui = code_at_entry();
+    key(&mut ui, KeyCode::F(3));
+    key(&mut ui, KeyCode::Right);
+    type_text(&mut ui, "02");
+    ui.dispatch(Command::Goto(FileOffset::new(0x200)));
+    let output = screen(&mut ui, 80, 25);
+    assert!(output.contains("CODE EDIT RW DIRTY"));
+    assert!(output.contains("EB02"));
+    assert!(output.contains("Asm-"));
+    assert_eq!(
+        ui.editor.code_rows(1).unwrap()[0]
+            .instruction
+            .direct_branch
+            .unwrap()
+            .address
+            .get(),
+        0x1_4000_1004
+    );
+    control(&mut ui, KeyCode::Char('z'));
+    assert!(screen(&mut ui, 80, 25).contains("EB04"));
+    assert_eq!(
+        ui.editor.code_rows(1).unwrap()[0]
+            .instruction
+            .direct_branch
+            .unwrap()
+            .address
+            .get(),
+        0x1_4000_1006
+    );
+    key(&mut ui, KeyCode::Esc);
+    assert_eq!(bytes(&mut ui), pe_fixture());
+    assert!(!ui.editor.document().is_dirty());
+}
+
+#[test]
+fn code_edit_keeps_raw_bytes_visible_when_header_changes_break_detection() {
+    let mut ui = code_at_entry();
+    ui.dispatch(Command::Goto(FileOffset::new(0x80)));
+    key(&mut ui, KeyCode::F(3));
+    type_text(&mut ui, "00");
+    ui.dispatch(Command::Goto(FileOffset::new(0x80)));
+    let output = screen(&mut ui, 80, 25);
+    assert!(output.contains("CODE EDIT RW DIRTY SELECT ISA"));
+    assert!(output.contains("Code unavailable; raw bytes:"));
+    assert!(output.contains("0000000000000080  00"));
+    assert!(ui.editor.is_editing());
+    control(&mut ui, KeyCode::Char('z'));
+    let output = screen(&mut ui, 80, 25);
+    assert!(output.contains("x86-64 little AUTO"));
+    assert!(!output.contains("Code unavailable; raw bytes:"));
+    key(&mut ui, KeyCode::Esc);
+    assert_eq!(bytes(&mut ui), pe_fixture());
+}
+
+#[test]
+fn raw_base_endian_and_malformed_headers_remain_explicit() {
+    let mut malformed = vec![0; 64];
+    malformed[..2].copy_from_slice(b"MZ");
+    let mut ui = ui(&malformed);
+    key(&mut ui, KeyCode::F(8));
+    let output = screen(&mut ui, 80, 25);
+    assert!(output.contains("raw bytes; executable metadata is unavailable"));
+    assert!(output.contains("PE header overlaps the DOS header"));
+    key(&mut ui, KeyCode::Esc);
+    control(&mut ui, KeyCode::Char('a'));
+    key(&mut ui, KeyCode::Char('v'));
+    type_text(&mut ui, "100000000");
+    key(&mut ui, KeyCode::Enter);
+    control(&mut ui, KeyCode::Char('a'));
+    key(&mut ui, KeyCode::Char('6'));
+    key(&mut ui, KeyCode::Char('b'));
+    key(&mut ui, KeyCode::Enter);
+    let output = screen(&mut ui, 80, 25);
+    assert!(output.contains("aarch64 big RAW@100000000!"));
+    assert!(output.contains("unsupported"));
+    key(&mut ui, KeyCode::F(5));
+    type_text(&mut ui, ".100000004");
+    key(&mut ui, KeyCode::Enter);
+    assert_eq!(ui.editor.cursor().get(), 4);
+    assert_eq!(bytes(&mut ui), malformed);
+    for invalid in ["", "+1", "-1", "10000000000000000", "١"] {
+        assert!(analysis::parse_base(invalid).is_err(), "accepted {invalid}");
+    }
+    assert_eq!(
+        analysis::parse_base("18446744073709551615t").unwrap(),
+        u64::MAX
+    );
+    assert_eq!(analysis::parse_base(".10").unwrap(), 0x10);
+}
+
+#[test]
+fn universal_slice_picker_updates_the_actual_image_and_file_cursor() {
+    let mut bytes = vec![0; 768];
+    bytes[..4].copy_from_slice(&0xcafe_babe_u32.to_be_bytes());
+    bytes[4..8].copy_from_slice(&2_u32.to_be_bytes());
+    for (index, cpu) in [0x0100_0007_u32, 0x0100_000c].into_iter().enumerate() {
+        let table = 8 + index * 20;
+        let offset = (index + 1) * 256;
+        bytes[table..table + 4].copy_from_slice(&cpu.to_be_bytes());
+        bytes[table + 8..table + 12].copy_from_slice(&(offset as u32).to_be_bytes());
+        bytes[table + 12..table + 16].copy_from_slice(&256_u32.to_be_bytes());
+        bytes[table + 16..table + 20].copy_from_slice(&8_u32.to_be_bytes());
+        let slice = &mut bytes[offset..offset + 256];
+        slice[..4].copy_from_slice(&0xfeed_facf_u32.to_le_bytes());
+        slice[4..8].copy_from_slice(&cpu.to_le_bytes());
+        slice[12..16].copy_from_slice(&2_u32.to_le_bytes());
+        slice[16..20].copy_from_slice(&1_u32.to_le_bytes());
+        slice[20..24].copy_from_slice(&72_u32.to_le_bytes());
+        slice[32..36].copy_from_slice(&0x19_u32.to_le_bytes());
+        slice[36..40].copy_from_slice(&72_u32.to_le_bytes());
+        slice[40..46].copy_from_slice(b"__TEXT");
+        slice[56..64].copy_from_slice(&0x1_0000_0000_u64.to_le_bytes());
+        slice[64..72].copy_from_slice(&256_u64.to_le_bytes());
+        slice[80..88].copy_from_slice(&256_u64.to_le_bytes());
+        slice[92..96].copy_from_slice(&5_u32.to_le_bytes());
+    }
+    let mut ui = ui(&bytes);
+    key(&mut ui, KeyCode::F(8));
+    key(&mut ui, KeyCode::Char('s'));
+    assert!(screen(&mut ui, 80, 25).contains("Universal Mach-O slices"));
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::Enter);
+    let output = screen(&mut ui, 80, 25);
+    assert!(output.contains("Selected slice 1"));
+    assert!(output.contains("machine AArch64"));
+    assert!(output.contains("mapped image"));
+    assert!(!output.contains("base 0"));
+    assert_eq!(ui.editor.cursor().get(), 512);
+    assert_eq!(ui.editor.executable().unwrap().selected_slice, Some(1));
+}
+
+#[test]
+fn code_viewport_and_small_windows_keep_reads_and_allocations_bounded() {
+    let largest = Rc::new(Cell::new(0));
+    let source = LargeSource {
+        len: u64::MAX,
+        largest_read: Rc::clone(&largest),
+    };
+    let mut ui = Ui::new(
+        Editor::new(Document::new(source), false),
+        "large raw image".into(),
+    );
+    ui.dispatch(Command::SetDecodeMode(Some(
+        hiewbie_core::instructions::DecodeMode::X86_64,
+    )));
+    ui.dispatch(Command::SetMode(ViewMode::Code));
+    ui.dispatch(Command::Goto(FileOffset::new(0x1_0000_0010)));
+    for (width, height) in [(0, 0), (1, 1), (22, 4), (23, 5), (80, 25), (300, 300)] {
+        screen(&mut ui, width, height);
+    }
+    assert!(largest.get() <= 15);
+    assert!(ui.visible_rows <= hiewbie_core::MAX_CODE_ROWS);
+    assert!(screen(&mut ui, 80, 25).contains("FO 0000000100000010"));
 }
