@@ -43,7 +43,7 @@ jobs:
           import tomllib
 
           manifest = json.loads(Path("build/targets.json").read_text())
-          assert manifest["schema_version"] == 1
+          assert manifest["schema_version"] == 2
           toolchain = tomllib.loads(Path(manifest["toolchain_source"]).read_text())
           outputs = {"toolchain": toolchain["toolchain"]["channel"]}
           for mode in ("native", "check"):
@@ -54,6 +54,7 @@ jobs:
                       "host": target["ci"]["host"],
                       "package": target["build"]["package"],
                       "pty": target["ci"].get("pty", False),
+                      "build_env": target["build"]["environment"],
                   }
                   for target in manifest["targets"]
                   if target["ci"]["mode"] == mode
@@ -79,6 +80,7 @@ jobs:
     env:
       RUSTUP_TOOLCHAIN: ${{ needs.matrix.outputs.toolchain }}-${{ matrix.host }}
       EXPECTED_HOST: ${{ matrix.host }}
+      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.build_env.MACOSX_DEPLOYMENT_TARGET || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -104,6 +106,29 @@ jobs:
           cargo build --package hiewbie --locked
           cargo run --quiet --package hiewbie --locked -- --help
           cargo run --quiet --package hiewbie --locked -- --version
+          cargo run --quiet --package hiewbie --locked -- --capabilities
+      - name: Inspect the exact native artifact and record compiled capabilities
+        id: inspection
+        run: |
+          artifact=target/debug/hiewbie
+          if [[ "$EXPECTED_HOST" == *-windows-* ]]; then
+            artifact="$artifact.exe"
+            if [ -d "/c/Program Files/LLVM/bin" ]; then
+              export PATH="/c/Program Files/LLVM/bin:$PATH"
+            fi
+          fi
+          mkdir -p target/evidence
+          cargo xtask inspect --target "$EXPECTED_HOST" --artifact "$artifact" \
+            --commit "$(git rev-parse HEAD)" > target/evidence/inspection.json
+          "$artifact" --capabilities --json > target/evidence/compiled-capabilities.json
+      - name: Retain artifact inspection metadata
+        if: ${{ always() && (steps.inspection.outcome == 'success' || steps.inspection.outcome == 'failure') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-inspection-${{ matrix.target }}
+          path: target/evidence/*.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Test Unix PTY supervision and failure detection
         if: ${{ matrix.pty }}
         run: python3 -m unittest discover -s scripts -p 'test_pty_smoke.py' -v

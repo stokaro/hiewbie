@@ -71,9 +71,14 @@ specifications, exact source commits, feature choices, and known limitations.
 The independently written, on-demand symbol readers and their separate resource
 budgets are documented in [ADR 0005](adr/0005-symbol-navigation.md). They add no
 parser dependency or bundled upstream implementation.
+The [capability contract](capabilities.md) records a finite evaluation of optional
+ISAs and formats with exact candidate versions, license constraints and deferred
+experiments. It does not promote an upstream architecture list into product
+support. The [fuzzing guide](fuzzing.md) records the separate development engine,
+generated corpus provenance and bounded reproduction commands.
 
 - [Ratatui](https://github.com/ratatui/ratatui) and [Crossterm](https://github.com/crossterm-rs/crossterm): selected terminal components.
-- [iced-x86](https://github.com/icedland/iced) and its [CodeAssembler API](https://docs.rs/iced-x86/latest/iced_x86/code_asm/index.html): selected x86 decoder; the assembler API is disabled and does not itself parse user-entered assembly text.
+- [iced-x86](https://github.com/icedland/iced) and its [CodeAssembler API](https://docs.rs/iced-x86/1.22.0/iced_x86/code_asm/index.html): selected x86 decoder; the production assembler API is disabled and does not itself parse user-entered assembly text. The independently locked probe in ADR 0006 evaluates an in-tree parser and encoder path.
 - [yaxpeax-arm](https://github.com/iximeow/yaxpeax-arm) and [yaxpeax-arch](https://github.com/iximeow/yaxpeax-arch): selected portable ARM/Thumb/AArch64 decoder and shared types, both declared 0BSD. Exact inspected revisions and notices are in [dependencies.md](dependencies.md).
 - [Capstone](https://www.capstone-engine.org/) and [distribution/license guidance](https://www.capstone-engine.org/download): multi-architecture decoding and native-build considerations.
 - [Goblin](https://github.com/m4b/goblin): executable format parsing candidate.

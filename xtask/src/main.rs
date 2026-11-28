@@ -1,31 +1,35 @@
-use std::collections::HashSet;
+mod evidence;
+mod inspection;
+mod manifest;
+
+use manifest::{BuildScope, Ci, RustStd, Target};
+use std::collections::BTreeMap;
 use std::env;
 use std::error::Error;
 use std::ffi::OsString;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use serde::{Deserialize, Serialize};
-
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
-
 const HELP: &str = "hiewbie repository tasks
 
 Usage:
   cargo xtask check
   cargo xtask build --target <rust-triple>
   cargo xtask targets
+  cargo xtask inspect --target <triple> --artifact <path> --commit <full-sha>
+  cargo xtask validate-evidence --target <triple> --artifact <path> --commit <full-sha> --evidence <json>
 
-check    Validate the target manifest, formatting, Clippy, and workspace tests.
-build    Build the native application, or the portable core for WebAssembly,
-         in release mode with locked dependencies. Install the target standard
-         library and any cross-linker first; see docs/adr/0003-build-targets.md.
-targets  Print build/targets.json, the required target and CI strategy manifest.
+check: manifest, format, lint, workspace tests and offline fuzz corpus.
+build: locked target build with the selected environment; no runtime claim.
+targets: validated target/runtime-intent JSON, including pending evidence.
+inspect: hash and inspect metadata without running the artifact; JSON to stdout.
+         Unsupported inspection, target mismatch or exceeded baseline fails.
+validate-evidence: compare producer records with exact artifact bytes and commit.
 
-Packaging and release verification are not implemented. They fail explicitly.
-The target manifest describes requirements and configured checks, not completed
-release artifacts or runtime validation.";
+Selected runtime floors are intent, not successful target proof. Packaging and
+complete release verification remain unimplemented and fail explicitly.
+See docs/build-and-release.md for evidence schema, tool limits and producer trust.";
 
 #[derive(Debug, PartialEq, Eq)]
 enum Invocation {
@@ -33,79 +37,17 @@ enum Invocation {
     Check,
     Build(String),
     Targets,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Manifest {
-    schema_version: u32,
-    toolchain_source: String,
-    evidence_policy: String,
-    targets: Vec<Target>,
-    supplemental_artifacts: Vec<SupplementalArtifact>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Target {
-    triple: String,
-    display_name: String,
-    required: bool,
-    artifact_template: String,
-    build: Build,
-    ci: Ci,
-    runtime_plan: String,
-    release_blockers: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Build {
-    package: String,
-    scope: BuildScope,
-    rust_std: RustStd,
-    prerequisites: String,
-}
-
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-enum BuildScope {
-    Application,
-    PortableCore,
-}
-
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-enum RustStd {
-    Rustup,
-    NotDistributed,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(tag = "mode", rename_all = "kebab-case", deny_unknown_fields)]
-enum Ci {
-    Native {
-        runner: String,
-        host: String,
-        pty: bool,
+    Inspect {
+        target: String,
+        artifact: PathBuf,
+        commit: String,
     },
-    Check {
-        runner: String,
-        host: String,
+    ValidateEvidence {
+        target: String,
+        artifact: PathBuf,
+        commit: String,
+        evidence: PathBuf,
     },
-    Blocked {
-        reason: String,
-    },
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct SupplementalArtifact {
-    name: String,
-    required: bool,
-    artifact_template: String,
-    inputs: Vec<String>,
-    blocker: String,
 }
 
 fn main() -> ExitCode {
@@ -131,13 +73,12 @@ fn run() -> Result<()> {
         println!("{HELP}");
         return Ok(());
     }
-
     let root = workspace_root()?;
-    let manifest = load_manifest(&root)?;
+    let manifest = manifest::load(&root)?;
     match invocation {
-        Invocation::Help => unreachable!("help returns before loading the manifest"),
+        Invocation::Help => unreachable!("help returned before loading"),
         Invocation::Check => {
-            run_cargo(&root, &["fmt", "--all", "--", "--check"])?;
+            run_cargo(&root, &["fmt", "--all", "--", "--check"], &BTreeMap::new())?;
             run_cargo(
                 &root,
                 &[
@@ -149,28 +90,84 @@ fn run() -> Result<()> {
                     "-D",
                     "warnings",
                 ],
+                &BTreeMap::new(),
             )?;
-            run_cargo(&root, &["test", "--workspace", "--locked"])
+            run_cargo(
+                &root,
+                &["test", "--workspace", "--locked"],
+                &BTreeMap::new(),
+            )?;
+            run_cargo(
+                &root,
+                &[
+                    "run",
+                    "--locked",
+                    "--offline",
+                    "--package",
+                    "hiewbie-fuzz-replay",
+                    "--bin",
+                    "replay",
+                ],
+                &BTreeMap::new(),
+            )
         }
         Invocation::Build(triple) => {
-            let target = manifest
-                .targets
-                .iter()
-                .find(|target| target.triple == triple)
-                .ok_or_else(|| {
-                    format!("unknown target {triple:?}; use `cargo xtask targets` for the manifest")
-                })?;
+            let target = manifest.target(&triple)?;
             let args = build_arguments(target)?;
             if target.build.scope == BuildScope::PortableCore {
                 eprintln!(
-                    "WebAssembly: compiling hiewbie-core only; no browser frontend or web archive is produced."
+                    "WebAssembly: portable core only; no browser frontend or archive is produced."
                 );
             }
             eprintln!("Build prerequisites: {}", target.build.prerequisites);
-            run_cargo(&root, &args)
+            eprintln!(
+                "Selected baseline: {} (runtime evidence pending)",
+                target.runtime.id
+            );
+            run_cargo(&root, &args, &target.build.environment)
         }
         Invocation::Targets => {
             println!("{}", serde_json::to_string_pretty(&manifest)?);
+            Ok(())
+        }
+        Invocation::Inspect {
+            target,
+            artifact,
+            commit,
+        } => {
+            let report = inspection::inspect(&artifact, manifest.target(&target)?, &commit)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            if report.status != inspection::InspectionStatus::Complete
+                || report.baseline_verdict == inspection::BaselineVerdict::Exceeds
+            {
+                return Err("artifact inspection unsupported, mismatched, or exceeds baseline; see JSON diagnostics".into());
+            }
+            Ok(())
+        }
+        Invocation::ValidateEvidence {
+            target,
+            artifact,
+            commit,
+            evidence: path,
+        } => {
+            let target = manifest.target(&target)?;
+            let identity =
+                inspection::ArtifactIdentity::from_file(&artifact, &target.triple, &commit)?;
+            let report = evidence::load(&path)?;
+            evidence::validate(&manifest, target, &identity, &report)?;
+            if let Some(inspection) = &report.inspection {
+                inspection::validate_actual_header(&artifact, inspection)?;
+            }
+            if inspection::ArtifactIdentity::from_file(&artifact, &target.triple, &commit)?
+                != identity
+            {
+                return Err("artifact changed during evidence validation".into());
+            }
+            println!(
+                "{}",
+                serde_json::json!({"valid": true, "identity": identity, "state": report.state,
+                "scope": "Consistent trusted-producer evidence; not an authenticated attestation or full release gate."})
+            );
             Ok(())
         }
     }
@@ -185,113 +182,74 @@ fn parse_invocation(args: &[String]) -> std::result::Result<Invocation, String> 
         [command, flag, triple] if command == "build" && flag == "--target" => {
             Ok(Invocation::Build(triple.clone()))
         }
+        [command, rest @ ..] if matches!(command.as_str(), "inspect" | "validate-evidence") => {
+            let options = parse_options(rest)?;
+            let expected = if command == "inspect" { 3 } else { 4 };
+            if options.len() != expected {
+                return Err("missing or extra inspection/evidence arguments".into());
+            }
+            let value = |key: &str| {
+                options
+                    .get(key)
+                    .cloned()
+                    .ok_or_else(|| format!("missing {key}"))
+            };
+            let target = value("--target")?;
+            let artifact = PathBuf::from(value("--artifact")?);
+            let commit = value("--commit")?;
+            if !inspection::hex_identifier(&commit, 40) {
+                return Err("--commit requires a full lowercase Git SHA".into());
+            }
+            if command == "inspect" {
+                Ok(Invocation::Inspect {
+                    target,
+                    artifact,
+                    commit,
+                })
+            } else {
+                Ok(Invocation::ValidateEvidence {
+                    target,
+                    artifact,
+                    commit,
+                    evidence: PathBuf::from(value("--evidence")?),
+                })
+            }
+        }
         [command, ..] if matches!(command.as_str(), "package" | "verify-release") => Err(format!(
-            "{command} is not implemented: packaging, checksums, artifact inspection, and release completeness verification remain required work"
+            "{command} is not implemented: complete packaging and release verification remain required"
         )),
-        _ => Err("invalid arguments; run `cargo xtask --help`".into()),
+        _ => Err("invalid arguments; run cargo xtask --help".into()),
     }
 }
 
+fn parse_options(args: &[String]) -> std::result::Result<BTreeMap<String, String>, String> {
+    if !args.len().is_multiple_of(2) {
+        return Err("options require explicit values".into());
+    }
+    let mut result = BTreeMap::new();
+    for pair in args.chunks_exact(2) {
+        if !matches!(
+            pair[0].as_str(),
+            "--target" | "--artifact" | "--commit" | "--evidence"
+        ) || pair[1].is_empty()
+            || result.insert(pair[0].clone(), pair[1].clone()).is_some()
+        {
+            return Err("unknown, empty or duplicate option".into());
+        }
+    }
+    Ok(result)
+}
 fn workspace_root() -> Result<PathBuf> {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .map(Path::to_path_buf)
-        .ok_or_else(|| "xtask must be located directly below the workspace root".into())
+        .ok_or_else(|| "xtask must be directly below workspace root".into())
 }
-
-fn load_manifest(root: &Path) -> Result<Manifest> {
-    let path = root.join("build/targets.json");
-    let bytes =
-        fs::read(&path).map_err(|error| format!("cannot read {}: {error}", path.display()))?;
-    let manifest: Manifest = serde_json::from_slice(&bytes)
-        .map_err(|error| format!("invalid {}: {error}", path.display()))?;
-    manifest.validate()?;
-    Ok(manifest)
-}
-
-impl Manifest {
-    fn validate(&self) -> Result<()> {
-        if self.schema_version != 1 || self.targets.is_empty() {
-            return Err("target manifest must use schema version 1 and contain targets".into());
-        }
-        let mut triples = HashSet::new();
-        for target in &self.targets {
-            if target.triple.is_empty() || !triples.insert(&target.triple) {
-                return Err(format!("empty or duplicate target triple {:?}", target.triple).into());
-            }
-            if target.artifact_template.is_empty() {
-                return Err(format!("{} needs an artifact template", target.triple).into());
-            }
-            let expected_package = match target.build.scope {
-                BuildScope::Application => "hiewbie",
-                BuildScope::PortableCore => "hiewbie-core",
-            };
-            if target.build.package != expected_package {
-                return Err(format!(
-                    "{} has package {:?}, expected {expected_package} for its build scope",
-                    target.triple, target.build.package
-                )
-                .into());
-            }
-            if target.triple.starts_with("wasm") && target.build.scope != BuildScope::PortableCore {
-                return Err("WebAssembly currently supports portable-core compilation only".into());
-            }
-            match &target.ci {
-                Ci::Native { runner, host, .. } => {
-                    if runner.is_empty()
-                        || host != &target.triple
-                        || target.build.scope != BuildScope::Application
-                        || target.build.rust_std != RustStd::Rustup
-                    {
-                        return Err(format!(
-                            "{} native CI requires a matching Rust host, runner, application, and distributed standard library",
-                            target.triple
-                        )
-                        .into());
-                    }
-                }
-                Ci::Check { runner, host } => {
-                    if runner.is_empty()
-                        || host.is_empty()
-                        || target.build.rust_std != RustStd::Rustup
-                    {
-                        return Err(format!(
-                            "{} compile checks need a runner, host, and distributed standard library",
-                            target.triple
-                        )
-                        .into());
-                    }
-                }
-                Ci::Blocked { reason } => {
-                    if reason.trim().is_empty() || target.release_blockers.is_empty() {
-                        return Err(format!("{} needs an explicit blocker", target.triple).into());
-                    }
-                }
-            }
-        }
-        for artifact in &self.supplemental_artifacts {
-            if artifact.inputs.is_empty()
-                || artifact
-                    .inputs
-                    .iter()
-                    .any(|triple| !triples.contains(triple))
-            {
-                return Err(format!(
-                    "supplemental artifact {:?} must name existing input targets",
-                    artifact.name
-                )
-                .into());
-            }
-        }
-        Ok(())
-    }
-}
-
 fn build_arguments(target: &Target) -> Result<Vec<&str>> {
     if target.build.rust_std == RustStd::NotDistributed {
         let reason = match &target.ci {
             Ci::Blocked { reason } => reason.as_str(),
-            _ => "the pinned toolchain does not distribute this target's standard library",
+            _ => "pinned standard library is not distributed",
         };
         return Err(format!("{} build is blocked: {reason}", target.triple).into());
     }
@@ -310,12 +268,12 @@ fn build_arguments(target: &Target) -> Result<Vec<&str>> {
     }
     Ok(args)
 }
-
-fn run_cargo(root: &Path, args: &[&str]) -> Result<()> {
+fn run_cargo(root: &Path, args: &[&str], environment: &BTreeMap<String, String>) -> Result<()> {
     let cargo = env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
     eprintln!("> cargo {}", args.join(" "));
     let status = Command::new(&cargo)
         .args(args)
+        .envs(environment)
         .current_dir(root)
         .status()
         .map_err(|error| format!("cannot start {}: {error}", Path::new(&cargo).display()))?;
@@ -328,119 +286,45 @@ fn run_cargo(root: &Path, args: &[&str]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn manifest() -> Manifest {
-        serde_json::from_str(include_str!("../../build/targets.json")).unwrap()
-    }
-
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).into()).collect()
     }
-
     #[test]
-    fn build_requires_an_explicit_target_and_rejects_extra_arguments() {
-        assert!(parse_invocation(&args(&["build"])).is_err());
-        assert!(parse_invocation(&args(&["build", "--target"])).is_err());
-        assert!(parse_invocation(&args(&["check", "--all-features"])).is_err());
-        assert_eq!(
-            parse_invocation(&args(&["build", "--target", "example-target"])),
-            Ok(Invocation::Build("example-target".into()))
-        );
-    }
-
-    #[test]
-    fn incomplete_release_commands_fail() {
-        for command in ["package", "verify-release"] {
-            let error = parse_invocation(&args(&[command])).unwrap_err();
-            assert!(error.contains("not implemented"));
+    fn command_arguments_remain_explicit() {
+        for values in [
+            vec!["build"],
+            vec!["build", "--target"],
+            vec!["check", "--all-features"],
+            vec!["inspect", "--target", "x", "--target", "x"],
+        ] {
+            assert!(parse_invocation(&args(&values)).is_err());
+        }
+        let sha = "a".repeat(40);
+        assert!(matches!(
+            parse_invocation(&args(&[
+                "inspect",
+                "--artifact",
+                "sample",
+                "--commit",
+                &sha,
+                "--target",
+                "x"
+            ])),
+            Ok(Invocation::Inspect { .. })
+        ));
+        for name in ["package", "verify-release"] {
+            assert!(
+                parse_invocation(&args(&[name]))
+                    .unwrap_err()
+                    .contains("not implemented")
+            );
         }
     }
-
     #[test]
-    fn repository_manifest_is_valid() {
-        manifest().validate().unwrap();
-    }
-
-    #[test]
-    fn manifest_retains_the_complete_documented_target_contract() {
-        let contract = include_str!("../../docs/build-and-release.md");
-        let matrix = contract
-            .split("## 3. Required build matrix")
-            .nth(1)
-            .expect("the build contract must retain its required target matrix")
-            .split("\n## ")
-            .next()
-            .unwrap();
-        let documented: HashSet<_> = matrix
-            .lines()
-            .filter(|line| line.starts_with('|'))
-            .filter_map(|line| {
-                line.split('|')
-                    .nth(2)?
-                    .trim()
-                    .strip_prefix('`')?
-                    .strip_suffix('`')
-            })
-            .collect();
-        assert!(
-            !documented.is_empty(),
-            "the required target table is missing"
-        );
-        let manifest = manifest();
-        let configured: HashSet<_> = manifest
-            .targets
-            .iter()
-            .filter(|target| target.required)
-            .map(|target| target.triple.as_str())
-            .collect();
-        assert_eq!(configured, documented);
-    }
-
-    #[test]
-    fn failed_cargo_subprocess_is_not_reported_as_success() {
-        let error = run_cargo(
-            &workspace_root().unwrap(),
-            &["--hiewbie-test-intentionally-invalid-option"],
-        )
-        .unwrap_err();
-        assert!(error.to_string().contains("failed with"));
-    }
-
-    #[test]
-    fn native_ci_cannot_claim_a_cross_target_as_native() {
-        let mut manifest = manifest();
-        let native = manifest
-            .targets
-            .iter_mut()
-            .find(|target| matches!(target.ci, Ci::Native { .. }))
-            .unwrap();
-        if let Ci::Native { host, .. } = &mut native.ci {
-            *host = "incorrect-host".into();
-        }
-        assert!(
-            manifest
-                .validate()
-                .unwrap_err()
-                .to_string()
-                .contains("matching Rust host")
-        );
-    }
-
-    #[test]
-    fn duplicate_targets_are_rejected() {
-        let mut manifest = manifest();
-        manifest.targets[1].triple = manifest.targets[0].triple.clone();
-        assert!(manifest.validate().is_err());
-    }
-
-    #[test]
-    fn wasm_build_is_locked_release_core_only() {
-        let manifest = manifest();
-        let wasm = manifest
-            .targets
-            .iter()
-            .find(|target| target.triple == "wasm32-unknown-unknown")
-            .unwrap();
+    fn explicit_build_scope_and_blocker_are_preserved() {
+        let manifest: manifest::Manifest =
+            serde_json::from_str(include_str!("../../build/targets.json")).unwrap();
+        let wasm = manifest.target("wasm32-unknown-unknown").unwrap();
         assert_eq!(
             build_arguments(wasm).unwrap(),
             [
@@ -451,14 +335,9 @@ mod tests {
                 "hiewbie-core",
                 "--target",
                 "wasm32-unknown-unknown",
-                "--lib",
+                "--lib"
             ]
         );
-    }
-
-    #[test]
-    fn unavailable_std_blocks_build_instead_of_substituting_the_host() {
-        let manifest = manifest();
         let blocked = manifest
             .targets
             .iter()
@@ -470,5 +349,15 @@ mod tests {
                 .to_string()
                 .contains("blocked")
         );
+    }
+    #[test]
+    fn failed_subprocess_remains_failure() {
+        let error = run_cargo(
+            &workspace_root().unwrap(),
+            &["--hiewbie-test-intentionally-invalid-option"],
+            &BTreeMap::new(),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("failed with"));
     }
 }

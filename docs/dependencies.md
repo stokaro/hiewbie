@@ -17,9 +17,10 @@ notices in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 
 | Workspace component | Third-party dependency boundary |
 | --- | --- |
-| `hiewbie-core` | Three exact-pinned Rust dependencies provide instruction decoding: `iced-x86`, `yaxpeax-arm`, and `yaxpeax-arch`. The document model, bounded executable readers, address mapping, and application commands are hiewbie code. No native filesystem, terminal adapter, or C engine enters this crate. |
-| `hiewbie` | Ratatui/Crossterm provide terminal rendering and input; `tempfile`, `same-file`, and target-specific platform helpers support native persistence. `time` formats Files timestamps. The application depends on the local MIT-licensed `hiewbie-core`. |
-| `xtask` | Serde and Serde JSON read and validate the checked-in target manifest. These are workspace-tool dependencies, not direct dependencies of the editor executable. |
+| `hiewbie-core` | Three exact-pinned Rust dependencies provide instruction decoding: `iced-x86`, `yaxpeax-arm`, and `yaxpeax-arch`. Serde serializes the shared capability contract. The document model, bounded executable readers, address mapping, and application commands are hiewbie code. No native filesystem, terminal adapter, or C engine enters this crate. |
+| `hiewbie` | Ratatui/Crossterm provide terminal rendering and input; `tempfile`, `same-file`, and target-specific platform helpers support native persistence. `time` formats Files timestamps; Serde JSON emits the core capability report. The application depends on the local MIT-licensed `hiewbie-core`. |
+| `xtask` | Serde and Serde JSON read and validate the checked-in target manifest and per-build evidence. The core capability catalog validates backend claims; SHA-256 identifies inspected artifacts. These tool dependencies do not add binary inspection or hashing engines to the editor. |
+| `fuzz/replay` | Development-only portable invariant handlers and generated corpus, depending on the local core. Isolated libFuzzer and WASM adapters reuse this helper; no fuzz engine enters the application dependency graph. |
 
 The native editor enables only Ratatui's `crossterm` feature and disables
 Ratatui's default features. It uses `ratatui::crossterm`, so terminal input and
@@ -76,16 +77,19 @@ experiments, and separate textual-assembly gate are recorded in
 
 No decoder implementation was copied or patched into hiewbie. Cargo retrieves
 the original published archives, identified by their checksums in `Cargo.lock`.
-No assembler backend or textual assembly parser is selected. The presence of an
-upstream encoder API does not provide a user-entered assembly command.
+The production core has no assembler backend or textual assembly parser enabled.
+[ADR 0006](adr/0006-text-assembler-selection.md) selects an in-tree parser,
+iced-x86 encoding and asm-rs 0.2.0 AArch64 for future implementation. Their
+independently locked [evaluation probe](../experiments/assembler/README.md) does
+not enable a user-entered assembly command in the editor.
 
 ## Terminal backend and workspace tools
 
 | Package and API reference | Locked version | Relationship and purpose | Declared license and inspected package files |
 | --- | --- | --- | --- |
 | [crossterm](https://docs.rs/crossterm/0.29.0/crossterm/) | `0.29.0` | Transitive through Ratatui and used through its re-export for key events, paste handling, raw mode, cursor, and alternate-screen lifecycle | `MIT`; `LICENSE`, with the Timon notice |
-| [serde](https://docs.rs/serde/1.0.229/serde/) | `1.0.229` | Direct `xtask` dependency with `derive`; typed target-manifest serialization and validation | `MIT OR Apache-2.0`; `LICENSE-MIT` and `LICENSE-APACHE` |
-| [serde_json](https://docs.rs/serde_json/1.0.154/serde_json/) | `1.0.154` | Direct `xtask` dependency; target-manifest JSON input and output | `MIT OR Apache-2.0`; `LICENSE-MIT` and `LICENSE-APACHE` |
+| [serde](https://docs.rs/serde/1.0.229/serde/) | `1.0.229` | Core capability serialization and typed `xtask` target/evidence validation, with `derive` | `MIT OR Apache-2.0`; `LICENSE-MIT` and `LICENSE-APACHE` |
+| [serde_json](https://docs.rs/serde_json/1.0.154/serde_json/) | `1.0.154` | Native `--capabilities --json` and `xtask` manifest/evidence input and output | `MIT OR Apache-2.0`; `LICENSE-MIT` and `LICENSE-APACHE` |
 
 The split Ratatui core, Crossterm backend, and widget crates ship the
 same MIT notice as Ratatui. The layout package resolves `lru 0.18.5`
@@ -97,6 +101,52 @@ and [RUSTSEC-2026-0253](https://rustsec.org/advisories/RUSTSEC-2026-0253.html).
 The workspace manifests allow the Serde `1.0` version line; the committed
 lockfile fixes the versions recorded here. Use locked dependency resolution for
 verification and update this inventory when the lockfile changes.
+
+## Artifact evidence hashing
+
+`xtask` pins `sha2 =0.10.9` to calculate SHA-256 while streaming an artifact.
+The digest binds inspection and runtime records to the same bytes; it does not
+prove who built them or turn a declared result into an independent attestation.
+This dependency is confined to build tooling. The native editor and portable core
+do not depend on it. Existing application dependencies were not upgraded.
+On Unix, `xtask` also uses the already reviewed `libc =0.2.191` constant
+`O_NONBLOCK` to reject non-regular artifact inputs without blocking on a FIFO.
+
+The exact registry archives below were inspected, including their package
+manifests, `.cargo_vcs_info.json` and shipped license files. All provide an MIT
+option. No upstream implementation was copied or vendored into hiewbie.
+
+| Package | Reported source revision | Declared license and shipped notices |
+| --- | --- | --- |
+| `sha2 0.10.9` | [RustCrypto/hashes, `82c36a4`](https://github.com/RustCrypto/hashes/tree/82c36a428f8d6f05f3bfccdedb243e9d1f85359d/sha2) | `MIT OR Apache-2.0`; `LICENSE-MIT`, `LICENSE-APACHE`; Graydon Hoare, Mozilla Foundation and Artyom Pavlov |
+| `digest 0.10.7` | [RustCrypto/traits, `3443894`](https://github.com/RustCrypto/traits/tree/344389411fd9718a0742435152e933a9e71461ee/digest) | `MIT OR Apache-2.0`; `LICENSE-MIT`, `LICENSE-APACHE`; Artyom Pavlov |
+| `block-buffer 0.10.4` | [RustCrypto/utils, `6d35952`](https://github.com/RustCrypto/utils/tree/6d35952d3d3b124bc1049ad6fb406b42b1ce4bfe/block-buffer) | `MIT OR Apache-2.0`; `LICENSE-MIT`, `LICENSE-APACHE`; RustCrypto Project Developers |
+| `crypto-common 0.1.7` | [RustCrypto/traits, `66a997c`](https://github.com/RustCrypto/traits/tree/66a997ccf5776ce873da5a48e2885a9908e940f6/crypto-common) | `MIT OR Apache-2.0`; `LICENSE-MIT`, `LICENSE-APACHE`; RustCrypto Developers |
+| `cpufeatures 0.2.17` | [RustCrypto/utils, `9d92d5e`](https://github.com/RustCrypto/utils/tree/9d92d5e95ab4c07c5d8bfd024bf2a17e96d20feb/cpufeatures) | `MIT OR Apache-2.0`; `LICENSE-MIT`, `LICENSE-APACHE`; RustCrypto Project Developers |
+| `generic-array 0.14.7` | [fizyk20/generic-array, `1397d2b`](https://github.com/fizyk20/generic-array/tree/1397d2bb40c406901b7827161b73b34b056cbe3a) | `MIT`; `LICENSE`; Bartłomiej Kamiński |
+| `typenum 1.20.1` | [paholg/typenum, `0db9a0f`](https://github.com/paholg/typenum/tree/0db9a0f731981f29266b63586c29fa07e4477b1a) | `MIT OR Apache-2.0`; `LICENSE`, `LICENSE-MIT`, `LICENSE-APACHE`; Paho Lurie-Gregg |
+| `version_check 0.9.5` | [SergioBenitez/version_check, `d77ef9f`](https://github.com/SergioBenitez/version_check/tree/d77ef9f27cc336719b2d839d09ee6635dd22f758) | Manifest spells `MIT/Apache-2.0`; `LICENSE-MIT`, `LICENSE-APACHE`; Sergio Benitez |
+
+The actual binary metadata tools (`readelf`, `otool` and `llvm-readobj`) are
+external developer/runner tools. They are invoked for inspection and are not
+linked into or distributed with the application. Their availability, versions
+and output remain distinct from runtime compatibility evidence.
+
+## Isolated fuzzing dependencies
+
+The stable `hiewbie-fuzz-replay` helper has no registry dependency beyond the
+portable core. Its WASM export adapter has a separate lockfile and uses the same
+helper. The guided engine is isolated in `fuzz/libfuzzer`: `libfuzzer-sys =0.4.13`
+wraps bundled native LLVM libFuzzer code and is driven by the development command
+`cargo-fuzz 0.12.0` on the separately pinned nightly toolchain.
+
+The [fuzzing provenance review](fuzzing.md#provenance-and-license-boundary)
+records exact revisions, wrapper and engine notices, including the distinction
+between the crate's NCSA metadata and newer Apache/LLVM source headers. This
+engine is not an MIT-only dependency and is never linked into the shipped editor
+or its portable core. No third-party binary corpus or proprietary HIEW fixture
+is used. Existing release-notice work must account for actual distributed
+components if development tools are ever packaged.
 
 ## Inspected source provenance
 

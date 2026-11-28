@@ -23,6 +23,13 @@ ARM64. WebAssembly core compilation establishes neither browser execution nor
 a browser frontend. Release packaging remains open. M0-M2 remain partial; M3-M6
 and the parent epic remain open.
 
+The [capability catalog][Capabilities] reports compiled implementation scope
+separately from the [per-artifact evidence contract][Runtime]. ISA-005–ISA-008
+below are completed **tracked/evaluated roadmap outcomes**, as specified by
+their requirement rows; their optional decoders and assemblers remain
+unavailable. [Fuzzing][Fuzz] adds deterministic native/WASM corpus replay and
+separate bounded coverage-guided campaigns, not a format-conformance claim.
+
 ## UI
 
 | Requirement | Status | Evidence and remaining difference |
@@ -72,7 +79,7 @@ cover visiting, switching, and reopening files.
 | EDIT-005 | Partial | [C], [A], [T]: bounded overwrite/restore command undo/redo refreshes Code and remains distinct from source-byte restoration; blocks and textual assembly pending. |
 | EDIT-006 | Partial | [C], [T], [Block export], [Block observation]: overwrite and native raw block export implemented. Insert/delete/copy/move/fill/import remain open. |
 | EDIT-007 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| EDIT-008 | Partial | [C], [N]: ranges and limits validated before mutation; later operations pending. |
+| EDIT-008 | Partial | [C], [N], [Fuzz]: ranges and limits validated before mutation; bounded command fuzzing checks rejected operations and retained history against an independent byte model. Later edit operations remain pending. |
 | EDIT-009 | Partial | [C], [N], [Storage]: atomic logical edits and documented replacement commit point. |
 | EDIT-010 | Partial | [T]: edit entry column visible; size-changing insert mode unavailable. |
 | EDIT-011 | Implemented | [C], [F], [A], [SN], [T]: generation changes invalidate search, metadata, symbols, decoding and direct targets after overwrites, source-byte restores, undo/redo, discard and save. |
@@ -93,7 +100,7 @@ cover visiting, switching, and reopening files.
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
 | ADDR-001 | Implemented | [F], [A]: distinct FileOffset, VirtualAddress, Rva and SliceOffset types with explicit translations. |
-| ADDR-002 | Implemented | [C], [N], [F], [A], [D]: checked u64 file/mapping arithmetic, offsets beyond 4 GiB, and decoder PC-width semantics kept separate. |
+| ADDR-002 | Implemented | [C], [N], [F], [A], [D], [Fuzz]: checked u64 file/mapping arithmetic, offsets beyond 4 GiB, decoder PC-width semantics and an independent u128 address oracle. |
 | ADDR-003 | Partial | [A], [T], [ACLI]: FO, mapped VA and raw-base context are visible; branch history restores interpretation; annotations pending. |
 | ADDR-004 | Implemented | [F], [A], [T]: unmapped, zero-fill and ambiguous virtual destinations fail explicitly without moving the cursor. |
 | ADDR-005 | Implemented | [F]: current readers check extents, overflow and truncated tables; overlapping mappings remain inspectable but translation reports ambiguity. |
@@ -106,7 +113,7 @@ cover visiting, switching, and reopening files.
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
 | IO-001 | Implemented | [C], [N], [T]: bounded reads; sparse-file access beyond 4 GiB. |
-| IO-002 | Partial | [C], [F], [S], [D], [A], [Analysis], [Symbols]: independent viewport, image/symbol reader, decoder, edit/history and search budgets; symbols are lazy; background analysis remains future work. |
+| IO-002 | Partial | [C], [F], [S], [D], [A], [Analysis], [Symbols], [Fuzz]: independent viewport, image/symbol reader, decoder, edit/history and search budgets; fuzz adapters measure actual reads and progress; symbols are lazy. Background analysis remains future work. |
 | IO-003 | Implemented | [N], [F], [A], [T]: real Unix sparse file, synthetic 1 TiB source and bounded code reads beyond 4 GiB. |
 | IO-004 | Implemented | [N], [Storage]: seek/read strategy and truncation checks; no unsafe file mapping. |
 | IO-005 | Implemented | [C]: bidirectional KMP with cross-chunk matches and bounded steps. |
@@ -121,10 +128,10 @@ cover visiting, switching, and reopening files.
 | ISA-002 | Partial | [D], [x86 Decode coverage]: 58 exact scalar, x87, SIMD, and extension encodings exercise iced-x86 1.22.0 in 16/32/64-bit modes. The table records which samples worked in HIEW 8.63. A complete extension inventory and textual assembly remain open. |
 | ISA-003 | Partial | [D], [A], [Analysis]: separate ARM/Thumb modes, strict decoding and direct mode exchange; precise ARMv6/revision filtering, IT-state propagation and big-endian instructions remain gaps. |
 | ISA-004 | Partial | [D], [A], [ACLI]: AArch64 decoding and checked direct targets independent of host CPU; textual assembly, SVE/SVE2 and complete extension coverage pending. |
-| ISA-005 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ISA-006 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ISA-007 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ISA-008 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
+| ISA-005 | Implemented | [Capabilities], [Capability tests]: separate evaluated MIPS32/64 roadmap, decoder/assembly/license/target constraints and minimal future experiments. Both production decoders and assemblers remain explicitly unavailable. |
+| ISA-006 | Implemented | [Capabilities], [Capability tests]: separate evaluated PowerPC32/64 roadmap with endian, ABI, reference and format-mapping decisions. Production support is deferred and unavailable. |
+| ISA-007 | Implemented | [Capabilities], [Capability tests]: separate evaluated RISC-V32/64 roadmap and independent text-assembly decisions. Inspected-ISA support remains unavailable and is distinct from the required RISC-V host target. |
+| ISA-008 | Implemented | [Capabilities], [Capability tests]: finite additional eBPF and format-candidate list, explicit deferred decisions and bounded registration/lookup contract; no implicit upstream-architecture support. |
 | ISA-009 | Implemented | [D], [T], [ACLI]: mode/bitness, endian, instruction lengths and backend version are reported; parsed CPU and explicit profile remain distinct. |
 | ISA-010 | Implemented | [D], [T], [ACLI]: Decoded, Unknown, InvalidForMode, Truncated, and Unsupported preserve raw bytes and guarantee progress for nonempty input. InvalidForMode covers recognized legacy-only opcodes in long mode. |
 | ISA-011 | Implemented | [A], [T], [ACLI]: unknown machines, malformed metadata and unsupported instruction order preserve raw viewing and byte editing. |
@@ -159,12 +166,12 @@ cover visiting, switching, and reopening files.
 | FMT-007 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | FMT-008 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | FMT-009 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| FMT-010 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
+| FMT-010 | Partial | [Capabilities]: finite evaluated WASM-module and ar-member candidates with generated experiment plans and explicit unavailable entries. The extension loader and added format readers remain unimplemented. |
 | FMT-011 | Partial | [Analysis]: DOS MZ, NE/LE/LX, TE/TE64 and NetWare rows remain required; initial modern readers do not remove legacy work. |
 | FMT-012 | Implemented | [A], [T], [ACLI]: failed/unsupported detection retains raw access and a diagnostic; --headers fails clearly while --dump remains available. |
 | FMT-013 | Implemented | [F], [S], [T], [ST]: interpreted fields and symbol records retain exact backing ranges; header and symbol dialogs navigate to those bytes. |
 | FMT-014 | Partial | [F], [A]: zero-fill, overlays and disk padding never acquire invented bytes or VAs; dedicated overlay browsing and broader non-file-backed metadata pending. |
-| FMT-015 | Implemented | [F], [S], [ACLI], [SCLI], [Analysis], [Symbols]: current readers bound reads, parsed tables, counts, names, fields and retained text; malformed/truncated fixtures, real budget exhaustion and bounded mutations exercise failures. |
+| FMT-015 | Implemented | [F], [S], [ACLI], [SCLI], [Analysis], [Symbols], [Fuzz]: current readers bound reads, parsed tables, counts, names, fields and retained text. Generated symbol seeds, sparse sources, malformed counts and coverage-guided adapters exercise budget and raw-fallback invariants. |
 | FMT-016 | Implemented | [A], [T], [README]: navigating and editing backing bytes is explicitly separate from executable rebuilding; no structural rebuild action exists yet. |
 | FMT-017 | Partial | [N]: save invokes no signer or repair command; format-aware workflows pending. |
 | FMT-018 | Implemented | [F], [D], [A], [ACLI], [P]: executable/instruction fixtures are generated or independently written; no proprietary binary samples are required. |
@@ -235,7 +242,7 @@ cover visiting, switching, and reopening files.
 | DEV-003 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | DEV-004 | Implemented | [N], [P]: ordinary file access needs no device adapter or device privileges. |
 | DEV-005 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| DEV-006 | Partial | [Input], [Build]: unsupported operations and host blockers documented; capability UI pending. |
+| DEV-006 | Implemented | [Capabilities], [Capability tests], [Runtime]: native text/JSON capability output exposes unavailable devices, portable extensions and HEM adapter; all host targets retain baseline, pending evidence and blocker metadata. |
 
 ## EXT
 
@@ -263,7 +270,7 @@ cover visiting, switching, and reopening files.
 | TEST-007 | Partial | [N], [C], [F], [A], [T]: real Unix sparse file, synthetic 1 TiB format source and large-offset code windows; interactive large-file benchmark pending. |
 | TEST-008 | Partial | [C], [T]: chunk-boundary literal matches in both directions, cancellation, and [native PTY search replay][Search replay]; latency benchmark pending. |
 | TEST-009 | Partial | [C], [T], [Block export], [Block replay]: overlapping overwrites and history, reversed marks, fixed range search, export cancellation, exact output and append. Overlapping block edits and EOF insertion/deletion remain open. |
-| TEST-010 | Implemented | [F], [D], [A], [ACLI]: generated malformed/truncated formats, bounded mutation corpora, arithmetic overflow, overlaps, zero-fill and unmapped VAs; not exhaustive fuzzing or format conformance. |
+| TEST-010 | Implemented | [F], [D], [A], [ACLI], [Fuzz]: generated malformed/truncated formats, arithmetic overflow, overlaps, zero-fill and unmapped VAs; native/WASM corpus replay and separately budgeted coverage-guided CI. No exhaustive or complete-conformance claim. |
 | TEST-011 | Partial | [P], [T], [Cursor replay], [Dialog observation]: F-keys/Ctrl/paste/resize/cleanup and native cursor focus subset; terminal application/modifier matrix pending. |
 | TEST-012 | Implemented | [A], [T], [ACLI]: malformed formats, unknown machines and unavailable decoding retain raw inspection/editing; explicit profile override can decode raw bytes. |
 | TEST-013 | Partial | [N], [T], [Storage]: writer/conflict/temp-path failures and postcommit UI state; fault/crash matrix pending. |
@@ -314,6 +321,10 @@ cover visiting, switching, and reopening files.
 [Input]: adr/0002-terminal-input.md
 [Observation]: evidence/hiew-8.63-windows-observation.json
 [Build]: adr/0003-build-targets.md
+[Runtime]: build-and-release.md
+[Capabilities]: capabilities.md
+[Capability tests]: ../crates/hiewbie-core/src/capabilities_tests.rs
+[Fuzz]: fuzzing.md
 [Analysis]: adr/0004-analysis-backends.md
 [Symbols]: adr/0005-symbol-navigation.md
 [Commands]: commands.md

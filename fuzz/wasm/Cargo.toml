@@ -1,0 +1,22 @@
+[package]
+name = "hiewbie-fuzz-wasm"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+hiewbie-fuzz-replay = { path = "../replay" }
+
+[lints.rust]
+unsafe_code = "deny"
+
+[profile.release]
+panic = "abort"
+overflow-checks = true

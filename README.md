@@ -41,6 +41,8 @@ cargo run --locked --package hiewbie -- --symbols --slice 1 path/to/universal-ma
 cargo run --locked --package hiewbie -- --disassemble --entry path/to/program
 cargo run --locked --package hiewbie -- --disassemble raw.bin
 cargo run --locked --package hiewbie -- --disassemble --arch x86-64 --base 0x1000 raw.bin
+cargo run --locked --package hiewbie -- --capabilities
+cargo run --locked --package hiewbie -- --capabilities --json
 cargo xtask check
 ```
 
@@ -167,6 +169,14 @@ are explicit interpretation controls. Setting a base selects raw addressing;
 it cannot be combined with slice selection. Code editing remains byte editing,
 without textual assembly. Unknown/truncated instructions retain their bytes.
 
+`--capabilities` reports the backends compiled into this executable without
+opening a file. Add `--json` for the versioned, machine-readable contract shared
+with headless consumers. Decoding, text assembly, references, symbols, formats,
+extensions and devices have independent entries, including unavailable features
+and their limits. Research probes do not enable production assembly. The
+[capability contract and finite roadmap](docs/capabilities.md) distinguish current
+support from evaluated MIPS, PowerPC, RISC-V and other optional extensions.
+
 Symbol tables load only when requested and have separate read, entry and text
 budgets. Their results follow logical byte edits, undo, restore, discard, save
 and selected Mach-O slice. A table error leaves headers, Code and raw access
@@ -195,6 +205,8 @@ and the [recorded PE analysis workflow](docs/evidence/executable-analysis.cast).
 - [HIEW compatibility and acceptance requirements](docs/compatibility.md)
 - [Architecture and implementation plan](docs/architecture.md)
 - [Build, release, and platform matrix](docs/build-and-release.md)
+- [Compiled capabilities and extension roadmap](docs/capabilities.md)
+- [Fuzzing, corpus replay, and resource limits](docs/fuzzing.md)
 - [Reference projects and reuse policy](docs/references-and-reuse.md)
 - [Contributor and agent instructions](AGENTS.md)
 - [Development workflow and verification](docs/development-workflow.md)
@@ -220,7 +232,10 @@ and the [recorded PE analysis workflow](docs/evidence/executable-analysis.cast).
 
 The required target set follows the inspected ArtCraft application release
 matrix. The [machine-readable manifest](build/targets.json) retains every row
-and records its configured CI strategy and release blockers. Native CI is
+and records intended runtime baselines, toolchain requirements, capability
+profiles, configured CI strategies and release blockers. Per-build evidence is
+bound to a commit and artifact digest; configured or compiled support does not
+establish a minimum-OS runtime result. Native CI is
 configured for macOS, Windows, and Linux on x64/ARM64. RISC-V and FreeBSD x64
 receive compile checks, WebAssembly compiles the core only, and FreeBSD ARM64
 has a pinned-toolchain blocker. None of those checks produces a release package.
@@ -240,11 +255,18 @@ remain standalone terminal applications.
 
 ## Development approach
 
-The workspace contains `hiewbie-core`, the native `hiewbie` application, and
-`xtask`. The core contains the bounded readers and pure-Rust decoders, with no
+The workspace contains `hiewbie-core`, the native `hiewbie` application,
+`xtask`, and a portable fuzz corpus replay helper. The core contains the bounded
+readers and pure-Rust decoders, with no
 terminal or native filesystem dependency. A browser adapter remains planned.
 `cargo xtask check`, `build --target TRIPLE`, and `targets` work;
 `package` and `verify-release` explicitly fail until implemented.
+
+Stable workspace tests replay generated seeds against parser, symbol, decoder,
+address, search and editor invariants. Separate bounded libFuzzer campaigns use
+coverage feedback, and a WebAssembly harness replays the same portable corpus.
+The editor harness compares bytes and transaction history with an independent
+model. See the [fuzzing guide](docs/fuzzing.md) for reproduction and CI budgets.
 
 AI-assisted contributions are welcome and must satisfy the same review,
 licensing, compatibility, and automated verification requirements as other work.
