@@ -341,6 +341,117 @@ fn branch_targets_are_redecoded_after_pending_edits_and_undo() {
     assert_eq!(editor.cursor().get(), 0x206);
 }
 
+fn pe32_operand_navigation() -> Vec<u8> {
+    let mut bytes = pe32();
+    bytes[0x200..0x210].copy_from_slice(&[
+        0xa1, 0x11, 0x10, 0x40, 0, // mov eax, [0x401011]
+        0xb8, 0x14, 0x10, 0x40, 0, // mov eax, 0x401014
+        0xff, 0x15, 0x20, 0x10, 0x40, 0, // call dword ptr [0x401020]
+    ]);
+    put32(&mut bytes, 0x220, 0x401030);
+    bytes
+}
+
+#[test]
+fn mapped_operands_follow_data_and_checked_pointer_contents_separately() {
+    use crate::instructions::AddressOperand;
+
+    let mut editor = editor(pe32_operand_navigation());
+    editor
+        .dispatch(Command::Goto(FileOffset::new(0x205)))
+        .unwrap();
+    editor.dispatch(Command::SetMode(ViewMode::Code)).unwrap();
+    let rows = editor.code_viewport(FileOffset::new(0x200), 3).unwrap();
+    assert_eq!(rows[0].branch_number, Some(1));
+    assert_eq!(
+        rows[0].operand,
+        Some(AddressOperand::Memory(VirtualAddress::new(0x401011)))
+    );
+    assert_eq!(
+        rows[1].operand,
+        Some(AddressOperand::Literal(VirtualAddress::new(0x401014)))
+    );
+    assert_eq!(
+        rows[2].operand,
+        Some(AddressOperand::Indirect {
+            slot: VirtualAddress::new(0x401020),
+            width: 4,
+        })
+    );
+    assert_eq!(rows[2].indirect_target, Some(VirtualAddress::new(0x401030)));
+
+    let display = editor.dispatch(Command::FollowBranch(1)).unwrap();
+    assert_eq!(display, Effect::PositionViewport(FileOffset::new(0x211)));
+    assert_eq!(editor.mode(), ViewMode::Hex);
+    assert_eq!(editor.cursor(), FileOffset::new(0x211));
+    assert!(editor.has_data_operand_return());
+    let display = editor.dispatch(Command::ReturnBranch).unwrap();
+    assert_eq!(display, Effect::PositionViewport(FileOffset::new(0x200)));
+    assert_eq!(editor.mode(), ViewMode::Code);
+    assert_eq!(editor.cursor(), FileOffset::new(0x205));
+    assert!(!editor.has_data_operand_return());
+
+    editor.code_viewport(FileOffset::new(0x200), 3).unwrap();
+    editor.dispatch(Command::FollowBranch(3)).unwrap();
+    assert_eq!(editor.cursor(), FileOffset::new(0x230));
+    assert_eq!(editor.mode(), ViewMode::Code);
+    assert!(!editor.has_data_operand_return());
+    editor.dispatch(Command::ReturnBranch).unwrap();
+    assert_eq!(editor.cursor(), FileOffset::new(0x205));
+    assert!(!editor.document().is_dirty());
+
+    editor
+        .dispatch(Command::SetDecodeMode(Some(DecodeMode::X86_32)))
+        .unwrap();
+    editor.dispatch(Command::SetRaw(true)).unwrap();
+    let rows = editor.code_viewport(FileOffset::new(0x200), 3).unwrap();
+    assert!(rows[0].instruction.address_operand.is_some());
+    assert!(rows.iter().all(|row| row.operand.is_none()));
+    assert!(rows.iter().all(|row| row.branch_number.is_none()));
+}
+
+#[test]
+fn indirect_pointer_is_revalidated_after_edits_and_rejects_unbacked_targets() {
+    let mut editor = editor(pe32_operand_navigation());
+    editor
+        .dispatch(Command::Goto(FileOffset::new(0x20a)))
+        .unwrap();
+    editor.dispatch(Command::SetMode(ViewMode::Code)).unwrap();
+    editor.code_rows(1).unwrap();
+    editor.dispatch(Command::BeginEdit).unwrap();
+    editor
+        .document_mut()
+        .overwrite(FileOffset::new(0x220), &0x1234_u32.to_le_bytes())
+        .unwrap();
+    assert!(editor.dispatch(Command::FollowBranch(1)).is_err());
+    assert_eq!(editor.cursor(), FileOffset::new(0x20a));
+    assert_eq!(editor.mode(), ViewMode::Code);
+    assert!(editor.dispatch(Command::ReturnBranch).is_err());
+    assert!(editor.document().is_dirty());
+    editor.dispatch(Command::Undo).unwrap();
+    editor.dispatch(Command::FollowBranch(1)).unwrap();
+    assert_eq!(editor.cursor(), FileOffset::new(0x230));
+    assert!(!editor.document().is_dirty());
+}
+
+#[test]
+fn indirect_pointer_slot_cannot_read_into_zero_fill() {
+    let mut image = pe32_operand_navigation();
+    let section = 0x98 + 0xe0;
+    put32(&mut image, section + 8, 0x300);
+    put32(&mut image, 0x20c, 0x4011fe);
+    let mut editor = editor(image);
+    editor
+        .dispatch(Command::Goto(FileOffset::new(0x20a)))
+        .unwrap();
+    let rows = editor.code_rows(1).unwrap();
+    assert_eq!(rows[0].branch_number, Some(1));
+    assert_eq!(rows[0].indirect_target, None);
+    assert!(editor.dispatch(Command::FollowBranch(1)).is_err());
+    assert!(editor.dispatch(Command::ReturnBranch).is_err());
+    assert_eq!(editor.cursor(), FileOffset::new(0x20a));
+}
+
 #[test]
 fn restoring_header_bytes_refreshes_mappings_and_keeps_independent_undo() {
     for (restore, start) in [

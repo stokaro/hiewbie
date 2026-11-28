@@ -1,10 +1,11 @@
 use iced_x86::{
     Decoder, DecoderError, DecoderOptions, Formatter, FormatterOutput, FormatterTextKind,
-    Instruction, IntelFormatter, OpKind, Register,
+    Instruction, IntelFormatter, Mnemonic, OpKind, Register,
 };
 
 use super::{
-    BranchTarget, DecodeMode, DecodeStatus, DecodedInstruction, TextBuffer, fallback, instruction,
+    AddressOperand, BranchTarget, DecodeMode, DecodeStatus, DecodedInstruction, TextBuffer,
+    fallback, instruction,
 };
 use crate::formats::VirtualAddress;
 
@@ -44,13 +45,54 @@ pub(super) fn decode(
         .set_small_hex_numbers_in_decimal(false);
     let mut text = TextBuffer::new();
     formatter.format(&decoded, &mut text);
-    instruction(
+    let mut result = instruction(
         &bytes[..decoded.len()],
         address,
         text.finish(),
         DecodeStatus::Decoded,
         direct_branch,
-    )
+    );
+    result.address_operand = address_operand(&decoded);
+    result
+}
+
+fn static_memory_address(instruction: &Instruction) -> Option<VirtualAddress> {
+    if matches!(instruction.segment_prefix(), Register::FS | Register::GS) {
+        return None;
+    }
+    if instruction.is_ip_rel_memory_operand() {
+        return Some(VirtualAddress::new(instruction.ip_rel_memory_address()));
+    }
+    (instruction.memory_base() == Register::None && instruction.memory_index() == Register::None)
+        .then(|| VirtualAddress::new(instruction.memory_displacement64()))
+}
+
+fn address_operand(instruction: &Instruction) -> Option<AddressOperand> {
+    if instruction.op_kinds().any(|kind| kind == OpKind::Memory) {
+        let address = static_memory_address(instruction)?;
+        if instruction.is_jmp_near_indirect() || instruction.is_call_near_indirect() {
+            return Some(AddressOperand::Indirect {
+                slot: address,
+                width: instruction.memory_size().size(),
+            });
+        }
+        return Some(AddressOperand::Memory(address));
+    }
+    if instruction.mnemonic() == Mnemonic::Mov
+        && instruction.op_count() == 2
+        && matches!(
+            instruction.op1_kind(),
+            OpKind::Immediate16
+                | OpKind::Immediate32
+                | OpKind::Immediate64
+                | OpKind::Immediate32to64
+        )
+    {
+        return Some(AddressOperand::Literal(VirtualAddress::new(
+            instruction.immediate(1),
+        )));
+    }
+    None
 }
 
 fn recognized_legacy_only(bytes: &[u8], address: VirtualAddress) -> bool {
@@ -84,18 +126,8 @@ fn has_data_reference(instruction: &Instruction, target: u64) -> bool {
         .op_kinds()
         .enumerate()
         .any(|(index, kind)| match kind {
-            OpKind::Memory
-                if matches!(instruction.segment_prefix(), Register::FS | Register::GS) =>
-            {
-                false
-            }
-            OpKind::Memory if instruction.is_ip_rel_memory_operand() => {
-                instruction.ip_rel_memory_address() == target
-            }
             OpKind::Memory => {
-                instruction.memory_base() == Register::None
-                    && instruction.memory_index() == Register::None
-                    && instruction.memory_displacement64() == target
+                static_memory_address(instruction) == Some(VirtualAddress::new(target))
             }
             OpKind::Immediate16
             | OpKind::Immediate32

@@ -126,6 +126,25 @@ pub struct BranchTarget {
     pub mode: DecodeMode,
 }
 
+/// An address encoded by an x86 operand. A memory-indirect control transfer
+/// encodes a pointer slot whose contents require a separate mapping check.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AddressOperand {
+    Memory(VirtualAddress),
+    Literal(VirtualAddress),
+    Indirect { slot: VirtualAddress, width: usize },
+}
+
+impl AddressOperand {
+    #[must_use]
+    pub fn address(self) -> VirtualAddress {
+        match self {
+            Self::Memory(address) | Self::Literal(address) => address,
+            Self::Indirect { slot, .. } => slot,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DecodedInstruction {
     pub address: VirtualAddress,
@@ -135,6 +154,7 @@ pub struct DecodedInstruction {
     pub status: DecodeStatus,
     /// Direct near branches only. Indirect/far destinations remain unresolved.
     pub direct_branch: Option<BranchTarget>,
+    pub address_operand: Option<AddressOperand>,
 }
 
 impl DecodedInstruction {
@@ -189,6 +209,7 @@ fn instruction(
         text,
         status,
         direct_branch,
+        address_operand: None,
     }
 }
 

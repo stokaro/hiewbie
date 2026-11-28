@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 
 use crate::formats::{self, Endian, Executable, Machine, VirtualAddress};
-use crate::instructions::{DecodeMode, DecodedInstruction, decode_one};
+use crate::instructions::{AddressOperand, DecodeMode, DecodedInstruction, decode_one};
 use crate::symbols::{self, SymbolTable};
 use crate::{ByteSource, Document, Error, FileOffset};
 
@@ -43,6 +43,10 @@ pub struct CodeRow {
     /// False marks raw file-offset interpretation of an unmapped image region.
     pub mapped: bool,
     pub branch_number: Option<usize>,
+    /// Operand with a checked, file-backed address in the selected image.
+    pub operand: Option<AddressOperand>,
+    /// Address marked at the destination row after resolving an indirect slot.
+    pub indirect_target: Option<VirtualAddress>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -60,7 +64,14 @@ pub(crate) struct Location {
     pub interpretation: Interpretation,
     pub symbol_mode: Option<DecodeMode>,
     pub generation: u64,
-    pub reference: bool,
+    pub kind: LocationKind,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum LocationKind {
+    Branch,
+    ReferenceHit,
+    DataOperand { top: FileOffset },
 }
 
 #[derive(Debug, Default)]
@@ -262,6 +273,49 @@ impl Analysis {
         Ok(FileOffset::new(address.get()))
     }
 
+    pub fn operand_offset(&self, address: VirtualAddress, len: u64) -> Result<FileOffset, Error> {
+        let offset = self.virtual_offset(address, len)?;
+        if self.address_at(offset)? != (address, true) {
+            return Err(analysis_error(
+                "operand address has an ambiguous file mapping",
+            ));
+        }
+        Ok(offset)
+    }
+
+    pub fn indirect_destination<S: ByteSource>(
+        &self,
+        document: &mut Document<S>,
+        slot: VirtualAddress,
+        width: usize,
+    ) -> Result<(VirtualAddress, FileOffset), Error> {
+        if !matches!(width, 2 | 4 | 8) {
+            return Err(analysis_error("unsupported indirect pointer width"));
+        }
+        let len = document.len();
+        let start = self.operand_offset(slot, len)?;
+        for index in 1..width as u64 {
+            let byte_address = slot
+                .get()
+                .checked_add(index)
+                .map(VirtualAddress::new)
+                .ok_or_else(|| analysis_error("indirect pointer address overflow"))?;
+            let offset = self.operand_offset(byte_address, len)?;
+            if start.get().checked_add(index) != Some(offset.get()) {
+                return Err(analysis_error(
+                    "indirect pointer has a noncontiguous file mapping",
+                ));
+            }
+        }
+        let mut bytes = [0; 8];
+        if document.read_at(start, &mut bytes[..width])? != width {
+            return Err(analysis_error("indirect pointer is truncated"));
+        }
+        let address = VirtualAddress::new(u64::from_le_bytes(bytes));
+        let offset = self.operand_offset(address, len)?;
+        Ok((address, offset))
+    }
+
     pub fn entry_offset(&self, len: u64) -> Result<FileOffset, Error> {
         let image = self
             .executable
@@ -378,16 +432,38 @@ impl Analysis {
                 instruction.length = length;
                 instruction.bytes[..length].fill(first);
             }
-            let numbered = instruction.direct_branch.as_ref().and_then(|target| {
-                if let Some(index) = branch_destinations.iter().position(|known| known == target) {
-                    Some(index + 1)
-                } else if branch_destinations.len() < BRANCH_LABELS.len() {
-                    branch_destinations.push(*target);
-                    Some(branch_destinations.len())
-                } else {
-                    None
-                }
+            let operand = instruction.address_operand.filter(|operand| {
+                mapped
+                    && self.executable.is_some()
+                    && self
+                        .operand_offset(operand.address(), document.len())
+                        .is_ok()
             });
+            let branch = instruction.direct_branch;
+            let numbered = branch
+                .and_then(|target| {
+                    branch_destinations
+                        .iter()
+                        .position(|known| *known == Some(target))
+                        .map(|index| index + 1)
+                })
+                .or_else(|| {
+                    if (branch.is_some() || operand.is_some())
+                        && branch_destinations.len() < BRANCH_LABELS.len()
+                    {
+                        branch_destinations.push(branch);
+                        Some(branch_destinations.len())
+                    } else {
+                        None
+                    }
+                });
+            let indirect_target = match (numbered, operand) {
+                (Some(_), Some(AddressOperand::Indirect { slot, width })) => self
+                    .indirect_destination(document, slot, width)
+                    .ok()
+                    .map(|(address, _)| address),
+                _ => None,
+            };
             let next = offset
                 .get()
                 .checked_add(instruction.length as u64)
@@ -397,6 +473,8 @@ impl Analysis {
                 instruction,
                 mapped,
                 branch_number: numbered,
+                operand,
+                indirect_target,
             });
             if next >= document.len() {
                 break;

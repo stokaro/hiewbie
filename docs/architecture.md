@@ -173,6 +173,14 @@ generation and interpretation. It does not allocate a file-wide index or
 format every instruction. Terminal adapters use the same progress and
 cancellation path as byte searches.
 
+In mapped x86 Decode windows, checked memory and MOV literal operands can
+also share the bounded branch-label namespace. A near indirect instruction
+retains its encoded slot address. The analysis layer checks the complete
+pointer span and destination against the current image and logical bytes.
+The data-operand return location carries the originating view's file offset
+and viewport start. Frontends honor a viewport position effect when opening
+Hex on a data byte or returning to its Decode window.
+
 ## 6. Frontend behavior
 
 Represent input as semantic events and dispatch through a versioned command

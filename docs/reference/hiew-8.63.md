@@ -317,6 +317,14 @@ x86 profiles. Page Down advanced by the visible rows, including grouped NOPs.
 
 [Paired Windows observations](../evidence/hiew-8.63-windows-decode.json)
 
+On a generated PE32+ image, mapped memory and MOV literal operands had
+numbered arrows. Their shortcuts opened Hex at the data byte. A near
+indirect jump showed the slot address and followed the file-backed pointer
+to Code. A direct jump and data operand to the same address had separate
+labels. Zero and Backspace returned from the data view to Decode.
+
+[Paired Windows operand observations](../evidence/hiew-8.63-windows-x86-operands.json)
+
 ### x86 reference search
 
 On a generated raw x86-32 file, F6 searched from the beginning for the address

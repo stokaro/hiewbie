@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "observation_date": "2026-11-28",
+  "reference_version": "8.63",
+  "environment": {
+    "runtime": "x64 Windows Server Core LTSC 2022 console in a Hyper-V-isolated container",
+    "candidate": "GNU-target x64 build in the same console",
+    "input": "Win32 console key events",
+    "terminal_columns": 135
+  },
+  "fixture": {
+    "format": "Generated PE32+ with one section",
+    "start_va": "0000000140001000",
+    "start_file_offset": "200",
+    "indirect_pointer_file_offset": "252",
+    "indirect_pointer_bytes": "4810004001000000",
+    "raw_comparison": "The same body bytes opened without PE mapping. Only the direct jump received a label in the sampled rows."
+  },
+  "original_follow_states": [
+    {"label": "1", "source_offset": "200", "bytes": "4C8B0D39000000", "operand_va": "0000000140001040", "target_file_offset": "240", "view": "Hex"},
+    {"label": "2", "source_offset": "207", "bytes": "488D053A000000", "operand_va": "0000000140001048", "target_file_offset": "248", "view": "Hex"},
+    {"label": "3", "source_offset": "20E", "bytes": "8B052B000000", "operand_va": "000000014000103F", "target_file_offset": "23F", "view": "Hex"},
+    {"label": "4", "source_offset": "214", "bytes": "EB2A", "operand_va": "0000000140001040", "target_file_offset": "240", "view": "Decode"},
+    {"label": "5", "source_offset": "216", "bytes": "48A14510004001000000", "operand_va": "0000000140001045", "target_file_offset": "245", "view": "Hex"},
+    {"label": "6", "source_offset": "220", "bytes": "48B84710004001000000", "operand_va": "0000000140001047", "target_file_offset": "247", "view": "Hex"},
+    {"label": "7", "source_offset": "22A", "bytes": "FF2522000000", "operand_va": "0000000140001052", "target_file_offset": "248", "view": "Decode"},
+    {"label": "8", "source_offset": "237", "bytes": "488B05C2FFFFFF", "operand_va": "0000000140001000", "target_file_offset": "200", "view": "Hex"}
+  ],
+  "paired_checks": {
+    "decode_window_size": "135x44",
+    "matching_decode_rows": 12,
+    "matching_key_states": 17,
+    "comparison": "The compared Decode rows match the opcode bytes, target marker, mnemonic, operands, and instruction-cell colors. Both programs reached the same modes and selected addresses after the eight numbered transitions and returns. The Hex destination rows started at the same aligned addresses."
+  },
+  "observations": {
+    "labels": "The data read and direct jump to the same address use separate labels. The indirect jump's arrow follows the direction to the encoded slot, and the resolved code target has the incoming marker. An unmapped PC-relative operand has no label.",
+    "return": "Zero or Backspace returned to the previous Decode window. Hex selected the exact data byte on its 16-byte-aligned row.",
+    "limits": "This fixture exercises file-backed x86 near destinations. Far control transfers, loader relocations, external pointer values, and paging differences around the Decode viewport remain separate work."
+  }
+}

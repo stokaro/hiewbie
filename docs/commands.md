@@ -299,14 +299,23 @@ Incomplete and unrecognized encodings preserve the current byte for
 inspection. See the [x86 Decode capability table](x86-decode-coverage.md)
 for tested encodings and HIEW 8.63 observations.
 
-In Code view outside edit mode, 1–9 and A–Z follow direct destinations labeled
-in the displayed window. 0 or Backspace returns after a branch or cycles through
-reference hits, starting with the latest hit. Windows contain at most 256 rows.
+In Code view outside edit mode, 1–9 and A–Z follow destinations labeled in the
+displayed window. Direct branches keep Code open. In a mapped x86 image,
+fixed-address and PC-relative memory operands and address-like MOV literals
+open Hex at the target byte. A numbered near indirect CALL or JMP reads the
+complete file-backed pointer and opens Code at its checked destination. The
+operand still displays the slot address. A failed mapping leaves the selected
+byte and return history intact.
+
+0 or Backspace returns from a branch or the Hex view opened by a data operand.
+Returning from that Hex view restores the prior Decode window. These keys also
+cycle through reference search hits, starting with the latest hit. Windows
+contain at most 256 rows.
 Code navigation and movement histories are bounded
 to 256 entries. Backward movement retraces known boundaries; without history it
 falls back to the preceding byte or ISA minimum alignment, which need not be a
 true instruction boundary. `/` explicitly resynchronizes at the current byte.
-Indirect/far targets and full control-flow analysis remain future work.
+Far, dynamic-register, and loader-resolved targets remain open.
 In Code edit mode, digits enter byte values, Backspace cancels a pending digit
 or restores the preceding source byte and moves there, and vertical navigation
 follows the byte grid. The active context distinguishes restoration from the
