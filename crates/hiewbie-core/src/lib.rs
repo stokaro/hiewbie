@@ -6,6 +6,7 @@
 //! logical bytes and never executes inspected code.
 
 mod analysis;
+pub mod assembly;
 mod block;
 mod bookmark;
 pub mod calculator;

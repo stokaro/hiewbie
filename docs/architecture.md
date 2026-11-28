@@ -151,7 +151,7 @@ Selected terminal stack and remaining dependency candidates:
 | x86 | iced-x86 1.22.0 selected | Bounded 16/32/64 decoder; text assembly and exhaustive extension coverage remain separate |
 | ARM families | yaxpeax-arm 0.5.0 / yaxpeax-arch 0.3.3 selected | Strict ARM/Thumb/AArch64 decoding; revision, extension, endian and IT-state gaps remain explicit |
 | Executable parsing | Focused bounded readers selected | PE/ELF/Mach-O headers and mappings; full symbols/sections/legacy interpretation remains incomplete |
-| Text assembly | In-tree bounded parser, iced-x86 1.22.0 encoder and asm-rs 0.2.0 AArch64 selected for implementation | [ADR 0006](adr/0006-text-assembler-selection.md); isolated probes are executable, production commands remain unavailable |
+| Text assembly | In-tree bounded parser and iced-x86 1.22.0 x86 encoder. asm-rs 0.2.0 selected for AArch64 | [ADR 0006](adr/0006-text-assembler-selection.md) and [x86 core](x86-text-assembly.md). Editing integration remains in #78 |
 
 The portable [capability registry](capabilities.md) reports the compiled backend
 set through one versioned schema. Native `--capabilities`, headless callers and

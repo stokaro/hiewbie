@@ -240,6 +240,11 @@ const X86: Backend<'static> = Backend {
     name: "iced-x86",
     version: "1.22.0",
 };
+const X86_ASSEMBLY_EVIDENCE: &[&str] = &[
+    "docs/x86-text-assembly.md",
+    "crates/hiewbie-core/src/assembly/tests.rs",
+];
+
 const ARM: Backend<'static> = Backend {
     name: "yaxpeax-arm",
     version: "0.5.0",
@@ -351,32 +356,41 @@ const BUILT_INS: &[Capability<'static>] = &[
     Capability {
         id: "assemble.x86-16",
         category: Category::Assembly,
-        status: Status::Unavailable,
-        backend: None,
-        modes: &[],
-        byte_orders: &[],
-        limitations: &["No production textual assembler; research probes do not enable editing."],
-        evidence: &["docs/adr/0006-text-assembler-selection.md"],
+        status: Status::Limited,
+        backend: Some(X86),
+        modes: &["x86-16"],
+        byte_orders: &["little"],
+        limitations: &[
+            "Portable single-instruction encoding. Interactive preview and patch transactions are pending.",
+            "The supported legacy forms are documented in the x86 assembly contract.",
+        ],
+        evidence: X86_ASSEMBLY_EVIDENCE,
     },
     Capability {
         id: "assemble.x86-32",
         category: Category::Assembly,
-        status: Status::Unavailable,
-        backend: None,
-        modes: &[],
-        byte_orders: &[],
-        limitations: &["No production textual assembler; research probes do not enable editing."],
-        evidence: &["docs/adr/0006-text-assembler-selection.md"],
+        status: Status::Limited,
+        backend: Some(X86),
+        modes: &["x86-32"],
+        byte_orders: &["little"],
+        limitations: &[
+            "Portable single-instruction encoding. Interactive preview and patch transactions are pending.",
+            "The supported legacy forms and baseline AVX are documented in the x86 assembly contract.",
+        ],
+        evidence: X86_ASSEMBLY_EVIDENCE,
     },
     Capability {
         id: "assemble.x86-64",
         category: Category::Assembly,
-        status: Status::Unavailable,
-        backend: None,
-        modes: &[],
-        byte_orders: &[],
-        limitations: &["No production textual assembler; research probes do not enable editing."],
-        evidence: &["docs/adr/0006-text-assembler-selection.md"],
+        status: Status::Limited,
+        backend: Some(X86),
+        modes: &["x86-64"],
+        byte_orders: &["little"],
+        limitations: &[
+            "Portable single-instruction encoding. Interactive preview and patch transactions are pending.",
+            "The supported legacy forms and baseline AVX are documented in the x86 assembly contract.",
+        ],
+        evidence: X86_ASSEMBLY_EVIDENCE,
     },
     Capability {
         id: "decode.aarch64",

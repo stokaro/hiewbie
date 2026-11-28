@@ -942,3 +942,74 @@ fn code_view_at_a_large_offset_only_reads_bounded_instruction_windows() {
     assert_eq!(rows[19].instruction.address.get(), (1 << 40) + 19);
     assert!(editor.document().source().read_bytes <= 20 * 15);
 }
+
+#[test]
+fn assembly_uses_checked_mapped_and_raw_addresses_without_editing() {
+    let original = pe32();
+    let mut editor = editor(original.clone());
+    editor.dispatch(Command::GotoEntry).unwrap();
+    assert_eq!(editor.cursor(), FileOffset::new(0x200));
+    assert_eq!(
+        editor.assemble_at_cursor("jmp 401020").unwrap(),
+        [vec![0xE9, 0x1B, 0, 0, 0]],
+    );
+    editor.dispatch(Command::Move(1)).unwrap();
+    assert_eq!(
+        editor.assemble_at_cursor("jmp 401020").unwrap(),
+        [vec![0xE9, 0x1A, 0, 0, 0]],
+    );
+    assert_eq!(editor.document().generation(), 0);
+    assert!(!editor.document().is_dirty());
+    assert!(!editor.document_mut().undo().unwrap());
+
+    editor.dispatch(Command::SetRaw(true)).unwrap();
+    editor
+        .dispatch(Command::SetRawBase(VirtualAddress::new(0x140000000)))
+        .unwrap();
+    editor
+        .dispatch(Command::SetDecodeMode(Some(DecodeMode::X86_64)))
+        .unwrap();
+    assert_eq!(
+        editor.assemble_at_cursor("jmps 00000001`40000220").unwrap(),
+        [vec![0xEB, 0x1D]],
+    );
+    editor.dispatch(Command::BeginEdit).unwrap();
+    editor
+        .document_mut()
+        .overwrite(FileOffset::new(0x201), &[0x80])
+        .unwrap();
+    editor
+        .document_mut()
+        .overwrite(FileOffset::new(0x202), &[0x81])
+        .unwrap();
+    assert!(editor.document_mut().undo().unwrap());
+    let generation = editor.document().generation();
+    let cursor = editor.cursor();
+    let state = editor.document().patches();
+    assert!(matches!(
+        editor.assemble_at_cursor("jmp missing_label"),
+        Err(Error::Assembly(
+            crate::assembly::AssemblyError::UnresolvedSymbol(_)
+        ))
+    ));
+    assert!(editor.assemble_at_cursor("jmps 0").is_err());
+    editor
+        .dispatch(Command::SetEndian(Some(Endian::Big)))
+        .unwrap();
+    assert!(editor.assemble_at_cursor("nop").is_err());
+    assert_eq!(editor.cursor(), cursor);
+    assert!(editor.is_editing());
+    assert!(editor.document().is_dirty());
+    assert_eq!(editor.document().generation(), generation);
+    assert_eq!(editor.document().patches(), state);
+    assert!(editor.document_mut().redo().unwrap());
+    assert!(editor.document_mut().undo().unwrap());
+    assert!(editor.document_mut().undo().unwrap());
+    assert!(!editor.document_mut().undo().unwrap());
+    let mut after = vec![0; original.len()];
+    editor
+        .document_mut()
+        .read_at(FileOffset::new(0), &mut after)
+        .unwrap();
+    assert_eq!(after, original);
+}
