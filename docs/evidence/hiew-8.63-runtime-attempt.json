@@ -1,0 +1,33 @@
+{
+  "observed_at_utc": "2026-11-28T00:24:08.239490+00:00",
+  "status": "blocked_before_reference_program_started",
+  "host": "Debian GNU/Linux 13 x86_64; unprivileged managed sandbox",
+  "reference": {
+    "documented_version": "8.63",
+    "format": "PE32 Windows console i386",
+    "executable_sha256": "681dea98230ae24b4f85ed899dfb10e6cbdf2137e2560c70030668809918cf0b",
+    "observed_version": null,
+    "edition_verified": false
+  },
+  "runtime": {
+    "version": "wine-11.0",
+    "distribution": "Kron4ek/Wine-Builds vanilla amd64-wow64",
+    "url": "https://github.com/Kron4ek/Wine-Builds/releases/download/11.0/wine-11.0-amd64-wow64.tar.xz",
+    "sha256": "39574efa1132c3ca0d5c77dd2eddbe4a49cca0d6cc2c290ff4924493a1c40314",
+    "manifest_verification": "matched distribution sha256sums.txt"
+  },
+  "probe": {
+    "argv": [
+      "wine",
+      "hiew32.exe",
+      "/Oh=0",
+      "probe.bin"
+    ],
+    "fixture": "bytes(range(256)) repeated four times",
+    "returncode": 1,
+    "stdout": "",
+    "stderr": "wineserver: socket: Operation not permitted\n",
+    "fixture_unchanged": true
+  },
+  "interpretation": "Wine server cannot create the required Unix socket under current execution sandbox. Hiew startup, UI and behavior were not observed. No reference parity claims can be based on this attempt."
+}

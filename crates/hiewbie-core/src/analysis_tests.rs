@@ -217,6 +217,119 @@ fn branch_targets_are_redecoded_after_pending_edits_and_undo() {
 }
 
 #[test]
+fn restoring_header_bytes_refreshes_mappings_and_keeps_independent_undo() {
+    for (restore, start) in [
+        (Command::RestoreByte, 0xb6),
+        (Command::RestorePreviousByte, 0xb7),
+    ] {
+        let mut editor = editor(pe32());
+        editor.dispatch(Command::SetMode(ViewMode::Code)).unwrap();
+        editor.dispatch(Command::BeginEdit).unwrap();
+        editor
+            .dispatch(Command::Goto(FileOffset::new(0xb6)))
+            .unwrap();
+        editor.dispatch(Command::WriteByte(0x50)).unwrap();
+        editor.goto_expression(".501000").unwrap();
+        assert!(editor.goto_expression(".401000").is_err());
+        assert_eq!(
+            editor.executable().unwrap().image_base,
+            Some(VirtualAddress::new(0x500000))
+        );
+
+        editor
+            .dispatch(Command::Goto(FileOffset::new(start)))
+            .unwrap();
+        let generation = editor.document().generation();
+        editor.dispatch(restore).unwrap();
+        assert_eq!(editor.cursor().get(), 0xb6);
+        assert!(editor.document().generation() > generation);
+        assert!(editor.executable().is_none());
+        assert!(editor.goto_expression(".501000").is_err());
+        editor.goto_expression(".401000").unwrap();
+        assert_eq!(editor.cursor().get(), 0x200);
+        assert!(!editor.document().is_dirty());
+        assert!(editor.is_editing());
+        assert_eq!(editor.mode(), ViewMode::Code);
+
+        editor.dispatch(Command::Undo).unwrap();
+        assert!(editor.goto_expression(".401000").is_err());
+        editor.goto_expression(".501000").unwrap();
+        assert!(editor.document().is_dirty());
+        editor.dispatch(Command::Redo).unwrap();
+        assert!(editor.goto_expression(".501000").is_err());
+        editor.goto_expression(".401000").unwrap();
+        assert!(!editor.document().is_dirty());
+    }
+}
+
+#[test]
+fn restoring_branch_bytes_refreshes_code_and_targets_without_reverting_other_edits() {
+    for (restore, start) in [
+        (Command::RestoreByte, 0x201),
+        (Command::RestorePreviousByte, 0x202),
+    ] {
+        let mut editor = editor(pe32());
+        editor.dispatch(Command::SetMode(ViewMode::Code)).unwrap();
+        editor.dispatch(Command::BeginEdit).unwrap();
+        editor
+            .dispatch(Command::Goto(FileOffset::new(0x201)))
+            .unwrap();
+        editor.dispatch(Command::WriteByte(2)).unwrap();
+        editor
+            .dispatch(Command::Goto(FileOffset::new(0x207)))
+            .unwrap();
+        editor.dispatch(Command::WriteByte(0xcc)).unwrap();
+        editor.dispatch(Command::GotoEntry).unwrap();
+        assert_eq!(
+            editor.code_rows(1).unwrap()[0].instruction.bytes(),
+            &[0xeb, 2]
+        );
+        editor.dispatch(Command::FollowBranch(1)).unwrap();
+        assert_eq!(editor.cursor().get(), 0x204);
+        editor.dispatch(Command::ReturnBranch).unwrap();
+
+        editor
+            .dispatch(Command::Goto(FileOffset::new(start)))
+            .unwrap();
+        editor.dispatch(restore).unwrap();
+        assert_eq!(editor.cursor().get(), 0x201);
+        assert!(editor.executable().is_none());
+        editor
+            .dispatch(Command::Goto(FileOffset::new(0x200)))
+            .unwrap();
+        // Follow immediately, without a render/refresh of the restored bytes.
+        editor.dispatch(Command::FollowBranch(1)).unwrap();
+        assert_eq!(editor.cursor().get(), 0x206);
+        editor.dispatch(Command::ReturnBranch).unwrap();
+        let row = editor.code_rows(1).unwrap().remove(0);
+        assert_eq!(row.instruction.bytes(), &[0xeb, 4]);
+        assert_eq!(
+            row.instruction.direct_branch.unwrap().address.get(),
+            0x401006
+        );
+
+        for (command, target) in [(Command::Undo, 0x204), (Command::Redo, 0x206)] {
+            editor.dispatch(command).unwrap();
+            editor.dispatch(Command::FollowBranch(1)).unwrap();
+            assert_eq!(editor.cursor().get(), target);
+            editor.dispatch(Command::ReturnBranch).unwrap();
+        }
+        let mut bytes = [0; 8];
+        editor
+            .document_mut()
+            .read_at(FileOffset::new(0x200), &mut bytes)
+            .unwrap();
+        assert_eq!(bytes, [0xeb, 4, 0x90, 0x90, 0x90, 0x90, 0xc3, 0xcc]);
+        let patches = editor.document().patches();
+        assert_eq!(patches.len(), 1);
+        assert_eq!(patches[0].offset, FileOffset::new(0x207));
+        assert_eq!(patches[0].bytes, [0xcc]);
+        assert!(editor.is_editing());
+        assert_eq!(editor.mode(), ViewMode::Code);
+    }
+}
+
+#[test]
 fn unmapped_padding_does_not_fabricate_followable_virtual_branches() {
     let mut bytes = pe32();
     bytes[0x300..0x302].copy_from_slice(&[0xeb, 0xfe]);

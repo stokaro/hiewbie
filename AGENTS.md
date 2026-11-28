@@ -44,6 +44,11 @@ Update affected contracts, rationale, references, and acceptance criteria when a
 decision changes documented behavior. See `docs/development-workflow.md` for check
 selection and command status.
 
+For HIEW command changes, read only the relevant scenarios in
+`docs/reference/hiew-8.63.md`. Its author-documentation evidence and hiewbie tests
+are distinct from original runtime observations; the recorded launch was blocked.
+Keep unresolved search, Text, navigation and contextual-key differences explicit.
+
 ## Select skills by task
 
 - Nontrivial Rust implementation or review: [rust-best-practices](.agents/skills/rust-best-practices/SKILL.md).

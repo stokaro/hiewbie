@@ -6,6 +6,10 @@ implementation choices; they are not evidence that hiewbie already implements it
 
 ## HIEW behavior references
 
+- [Supplied Hiew 8.63 distribution audit](reference/hiew-8.63.md): versioned
+  author-documentation evidence, source hashes, known implementation differences
+  and 25 reference scenarios. Original startup was blocked; no dynamic parity
+  is claimed. The original distribution remains outside the repository.
 - [Official HIEW site](https://www.hiew.ru/): console HIEW VIII is the primary
   product reference. Hiewix is a separate WinAPI presentation.
 - [Hiew Documentation Project](https://taviso.github.io/hiewdocs/index.htm):

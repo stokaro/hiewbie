@@ -180,9 +180,17 @@ struct InputDialog {
     error: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ModeChoice {
+    Text,
+    Hex,
+    Code,
+}
+
 enum Dialog {
     Input(InputDialog),
     Help,
+    Mode(ModeChoice),
     Analysis(AnalysisDialog),
 }
 
@@ -212,7 +220,7 @@ impl<S: ByteSource> Ui<S> {
             visible_rows: 21,
             entry_column: EntryColumn::Hex,
             pending_nibble: None,
-            message: "F1 help | Enter/F4 Hex/Text/Code | F8 headers | Esc quit".into(),
+            message: "F1 help | Enter cycle | F4 select mode | F8 headers | Esc quit".into(),
             dialog: None,
             search: None,
             last_pattern: None,
@@ -293,6 +301,13 @@ impl<S: ByteSource> Ui<S> {
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             return self.control_key(key);
         }
+        if key.code == KeyCode::F(7)
+            && key.modifiers == KeyModifiers::SHIFT
+            && !self.editor.is_editing()
+        {
+            self.repeat_search();
+            return UiAction::Continue;
+        }
         if key.modifiers.contains(KeyModifiers::ALT)
             || (!matches!(key.code, KeyCode::Char(_)) && !key.modifiers.is_empty())
         {
@@ -372,7 +387,9 @@ impl<S: ByteSource> Ui<S> {
             ViewMode::Hex | ViewMode::Code => EntryColumn::Hex,
             ViewMode::Text => EntryColumn::Ascii,
         };
-        self.notice("Editing: F9/Ctrl+S saves; Esc discards; Tab hex/ASCII; Ctrl+Z/Y undo/redo");
+        self.notice(
+            "Editing: F9 saves; Esc discards; F3 restores byte; Backspace restores previous",
+        );
         self.dispatch(Command::BeginEdit)
     }
 
@@ -388,9 +405,17 @@ impl<S: ByteSource> Ui<S> {
 
     fn view_key(&mut self, code: KeyCode) -> UiAction {
         match code {
-            KeyCode::Enter | KeyCode::F(4) => {
+            KeyCode::Enter => {
                 self.notice("Mode changed; Shift+F1/Ctrl+A selects the Code architecture");
                 self.dispatch(Command::CycleMode)
+            }
+            KeyCode::F(4) => {
+                self.dialog = Some(Dialog::Mode(match self.editor.mode() {
+                    ViewMode::Text => ModeChoice::Text,
+                    ViewMode::Hex => ModeChoice::Hex,
+                    ViewMode::Code => ModeChoice::Code,
+                }));
+                UiAction::Continue
             }
             KeyCode::F(3) => self.begin_edit(),
             KeyCode::F(5) => {
@@ -452,12 +477,19 @@ impl<S: ByteSource> Ui<S> {
                 self.notice("Pending hex digit cancelled; document unchanged");
                 UiAction::Continue
             }
-            KeyCode::Backspace => self.dispatch(Command::Move(-1)),
+            KeyCode::Backspace => {
+                self.notice(if self.editor.cursor().get() == 0 {
+                    "No previous byte at start of file"
+                } else {
+                    "Previous byte restored; F9 saves; Esc discards"
+                });
+                self.dispatch(Command::RestorePreviousByte)
+            }
             KeyCode::Char(character) => self.enter_character(character),
             KeyCode::F(3) => {
                 self.pending_nibble = None;
-                self.notice("Edit F3 byte restore is not implemented; use Ctrl+Z or Esc to discard the transaction");
-                UiAction::Continue
+                self.notice("Original byte restored; F9 saves; Esc discards");
+                self.dispatch(Command::RestoreByte)
             }
             _ => {
                 self.pending_nibble = None;
@@ -596,6 +628,29 @@ impl<S: ByteSource> Ui<S> {
                 }
                 return;
             }
+            Dialog::Mode(mut selected) => {
+                if key.modifiers.is_empty() {
+                    selected = match (key.code, selected) {
+                        (KeyCode::Up, ModeChoice::Code) => ModeChoice::Hex,
+                        (KeyCode::Up, ModeChoice::Hex) => ModeChoice::Text,
+                        (KeyCode::Down, ModeChoice::Text) => ModeChoice::Hex,
+                        (KeyCode::Down, ModeChoice::Hex) => ModeChoice::Code,
+                        _ => selected,
+                    };
+                    if key.code == KeyCode::Enter {
+                        let mode = match selected {
+                            ModeChoice::Text => ViewMode::Text,
+                            ModeChoice::Hex => ViewMode::Hex,
+                            ModeChoice::Code => ViewMode::Code,
+                        };
+                        self.dispatch(Command::SetMode(mode));
+                        self.notice(format!("{mode} view selected; cursor unchanged"));
+                        return;
+                    }
+                }
+                self.dialog = Some(Dialog::Mode(selected));
+                return;
+            }
         };
         match key.code {
             KeyCode::Enter => match self.apply_prompt(&input) {
@@ -718,7 +773,7 @@ impl<S: ByteSource> Ui<S> {
             Ok(SearchProgress::Found(offset)) => {
                 self.dispatch(Command::Goto(offset));
                 self.notice(format!(
-                    "Found at {:016X}; Ctrl+Enter/Ctrl+R repeats",
+                    "Found at {:016X}; Shift+F7/Ctrl+R repeats",
                     offset.get()
                 ));
             }

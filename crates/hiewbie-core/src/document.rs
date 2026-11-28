@@ -225,34 +225,31 @@ impl<S: ByteSource> Document<S> {
                 limit: MAX_PENDING_BYTES,
             });
         }
-        let edit = Edit {
+        self.commit_edit(Edit {
             offset: offset.get(),
             before,
             after,
-        };
-        let retained_history_bytes =
-            self.history_bytes - self.redo.iter().map(Edit::payload_bytes).sum::<usize>();
-        let history_bytes = retained_history_bytes + edit.payload_bytes();
-        if history_bytes > MAX_HISTORY_BYTES {
-            return Err(Error::LimitExceeded {
-                resource: "undo/redo payload bytes",
-                limit: MAX_HISTORY_BYTES,
-            });
-        }
-        if self.undo.len() >= MAX_HISTORY_ENTRIES {
-            return Err(Error::LimitExceeded {
-                resource: "undo/redo command count",
-                limit: MAX_HISTORY_ENTRIES,
-            });
-        }
-        let generation = self.next_generation()?;
+        })
+    }
 
-        Self::apply(&mut self.overlay, edit.offset, &edit.after);
-        self.redo.clear();
-        self.undo.push(edit);
-        self.history_bytes = history_bytes;
-        self.generation = generation;
-        Ok(())
+    /// Restore one byte to the backing source value for this transaction.
+    ///
+    /// This removes that byte's pending replacement rather than undoing the
+    /// last command. The restoration itself can be undone/redone. An unchanged
+    /// byte preserves history and generation; source failures leave the entire
+    /// transaction unchanged.
+    pub fn restore_byte(&mut self, offset: FileOffset) -> Result<(), Error> {
+        self.check_range(offset, 1)?;
+        let Some(before) = self.overlay.get(&offset.get()).copied() else {
+            return Ok(());
+        };
+        // Ensure the original byte remains readable before exposing it again.
+        self.read_source_exact(offset, &mut [0])?;
+        self.commit_edit(Edit {
+            offset: offset.get(),
+            before: vec![Some(before)],
+            after: vec![None],
+        })
     }
 
     /// Undo one pending command. Returns false when no command can be undone.
@@ -326,6 +323,32 @@ impl<S: ByteSource> Document<S> {
             });
         }
         patches
+    }
+
+    fn commit_edit(&mut self, edit: Edit) -> Result<(), Error> {
+        let retained_history_bytes =
+            self.history_bytes - self.redo.iter().map(Edit::payload_bytes).sum::<usize>();
+        let history_bytes = retained_history_bytes + edit.payload_bytes();
+        if history_bytes > MAX_HISTORY_BYTES {
+            return Err(Error::LimitExceeded {
+                resource: "undo/redo payload bytes",
+                limit: MAX_HISTORY_BYTES,
+            });
+        }
+        if self.undo.len() >= MAX_HISTORY_ENTRIES {
+            return Err(Error::LimitExceeded {
+                resource: "undo/redo command count",
+                limit: MAX_HISTORY_ENTRIES,
+            });
+        }
+        let generation = self.next_generation()?;
+
+        Self::apply(&mut self.overlay, edit.offset, &edit.after);
+        self.redo.clear();
+        self.undo.push(edit);
+        self.history_bytes = history_bytes;
+        self.generation = generation;
+        Ok(())
     }
 
     fn check_range(&self, offset: FileOffset, length: u64) -> Result<(), Error> {

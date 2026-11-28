@@ -7,14 +7,15 @@ means the stated initial behavior exists with the linked regression evidence;
 **Partial** means only the recorded subset exists; **Planned** means no application
 implementation is claimed. Actual platform results belong to the identified
 commit's CI runs. No row is promoted to cross-platform **Verified** by configuration
-alone, and no exact HIEW-version comparison has yet been recorded.
+alone. A [versioned Hiew 8.63 documentation comparison][Reference] is recorded;
+the original failed to start, so no original-program runtime parity is claimed.
 
 Current fixtures are generated in the linked tests: byte vectors, PE/ELF/Mach-O
 images, instruction encodings, temporary files, Unicode paths, sparse sources,
-and PTY input. Local evidence for this slice is 151 Rust tests on Linux x86_64,
-an optimized native build, four real PTY scenarios, eight PTY-harness tests, and
-an integrated `wasm32-unknown-unknown` core compilation. The implementation PR
-and CI record the available native-host results for each identified commit.
+and PTY input. Workspace tests, native builds, real PTY scenarios, PTY-harness
+regressions and integrated `wasm32-unknown-unknown` core compilation provide
+separate evidence. The implementation PR and CI record actual commands, test
+totals and available native-host results for each identified commit.
 
 The [build strategy][Build] retains six native CI targets, compile-only checks
 for RISC-V and FreeBSD x64, and the pinned-toolchain blocker for native FreeBSD
@@ -26,17 +27,17 @@ and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| UI-001 | Implemented | [A], [T], [P]: Text/Hex/Code share the document, cursor, and pending bytes; no exact HIEW-version comparison is claimed. |
-| UI-002 | Partial | [T], [P], [Commands]: contextual function bar plus Code/header/profile bindings; full keymap parity unverified. |
+| UI-001 | Implemented | [A], [T], [P]: Text/Hex/Code share the document, cursor, and pending bytes; no observed original-runtime parity is claimed. |
+| UI-002 | Partial | [T], [P], [Commands], [Reference]: separate F4 choice/Enter cycle, edit restores, Shift+F7 and Code/header/profile bindings; full keymap and original runtime parity unverified. |
 | UI-003 | Partial | [T], [ACLI]: FO/VA context, mode, dirty state, effective decoder profile/backend and overrides are displayed; full reference/layout comparison pending. |
 | UI-004 | Partial | [A], [T]: cursor survives all three views; branch return restores position and interpretation; bookmarks and reference-specific per-view behavior pending. |
-| UI-005 | Partial | [T]: view/edit/search/recovery and header/profile dialogs resolve their own commands; selections pending. |
+| UI-005 | Partial | [T]: view/edit/search/recovery and mode/header/profile dialogs resolve their own commands; block selections pending. |
 | UI-006 | Partial | [T], [Commands]: context-sensitive function bar and profile/bitness hints; complete modifier-aware reference behavior pending. |
 | UI-007 | Implemented | [T], [P]: all currently implemented operations are keyboard-accessible. |
 | UI-008 | Partial | [T], [P]: 80-column cells, dynamic rows, resize; full reference comparison pending. |
 | UI-009 | Partial | [T]: blue/cyan default; accessible configurable themes pending. |
 | UI-010 | Partial | [T], [Commands]: Ctrl alternatives and keyboard header/profile dialogs; comprehensive command-menu and intercepted-key coverage pending. |
-| UI-011 | Partial | [T], [Input], [Commands]: unavailable Open, textual assembly, imports and exports are explicit; reference observations pending. |
+| UI-011 | Partial | [T], [Input], [Commands], [Reference]: unavailable Open, textual assembly, imports and exports plus documented deviations are explicit; original runtime observations pending. |
 | UI-012 | Partial | [T], [Commands]: contextual help and shared command inventory cover current analysis; key-event diagnostics and comprehensive command index UI pending. |
 | UI-013 | Implemented | [F], [D], [A], [T]: bounded viewport, metadata reads and per-row decoding; no eager whole-file disassembly or indexing. |
 | UI-014 | Implemented | [CLI], [P]: ordinary editing has no network/service dependency. |
@@ -46,12 +47,12 @@ and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| KEY-001 | Implemented | [C], [A], [Commands]: stable IDs include current format, decoder-profile, mapping and branch-navigation commands. |
+| KEY-001 | Implemented | [C], [A], [Commands]: stable IDs include source-byte restores, formats, decoder profiles, mappings and branch navigation. |
 | KEY-002 | Partial | [A], [T], [ACLI]: terminal dialogs, shortcuts and headless inspection use shared application commands; macro/browser callers pending. |
-| KEY-003 | Implemented | [C], [A], [T], [ACLI]: hexadecimal, decimal t, relative and dotted absolute-VA syntax; overflow and unavailable mappings are explicit errors. |
+| KEY-003 | Partial | [C], [A], [T], [ACLI], [Reference]: hexadecimal, decimal t, relative and dotted absolute-VA syntax reject overflow/unavailable mappings; original current-section-relative dotted interpretation remains open. |
 | KEY-004 | Partial | [A], [T]: shared position and bounded branch-return history across views; reference-specific navigation/bookmark comparison pending. |
-| KEY-005 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| KEY-006 | Partial | [T], [P], [Commands]: F3/F9, header keys and Code view/edit collisions covered; F2 textual assembly and full reference scenarios pending. |
+| KEY-005 | Partial | [C], [T], [P], [Reference]: F3/current and Backspace/previous source-byte restores; exact original nibble/buffer/cursor behavior, F2/assembly, F10/truncation and timestamps remain open. |
+| KEY-006 | Partial | [C], [T], [P], [Commands]: F3/F9, F4 mode selection, Shift+F7, header keys and Code view/edit collisions covered; F2 textual assembly and full reference scenarios pending. |
 | KEY-007 | Implemented | [T], [P]: Esc cancels search/dialog, discards edits, then exits view. |
 | KEY-008 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 
@@ -63,13 +64,13 @@ and the parent epic remain open.
 | EDIT-002 | Implemented | [C], [N], [P]: pending changes do not write until explicit save. |
 | EDIT-003 | Implemented | [C], [N], [P]: discard restores original bytes and does not rewrite mtime. |
 | EDIT-004 | Implemented | [C], [N], [T]: successful save rebases and clears transaction/history. |
-| EDIT-005 | Partial | [C], [A], [T]: bounded byte-command undo/redo also refreshes Code; blocks and textual assembly pending. |
+| EDIT-005 | Partial | [C], [A], [T]: bounded overwrite/restore command undo/redo refreshes Code and remains distinct from source-byte restoration; blocks and textual assembly pending. |
 | EDIT-006 | Partial | [C], [T]: overwrite implemented; insert/delete/copy/move/fill/import/export pending. |
 | EDIT-007 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | EDIT-008 | Partial | [C], [N]: ranges and limits validated before mutation; later operations pending. |
 | EDIT-009 | Partial | [C], [N], [Storage]: atomic logical edits and documented replacement commit point. |
 | EDIT-010 | Partial | [T]: edit entry column visible; size-changing insert mode unavailable. |
-| EDIT-011 | Implemented | [C], [F], [A], [T]: generation changes invalidate search, metadata, decoding and direct targets after edits, undo, discard and save. |
+| EDIT-011 | Implemented | [C], [F], [A], [T]: generation changes invalidate search, metadata, decoding and direct targets after overwrites, source-byte restores, undo/redo, discard and save. |
 | EDIT-012 | Implemented | [N], [P]: saved logical bytes preserve untouched ranges, including copy boundaries. |
 | EDIT-013 | Implemented | [A], [N], [T]: header-field navigation leads to ordinary byte edits; no format repair or checksum rewrite is invoked. |
 | EDIT-014 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
@@ -167,8 +168,8 @@ and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| SEARCH-001 | Partial | [C], [T]: literal hex bytes and explicit UTF-8 text; wildcard/instruction search pending. |
-| SEARCH-002 | Partial | [C], [T]: forward, repeat and cancel; backward/selection/wrap options pending. |
+| SEARCH-001 | Partial | [C], [T], [Reference]: case-sensitive literal bytes/UTF-8; original character-field case policy, encoding mappings and wildcard/instruction search remain open. |
+| SEARCH-002 | Partial | [C], [T], [P], [Reference]: forward/repeat/cancel plus Shift+F7; cursor+1 repeat still differs from documented independent last-match state; backward/scope/boundary policies pending. |
 | SEARCH-003 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | SEARCH-004 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 
@@ -248,7 +249,7 @@ and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| TEST-001 | Implemented | [P], [Recording]: generated PE scenario replays open, mode changes, entry/VA goto, branch/return, Code-mode byte edit and save through a real Linux PTY. |
+| TEST-001 | Implemented | [P], [Recording]: generated scenarios replay mode choice, source-byte restore, entry/VA goto, Code branch/return, byte edit and save through a real PTY; original runtime comparison remains blocked. |
 | TEST-002 | Implemented | [N], [P]: discard checks expected bytes and mtime on generated ordinary files. |
 | TEST-003 | Implemented | [N], [P]: exact persisted byte changes; reopen via file reads. |
 | TEST-004 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
@@ -282,6 +283,7 @@ and the parent epic remain open.
 [Analysis]: adr/0004-analysis-backends.md
 [Commands]: commands.md
 [README]: ../README.md
+[Reference]: reference/hiew-8.63.md
 
 - [Core unit/command/search tests][C]
 - [Generated format/mapping fixtures][F], [decoder fixtures and bounded corpora][D], and [shared analysis/navigation regressions][A]
@@ -290,3 +292,4 @@ and the parent epic remain open.
 - [Real Unix PTY scenarios][P], [PTY-harness regressions][PH], [initial editor recording](evidence/native-editor.cast), and [PE analysis recording][Recording]
 - [Storage guarantees and limits][Storage], [input behavior][Input], [build strategies][Build]
 - [Selected readers/decoders, limits and remaining analysis decisions][Analysis]
+- [Versioned original-documentation audit and open differential scenarios][Reference]

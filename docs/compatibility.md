@@ -17,6 +17,8 @@ Evidence categories used below:
 
 - **Official**: the original author's HIEW feature page or HEM documentation.
 - **Community**: the Hiew Documentation Project linked by the official website.
+- **Bundled**: the author's documentation supplied with a named local reference
+  version; this is documented behavior, not a runtime observation.
 - **Proposed**: a hiewbie requirement or improvement, not a claim about HIEW.
 - **Verify**: behavior requiring a recorded comparison with a lawful reference copy.
 
@@ -25,6 +27,11 @@ Hiewix is a separate WinAPI presentation; it does not define hiewbie's UI techno
 Record the exact reference version, terminal, fixture, and observation date for comparisons.
 The compatibility ledger must identify evidence and intentional differences per requirement.
 Do not infer original behavior from another clone's implementation.
+
+The [8.63 reference audit][S12] adds a versioned bundled-documentation baseline
+and 25 differential scenarios. Its original-program startup attempt was blocked
+by the environment; no original behavior was observed. Keep that baseline
+separate from the newer official feature-page snapshot above.
 
 ### 1.1 Official baseline
 
@@ -57,22 +64,29 @@ ARM64, broader endianness, and additional instruction sets are hiewbie additions
 
 ### 2.1 Initial binding inventory
 
-This is a condensed community-documented baseline, not a complete keymap. Source: [S2].
+This is a condensed documented baseline, not a complete keymap. Sources: [S2], [S12].
 The implemented subset is documented in [commands.md](commands.md). Remaining
 bindings stay planned. Validate contextual details before declaring HIEW parity.
 
 | Context | Keys | Action |
 |---|---|---|
-| View | Enter / F4 | Cycle / choose mode |
-| View | F3 | Begin editing |
+| View | Enter | Cycle Text / Hex / Code |
+| View | F4 | Select view mode; exact original interaction requires observation |
+| Hex / Code view | F3 | Begin editing |
 | Edit | F9 / Esc | Save / discard |
-| Edit | Tab | Hex/characters or opcodes/assembly |
+| Hex / Code edit | F3 / Backspace | Restore the original current / previous byte |
+| Hex edit | Tab | Switch hex/character input |
+| Code edit | Enter / F2 | Open assembler |
 | View | F5 | Goto |
-| View | F6 / Ctrl+F6 | References / next reference |
-| View | F7 / Ctrl+Enter | Search / repeat |
-| View | F8 | Executable headers |
-| Headers | F5 / F6 / F7 / F9 | Entry / sections / imports / exports |
-| Code | Branch numbers / Backspace | Follow / return |
+| Hex view | F6 | Find data reference |
+| Code view | F6 / Ctrl+F6 | References / next reference |
+| Text view | F6 / Ctrl+F6 | Select line endings / toggle tab expansion |
+| View | F7 / Ctrl+Enter / Shift+F7 | Search / repeat / repeat |
+| Hex / Code view | F8 | Executable headers |
+| Text view | F8 | Select translation table |
+| PE header | F5 / F6 / F7 / F9 | Entry / sections / imports / exports |
+| Code | Default labels 1-9,A-Z / 0 | Follow target / return; JumpTable is configurable |
+| View | Backspace | Return after goto/find/reference navigation |
 | Code | Ctrl+F1 / Shift+F1 | Bitness / architecture |
 | Code | / | Resynchronize decoding |
 | View | * / [ / ] | Select / block boundaries |
@@ -94,6 +108,9 @@ bindings stay planned. Validate contextual details before declaring HIEW parity.
 - **KEY-004**: Preserve per-view navigation/bookmark behavior after recording its details.
 - **KEY-005**: Verify edit-state F2 assembly, F3 byte restore, F10 truncation,
   exit/timestamp behavior, and modifier variants against the selected reference.
+  The 8.63 help documents F3 restoring the current byte and Backspace the
+  previous byte; neither means arbitrary last-command undo. Nibble and buffer
+  boundaries, exact cursor movement and post-save state require observation.
 - **KEY-006**: Add recorded scenarios for every contextual collision, especially F2/F3/F9.
 - **KEY-007**: Treat Esc as cancellation of the active operation before application exit.
 - **KEY-008**: Macro recording stores meaningful commands and arguments, not terminal timing.
@@ -211,10 +228,18 @@ each capability requires independent fixtures and acceptance evidence.
 ## 7. Search, annotations, and advanced parity
 
 - **SEARCH-001**: Support text, byte/wildcard, and instruction searches with explicit encodings.
+  Preserve the documented character-field case-insensitive versus hex-field
+  exact policy, with an explicit encoding/case mapping; retain the full query
+  for repeat. Arbitrary Unicode folding is a separate capability [S12].
 - **SEARCH-002**: Support forward/backward, whole-file/selection, repeat, and cancellation.
+  The 8.63 Russian manual records continuation from the last hit despite ordinary
+  cursor movement, with resets on Ctrl+Home/End, F5 and F7. Record direction,
+  reset, no-hit and boundary behavior rather than assuming cursor+1 [S12].
 - **SEARCH-003**: Support strings browsing and navigation from results.
 - **SEARCH-004**: Track multi-file search/replacement as an explicit parity requirement [S1].
 - **META-001**: Persist names, comments, bookmarks, and colored ranges separately from file bytes.
+  Preserve the documented eight screen-state bookmarks per mode, separately
+  from navigation return history; verify rollover and restored viewport state [S12].
 - **META-002**: Version sidecar data and bind it to an identifiable document revision.
 - **META-003**: Record verification work for HIEW name/map import/export compatibility.
 - **CALC-001**: Provide checked 64-bit expressions, bases, bit operations, and data reads.
@@ -318,3 +343,5 @@ No milestone may claim full HIEW parity while required legacy or contextual entr
 - [S9] https://llvm.org/docs/CommandGuide/llvm-mc.html and https://llvm.org/docs/DeveloperPolicy.html
 - [S10] https://github.com/keystone-engine/keystone and https://github.com/keystone-engine/keystone/blob/master/EXCEPTIONS-CLIENT
 - [S11] https://sw.kovidgoyal.net/kitty/keyboard-protocol/
+
+[S12]: reference/hiew-8.63.md

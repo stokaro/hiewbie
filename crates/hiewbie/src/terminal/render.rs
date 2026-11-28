@@ -6,7 +6,9 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use super::{Dialog, EntryColumn, InputDialog, PromptKind, Ui, escaped_text, printable};
+use super::{
+    Dialog, EntryColumn, InputDialog, ModeChoice, PromptKind, Ui, escaped_text, printable,
+};
 
 pub(super) const BASE: Style = Style::new().fg(Color::Gray).bg(Color::Blue);
 const ADDRESS: Style = Style::new().fg(Color::Cyan).bg(Color::Blue);
@@ -112,6 +114,7 @@ impl<S: ByteSource> Ui<S> {
         match self.dialog.as_ref() {
             Some(Dialog::Help) => render_help(frame, area),
             Some(Dialog::Input(input)) => render_prompt(frame, area, input),
+            Some(Dialog::Mode(selected)) => render_mode_picker(frame, area, *selected),
             Some(Dialog::Analysis(dialog)) => self.render_analysis_dialog(frame, area, dialog),
             None => {}
         }
@@ -345,6 +348,7 @@ impl<S: ByteSource> Ui<S> {
                     Some(" Enter search | Tab hex/text | Ctrl+U clear | Esc cancel ")
                 }
                 Some(Dialog::Input(_)) => Some(" Enter goto | Ctrl+U clear | Esc cancel "),
+                Some(Dialog::Mode(_)) => Some(" Up/Down choose | Enter select | Esc cancel "),
                 None => None,
             }
         };
@@ -354,7 +358,7 @@ impl<S: ByteSource> Ui<S> {
         }
         let labels = if self.editor.is_editing() {
             [
-                "Help", "Asm-", "Rest-", "--", "--", "--", "--", "--", "Save", "Trunc-",
+                "Help", "Asm-", "Rest", "--", "--", "--", "--", "--", "Save", "Trunc-",
             ]
         } else {
             [
@@ -397,10 +401,11 @@ pub(super) fn popup(area: Rect, width: u16, height: u16) -> Rect {
 fn render_help(frame: &mut Frame<'_>, area: Rect) {
     let popup = popup(area, 80, 25);
     let lines = [
-        "Hex, ASCII Text, and Code views share one document and file cursor.",
-        "View  Enter/F4 modes  F3/Ctrl+E edit  F8/Ctrl+O headers  Esc quit",
-        "      F5/Ctrl+G goto  F7/Ctrl+F search  Ctrl+Enter/Ctrl+R repeat",
-        "Code  1..9 direct branch  Backspace return  / resynchronize",
+        "Hex, ASCII Text, and Code share one document and file cursor.",
+        "View  Enter cycle; F4 select mode; F3/Ctrl+E edit; Esc quit",
+        "      F5/Ctrl+G goto; F7/Ctrl+F search; F8/Ctrl+O headers",
+        "      Shift+F7 / Ctrl+Enter / Ctrl+R repeat (forward, no wrap)",
+        "Code  1..9 direct branch; Backspace return; / resynchronize",
         "      Up/Down instructions; Left/Right bytes; PgUp/PgDn pages",
         "      Unknown backward boundaries use one byte/ISA alignment.",
         "      Ctrl+F1/Ctrl+B x86 bitness; Shift+F1/Ctrl+A decoder",
@@ -408,14 +413,14 @@ fn render_help(frame: &mut Frame<'_>, area: Rect) {
         "      L/B/E little/big/automatic endian; R raw; V raw base",
         "      Big-endian decode unsupported; raw bytes remain available.",
         "Headers F5 entry; F6 regions; F4 fields; S slices; Enter follows",
-        "Edit  F9/Ctrl+S save  Esc discard  Tab hex/ASCII  Ctrl+Z/Y undo/redo",
-        "      Code edit changes bytes only; textual assembly is planned.",
-        "      Two digits commit one byte; Backspace cancels a digit.",
+        "Edit  F9/Ctrl+S save; Esc discard; Tab hex/ASCII; Ctrl+Z/Y undo/redo",
+        "      F3 restores current byte; Backspace restores previous byte.",
+        "      Two digits commit one byte; Backspace cancels a digit first.",
+        "      Code editing changes bytes; textual assembly is planned.",
         "Goto  Hex default, decimal suffix t, +/- relative; .address is VA",
         "      V: image VA; R: raw base address; F: unmapped file offset",
-        "Find  Tab hex/UTF-8 text; forward, no wrap; Esc cancels scan",
-        "Paste rejected. Ctrl+Home/End file edges; F1 closes help.",
-        "Planned: textual assembly, global references, blocks, multi-file.",
+        "Find  Tab hex/UTF-8 text; Esc cancels scan; Ctrl+Home/End file edges",
+        "Paste rejected. Blocks, global references and multi-file planned.",
         "F9 in view means Open (planned), never Save. '-' means planned.",
         "Legacy terminals may intercept keys; use the Ctrl alternatives.",
         "Close help with F1, Enter, or Esc.",
@@ -431,6 +436,34 @@ fn render_help(frame: &mut Frame<'_>, area: Rect) {
                 .title(" hiewbie help ")
                 .style(HEADER),
         ),
+        popup,
+    );
+}
+
+fn render_mode_picker(frame: &mut Frame<'_>, area: Rect, selected: ModeChoice) {
+    let popup = popup(area, 34, 7);
+    let mut lines = [
+        (ModeChoice::Text, "Text"),
+        (ModeChoice::Hex, "Hex"),
+        (ModeChoice::Code, "Code"),
+    ]
+    .into_iter()
+    .map(|(choice, label)| {
+        let (marker, style) = if choice == selected {
+            (">", ACTIVE)
+        } else {
+            (" ", HEADER)
+        };
+        Line::styled(format!("{marker} {label}"), style)
+    })
+    .collect::<Vec<_>>();
+    lines.push(Line::raw(""));
+    lines.push(Line::raw("Enter selects; Esc cancels"));
+    frame.render_widget(Clear, popup);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .style(HEADER)
+            .block(Block::default().borders(Borders::ALL).title(" View mode ")),
         popup,
     );
 }

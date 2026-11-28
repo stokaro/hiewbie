@@ -46,14 +46,17 @@ Examples:
   hiewbie --disassemble --raw --arch x86-64 --base 0x400000 code.bin
   hiewbie --disassemble --slice 1 --entry universal-macho
 
-View: Enter/F4 switches Hex/Text/Code; F3/Ctrl+E begins byte editing;
-      F5/Ctrl+G goes to an offset; F7/Ctrl+F searches; Ctrl+Enter repeats.
+View: Enter cycles Hex/Text/Code; F4 selects a mode; F3/Ctrl+E begins editing;
+      F5/Ctrl+G goes to an offset; F7/Ctrl+F searches;
+      Shift+F7, Ctrl+Enter, or Ctrl+R repeats the search.
 Code: F8/Ctrl+O shows headers; Shift+F1/Ctrl+A opens the analysis profile.
       Ctrl+F1/Ctrl+B cycles x86 bitness; / resynchronizes; Backspace returns.
       The profile selects architecture, instruction byte order, and raw base.
       Headers then S selects a Mach-O slice. Branch numbers follow, never execute.
 Edit: F9/Ctrl+S saves; Esc discards; Tab switches hex/ASCII entry;
+      F3 restores the original current byte; Backspace restores the previous;
       Ctrl+Z/Ctrl+Y undo/redo. A hex byte is applied after both digits.
+      Backspace cancels an incomplete hex digit first.
 F1 opens help. Esc exits from view mode. Bracketed paste is rejected.
 
 PE/ELF/Mach-O inspection currently covers headers and load mappings.

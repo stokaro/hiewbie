@@ -34,19 +34,30 @@ effect. See [commands.md](../commands.md) for the actual inventory.
 
 - View F3 begins editing. Edit F9 saves; edit Esc discards. View F9 remains the
   planned Open command and never silently becomes Save.
-- Enter/F4 cycles Hex, Text, and Code. Code uses the selected executable image or
-  explicit raw profile; unsupported interpretations retain raw-byte access.
+- Enter cycles Hex, Text, and Code. F4 opens a chooser for all three modes and
+  dispatches the shared SetMode command on confirmation; Esc leaves the mode
+  unchanged. Code uses the selected executable image or explicit raw profile;
+  unsupported interpretations retain raw-byte access. Hiew 8.63 documents F4
+  as mode selection; the explicit chooser is a hiewbie design decision, not
+  observed original behavior.
+- Edit F3 restores the source byte at the cursor. Backspace restores the
+  preceding source byte and moves there, except that a pending first hex digit
+  is cancelled without moving or restoring. Previous-byte restore at offset
+  zero is a no-op. Both restore commands are available in the portable core,
+  validate before mutation, and participate in hiewbie's additional undo/redo
+  history. A successful save resets the source baseline.
 - Two hex digits form one byte command. An incomplete digit is UI state only,
   cannot be saved, and is cancelled by Backspace or a context/navigation change.
 - Edit Tab selects hex or printable ASCII entry. Other encodings can be edited
   by byte value; Unicode text insertion is not implied.
-- Ctrl+E/G/F/S/Z/Y provide edit/goto/search/save/undo/redo alternatives. Ctrl+R
-  repeats search because legacy terminals often cannot distinguish Ctrl+Enter.
+- Ctrl+E/G/F/S/Z/Y provide edit/goto/search/save/undo/redo alternatives. Shift+F7
+  and Ctrl+Enter repeat search; Ctrl+R is an alternative because legacy terminals
+  often cannot distinguish Ctrl+Enter. Context is resolved before these aliases.
 - F8/Ctrl+O opens headers, with F5 entry, F6 regions, F4 fields, and S slices.
   Imports/exports remain explicitly unavailable in that context.
 - Shift+F1/Ctrl+A opens architecture/endian/raw-base settings. Ctrl+F1/Ctrl+B
-  cycles x86 bitness in Code. Branch numbers follow direct targets, Backspace
-  returns, and `/` resynchronizes at the selected byte.
+  cycles x86 bitness in Code. Outside edit mode, Code branch numbers follow
+  direct targets, Backspace returns, and `/` resynchronizes at the selected byte.
 - Esc cancels a search or dialog before discarding an edit, then exits from view.
   Search is forward literal bytes or explicit UTF-8 text, with repeat and no
   wrap. Wildcards, instructions, backward/selection search remain planned.
@@ -56,9 +67,13 @@ effect. See [commands.md](../commands.md) for the actual inventory.
   supported input path.
 
 The contextual function bar marks unavailable commands with a dash. The initial
-help dialog lists commands and fallbacks. Original HIEW comparisons for all
-modified/contextual variants remain outstanding; these are implementation
-choices against the specification, not proof of exact reference parity.
+help dialog lists commands and fallbacks. The
+[Hiew 8.63 reference audit](../reference/hiew-8.63.md) derives expectations from
+the supplied author documentation. The original failed to start in the available
+environment, so its exact selector, nibble, edit-buffer, save-transition and
+modifier behavior remains unobserved. Search still uses literal case-sensitive
+bytes and cursor-based continuation, unlike the original's documented
+character-field case policy and independent last-match state.
 
 ## Terminal lifecycle
 
@@ -91,7 +106,8 @@ Windows native unit/file/CLI tests do not establish ConPTY behavior.
 
 [Frontend tests](../../crates/hiewbie/src/terminal/tests.rs) replay semantic key
 events and compare deterministic cells, including a complete small frame.
-They cover nibble atomicity, state-dependent F3/F9, undo/redo/discard, readonly,
+They cover nibble atomicity, mode choice/cancellation, source-byte restoration,
+state-dependent F3/F9, Shift+F7, undo/redo/discard, readonly,
 search/goto, modifiers, paste rejection, Unicode labels, empty/tiny/large
 viewports, and the post-replacement recovery state.
 [CLI tests](../../crates/hiewbie/tests/cli.rs) exercise the built executable.
