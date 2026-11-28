@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use crate::formats::Endian;
 use crate::{ByteSource, Document, Error, FileOffset};
 
 pub const MAX_EXPRESSION_BYTES: usize = 512;
@@ -13,6 +14,9 @@ pub enum CalculationError {
         at: usize,
     },
     InvalidTag {
+        at: usize,
+    },
+    InvalidByteOrder {
         at: usize,
     },
     MissingBracket {
@@ -54,6 +58,11 @@ impl fmt::Display for CalculationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidTag { at } => write!(f, "Invalid cursor tag at column {}", at + 1),
+            Self::InvalidByteOrder { at } => write!(
+                f,
+                "Invalid byte order: use :le/:be on value tags (column {})",
+                at + 1
+            ),
             Self::InvalidOperator { at } => write!(f, "Invalid operator at column {}", at + 1),
             Self::MissingBracket { at } => write!(f, "No closing parenthesis at column {}", at + 1),
             Self::BigNumber { at } => write!(f, "Integer exceeds 64 bits at column {}", at + 1),
@@ -79,6 +88,7 @@ impl CalculationError {
         match self {
             Self::InvalidOperator { at }
             | Self::InvalidTag { at }
+            | Self::InvalidByteOrder { at }
             | Self::MissingBracket { at }
             | Self::BigNumber { at }
             | Self::Syntax { at, .. }
@@ -103,9 +113,12 @@ impl std::error::Error for CalculationError {
 }
 
 /// Evaluate one expression without moving or modifying the document.
-/// Typed reads use little-endian values at `cursor`. The caller supplies
-/// the local coordinate for `@o`, or `None` when the local address overflows.
-/// `@O` always yields `cursor`.
+/// Typed reads use little-endian values at `cursor` unless the tag has an
+/// explicit `:le` or `:be` suffix (ASCII case-insensitive). Lowercase tags
+/// sign-extend and uppercase tags zero-extend 8/16/32/64-bit values.
+/// The byte-order suffix is a hiewbie extension to the original cursor tags.
+/// The caller supplies the local coordinate for `@o`, or `None` when the local
+/// address overflows. `@O` always yields `cursor`.
 pub fn evaluate<S: ByteSource>(
     expression: &str,
     document: &mut Document<S>,
@@ -303,6 +316,9 @@ impl<S: ByteSource> Parser<'_, S> {
         let width = match kind {
             Some(b'o' | b'O') => {
                 self.index += 1;
+                if self.input.as_bytes().get(self.index) == Some(&b':') {
+                    return Err(CalculationError::InvalidByteOrder { at: self.index });
+                }
                 return if kind == Some(b'o') {
                     self.local
                         .ok_or(CalculationError::LocalOffsetOverflow { at })
@@ -317,10 +333,15 @@ impl<S: ByteSource> Parser<'_, S> {
             _ => return Err(CalculationError::InvalidTag { at }),
         };
         self.index += 1;
+        let order = self.read_byte_order()?;
         let mut buffer = [0; 8];
+        let bytes = match order {
+            Endian::Little => &mut buffer[..width],
+            Endian::Big => &mut buffer[8 - width..],
+        };
         if self
             .document
-            .read_at(self.cursor, &mut buffer[..width])
+            .read_at(self.cursor, bytes)
             .map_err(CalculationError::Read)?
             != width
         {
@@ -330,13 +351,41 @@ impl<S: ByteSource> Parser<'_, S> {
                 width,
             });
         }
-        let value = u64::from_le_bytes(buffer);
+        let value = match order {
+            Endian::Little => u64::from_le_bytes(buffer),
+            Endian::Big => u64::from_be_bytes(buffer),
+        };
         if kind.is_some_and(|kind| kind.is_ascii_lowercase()) {
             let shift = 64 - 8 * width;
             Ok((((value << shift) as i64) >> shift) as u64)
         } else {
             Ok(value)
         }
+    }
+
+    fn read_byte_order(&mut self) -> Result<Endian, CalculationError> {
+        if self.input.as_bytes().get(self.index) != Some(&b':') {
+            return Ok(Endian::Little);
+        }
+        let at = self.index;
+        self.index += 1;
+        let start = self.index;
+        self.index += self.input.as_bytes()[start..]
+            .iter()
+            .take_while(|byte| byte.is_ascii_alphanumeric() || **byte == b'_')
+            .count();
+        let token = &self.input[start..self.index];
+        let order = if token.eq_ignore_ascii_case("le") {
+            Endian::Little
+        } else if token.eq_ignore_ascii_case("be") {
+            Endian::Big
+        } else {
+            return Err(CalculationError::InvalidByteOrder { at });
+        };
+        if self.input.as_bytes().get(self.index) == Some(&b':') {
+            return Err(CalculationError::InvalidByteOrder { at: self.index });
+        }
+        Ok(order)
     }
 }
 

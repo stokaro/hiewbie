@@ -1831,3 +1831,122 @@ fn calculator_modal_evaluates_on_enter_and_restores_the_edit_context() {
     key(&mut ui, KeyCode::Char('5'));
     assert_eq!(bytes(&mut ui), [0xA5, 0x80]);
 }
+
+#[test]
+fn calculator_endian_reads_preserve_pending_bytes_and_modal_state() {
+    let original = [0xFE, 0x80, 1, 2];
+    let mut ui = ui(&original);
+    key(&mut ui, KeyCode::F(3));
+    type_text(&mut ui, "A5");
+    key(&mut ui, KeyCode::Left);
+    key(&mut ui, KeyCode::Char('B'));
+    let generation = ui.editor.document().generation();
+    control(&mut ui, KeyCode::Char('l'));
+
+    for (expression, expected) in [
+        ("@W:le", 0x80A5_u64),
+        ("@W:be", 0xA580),
+        ("@w:be", (-0x5A80_i64) as u64),
+        ("@D:BE", 0xA580_0102),
+    ] {
+        control(&mut ui, KeyCode::Char('u'));
+        type_text(&mut ui, expression);
+        key(&mut ui, KeyCode::Enter);
+        let output = screen(&mut ui, 80, 25);
+        assert!(output.contains(expression));
+        assert!(output.contains(&format!(
+            "Hex:{:08X}`{:08X}",
+            expected >> 32,
+            expected as u32
+        )));
+        assert!(output.contains("═ Calculator ═"));
+    }
+    for (expression, diagnostic, marker) in [
+        ("@Q:be", "No value under cursor", 6),
+        ("@W:middle", "Use :le or :be on a value tag", 8),
+        ("@O:be", "Use :le or :be on a value tag", 8),
+    ] {
+        control(&mut ui, KeyCode::Char('u'));
+        type_text(&mut ui, expression);
+        key(&mut ui, KeyCode::Enter);
+        let output = screen(&mut ui, 80, 25);
+        assert!(output.contains(&format!("Error: {diagnostic}")));
+        assert_eq!(
+            output.lines().nth(11).unwrap().chars().nth(marker),
+            Some('^')
+        );
+    }
+
+    control(&mut ui, KeyCode::Char('u'));
+    type_text(&mut ui, "@W:be");
+    control(&mut ui, KeyCode::Char('e'));
+    let checked = screen(&mut ui, 80, 25);
+    assert!(checked.contains("Calculator [checked i64]"));
+    assert!(checked.contains("Sig:42368"));
+    key(&mut ui, KeyCode::F(1));
+    assert!(!ui.has_input_caret());
+    // Help can be scrolled without dispatching its keys to the expression.
+    key(&mut ui, KeyCode::End);
+    let help = screen(&mut ui, 80, 25);
+    assert!(help.contains("@W:le / @W:be"));
+    assert!(help.contains("Ctrl-E checks signed overflow (hiewbie)"));
+    key(&mut ui, KeyCode::Esc);
+    assert_eq!(screen(&mut ui, 80, 25), checked);
+    let mut terminal = Terminal::new(TestBackend::new(80, 25)).unwrap();
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    terminal.backend_mut().assert_cursor_position((11, 10));
+
+    key(&mut ui, KeyCode::Esc);
+    assert_eq!(ui.pending_nibble, Some(0xB));
+    assert_eq!(ui.editor.cursor(), FileOffset::new(0));
+    assert_eq!(ui.editor.document().generation(), generation);
+    assert_eq!(bytes(&mut ui), [0xA5, 0x80, 1, 2]);
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    terminal.backend_mut().assert_cursor_position((14, 1));
+
+    control(&mut ui, KeyCode::Char('l'));
+    assert_eq!(screen(&mut ui, 80, 25), checked);
+    key(&mut ui, KeyCode::PageUp);
+    assert!(screen(&mut ui, 80, 25).contains("Calculator [checked i64]"));
+    type_text(&mut ui, "1");
+    key(&mut ui, KeyCode::Enter);
+    assert!(screen(&mut ui, 80, 25).contains("═ Calculator ═"));
+    key(&mut ui, KeyCode::Esc);
+    key(&mut ui, KeyCode::Char('6'));
+    assert_eq!(bytes(&mut ui), [0xB6, 0x80, 1, 2]);
+    control(&mut ui, KeyCode::Char('z'));
+    assert_eq!(bytes(&mut ui), [0xA5, 0x80, 1, 2]);
+    control(&mut ui, KeyCode::Char('y'));
+    assert_eq!(bytes(&mut ui), [0xB6, 0x80, 1, 2]);
+    key(&mut ui, KeyCode::Esc);
+    assert_eq!(bytes(&mut ui), original);
+}
+
+#[test]
+fn calculator_is_read_only_in_every_view_and_resizes_with_endian_input() {
+    for mode in [ViewMode::Text, ViewMode::Hex, ViewMode::Code] {
+        let mut ui = Ui::new(
+            Editor::new(Document::new(MemorySource::new(vec![0x80, 0xFE])), true),
+            "fixture.bin".into(),
+        );
+        ui.editor.dispatch(Command::SetMode(mode)).unwrap();
+        control(&mut ui, KeyCode::Char('l'));
+        type_text(&mut ui, "@w:be");
+        key(&mut ui, KeyCode::Enter);
+        for (width, height) in [(80, 25), (100, 30)] {
+            let output = screen(&mut ui, width, height);
+            assert!(output.contains("@w:be"));
+            assert!(output.contains("Sig:-32514"));
+            assert!(output.contains("Hex:FFFFFFFF`FFFF80FE"));
+        }
+        screen(&mut ui, 20, 4);
+        screen(&mut ui, 1, 1);
+        assert!(screen(&mut ui, 80, 25).contains("Sig:-32514"));
+        key(&mut ui, KeyCode::Esc);
+        assert_eq!(ui.editor.mode(), mode);
+        assert_eq!(ui.editor.cursor(), FileOffset::new(0));
+        assert_eq!(ui.editor.document().generation(), 0);
+        assert!(!ui.editor.document().is_dirty());
+        assert_eq!(bytes(&mut ui), [0x80, 0xFE]);
+    }
+}

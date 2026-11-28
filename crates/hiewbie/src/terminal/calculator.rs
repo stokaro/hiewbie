@@ -20,6 +20,7 @@ pub(super) struct Calculator {
     cursor: usize,
     insert: bool,
     answer: Result<u64, CalculationError>,
+    checked_answer: bool,
     pub(super) help: Option<Help>,
 }
 
@@ -30,6 +31,7 @@ impl Default for Calculator {
             cursor: 0,
             insert: false,
             answer: Ok(0),
+            checked_answer: false,
             help: None,
         }
     }
@@ -71,10 +73,12 @@ impl<S: ByteSource> Ui<S> {
             calculator.clear();
         } else if is_control_char(key, 'e') {
             calculator.answer = self.editor.calculate_checked(&calculator.expression);
+            calculator.checked_answer = true;
         } else {
             match (key.code, key.modifiers) {
                 (KeyCode::Enter, KeyModifiers::NONE) => {
                     calculator.answer = self.editor.calculate(&calculator.expression);
+                    calculator.checked_answer = false;
                 }
                 (KeyCode::F(1), KeyModifiers::NONE) => {
                     calculator.help = Some(Help::new(HelpTopic::Calculator));
@@ -128,7 +132,12 @@ pub(super) fn render_calculator(frame: &mut Frame<'_>, area: Rect, calculator: &
         centered,
         76,
         9,
-        Line::from(" Calculator ").centered(),
+        Line::from(if calculator.checked_answer {
+            " Calculator [checked i64] "
+        } else {
+            " Calculator "
+        })
+        .centered(),
         PANEL,
     )
     .inner(Margin::new(1, 0));
@@ -184,6 +193,7 @@ fn error_lines(error: &CalculationError, first: usize, width: usize) -> Vec<Line
         CalculationError::Syntax { .. } => "Syntax error".to_owned(),
         CalculationError::InvalidOperator { .. } => "Invalid operator".to_owned(),
         CalculationError::InvalidTag { .. } => "Invalid tag".to_owned(),
+        CalculationError::InvalidByteOrder { .. } => "Use :le or :be on a value tag".to_owned(),
         CalculationError::MissingBracket { .. } => "No closing bracket".to_owned(),
         CalculationError::BigNumber { .. } => "Big number".to_owned(),
         CalculationError::ShortRead { .. } => "No value under cursor".to_owned(),

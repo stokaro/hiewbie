@@ -52,8 +52,9 @@ independent cursor movement, followed by an exact one-byte save.
 edit, export cancellation, raw export, and confirmed append.
 `--record-cursor PATH` records native Hex and ASCII caret coordinates and
 shapes, restoration of pending Hex and Search input after Help, and the mode chooser.
-`--record-calculator PATH` records expression evaluation, Help, a diagnostic,
-and restoration of a pending Hex digit.
+`--record-calculator PATH` records wrapping and checked expression evaluation,
+explicit and mixed LE/BE reads, Help, invalid-order and arithmetic diagnostics,
+logical overlay reads, and restoration of a pending Hex digit.
 `--record-files PATH` records startup Files, the mask dialog, a directory
 change, reopening and canceling F9, and an exact byte save to the selected file.
 This recording uses a generated demo path before rendering. Its terminal

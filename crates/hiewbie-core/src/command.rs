@@ -212,7 +212,7 @@ pub const COMMANDS: &[CommandInfo] = &[
     },
     CommandInfo {
         id: "tools.calculator",
-        description: "Open the read-only integer calculator",
+        description: "Open the read-only 64-bit calculator: wrapping/checked arithmetic and :le/:be value reads",
     },
     CommandInfo {
         id: "bookmark.store",
@@ -514,13 +514,14 @@ impl<S: ByteSource> Editor<S> {
         Ok(rows)
     }
 
-    /// Evaluate with the same mapped or raw address used for Code rows.
+    /// Evaluate with wrapping arithmetic and the same mapped or raw address used for Code rows.
+    /// Value tags default to little endian; `:le` and `:be` select an explicit read order.
     pub fn calculate(&mut self, expression: &str) -> Result<u64, CalculationError> {
         let local = self.calculator_local(expression);
         calculator::evaluate(expression, &mut self.document, self.cursor, local)
     }
 
-    /// Evaluate with checked signed arithmetic and the same cursor tags as the Calculator.
+    /// Evaluate with checked signed arithmetic and the same endian-aware cursor tags.
     pub fn calculate_checked(&mut self, expression: &str) -> Result<u64, CalculationError> {
         let local = self.calculator_local(expression);
         calculator::evaluate_checked(expression, &mut self.document, self.cursor, local)

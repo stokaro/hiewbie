@@ -232,6 +232,13 @@ offset `200h`, and `@O` produced `200h`.
 
 [Paired Windows observations](../evidence/hiew-8.63-windows-calculator.json)
 
+The [candidate expression contract](../calculator.md) records the implemented
+operator precedence and edge cases with an independent known-answer corpus.
+Ctrl+E checked arithmetic, its `[checked i64]` result label, and per-read
+`:le` / `:be` qualifiers are explicit hiewbie additions. They do not alter bare
+tags or Enter's wrapping behavior. These candidate tests extend regression
+coverage; they do not extend the original-side observation record above.
+
 ### Text is a line-oriented view, with encoding and layout settings
 
 The original Text help describes line wrapping, selectable line endings,

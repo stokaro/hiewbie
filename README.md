@@ -95,6 +95,11 @@ beyond 4 GiB, without loading the complete file into memory.
 | Any view | Ctrl+Home / Ctrl+End | Move to the first / last byte |
 | Context | F1 / Esc | Help / cancel the active operation before exiting |
 
+Calculator value tags accept explicit byte order: `@W:be` reads an unsigned
+16-bit big-endian value, `@w:le` a signed little-endian value. Bare tags retain
+little-endian behavior. See the [expression contract](docs/calculator.md) for
+widths, precedence, checked arithmetic and errors.
+
 Run `hiewbie` without a filename to browse the working directory. F9 opens
 the same browser from a view, saves in edit mode, and opens parsed exports
 in headers. Give multiple paths to browse files in argument order. History
