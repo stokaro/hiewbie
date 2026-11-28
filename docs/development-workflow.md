@@ -62,6 +62,11 @@ checked-in [editing](evidence/native-editor.cast) and
 scenarios. Byte assertions, state assertions, and cleanup checks are the
 regression gate.
 
+The export scenario waits for the new destination to appear or for an
+existing destination to be atomically replaced, then checks every byte.
+The PTY harness keeps draining output during the same action deadline.
+A staging update can precede the file commit even when output goes quiet.
+
 Run the cursor-height check from an attached Windows console:
 
 ```powershell
