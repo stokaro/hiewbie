@@ -1,6 +1,7 @@
 //! Thin native terminal adapter over the portable document and command model.
 
 mod analysis;
+mod assembly;
 mod block;
 mod calculator;
 mod code_view;
@@ -376,6 +377,7 @@ enum Dialog {
     ReferenceMiss,
     BlockWrite(BlockWrite),
     Calculator,
+    Assembly(Box<assembly::AssemblyInput>),
     Help(Help),
     Mode(ModeChoice),
     LineFeed(text_view::LineFeed),
@@ -398,6 +400,7 @@ struct Ui<S: ByteSource> {
     file_access: FileAccess,
     edit_format: Option<BinaryFormat>,
     calculator: Calculator,
+    assembly_select: bool,
     dialog: Option<Dialog>,
     reopen_required: bool,
     export_in_progress: bool,
@@ -435,6 +438,7 @@ impl<S: ByteSource> Ui<S> {
             file_access: FileAccess::Read,
             edit_format: None,
             calculator: Calculator::default(),
+            assembly_select: false,
             dialog: None,
             reopen_required: false,
             export_in_progress: false,
@@ -453,12 +457,19 @@ impl<S: ByteSource> Ui<S> {
     }
 
     fn dispatch(&mut self, command: Command) -> UiAction {
-        if command != Command::OpenCalculator && self.pending_nibble.take().is_some() {
+        if !matches!(
+            command,
+            Command::OpenCalculator | Command::OpenAssembly | Command::NopInstruction
+        ) && self.pending_nibble.take().is_some()
+        {
             self.notice("Pending hex digit cancelled; no partial byte was applied");
         }
         let previous_mode = self.editor.mode();
         match self.editor.dispatch(command) {
             Ok(Effect::None) => {
+                if command == Command::NopInstruction {
+                    self.pending_nibble = None;
+                }
                 if matches!(command, Command::FindReferences | Command::NextReference) {
                     self.scan_position = self.editor.reference_scan_position();
                 }
@@ -498,6 +509,13 @@ impl<S: ByteSource> Ui<S> {
                 self.dialog = Some(Dialog::Calculator);
                 UiAction::Continue
             }
+            Ok(Effect::OpenAssembly) => {
+                match assembly::AssemblyInput::at(&mut self.editor) {
+                    Ok(input) => self.dialog = Some(Dialog::Assembly(Box::new(input))),
+                    Err(error) => self.notice(error.to_string()),
+                }
+                UiAction::Continue
+            }
             Err(error) => {
                 self.notice(error.to_string());
                 UiAction::Continue
@@ -506,7 +524,7 @@ impl<S: ByteSource> Ui<S> {
     }
 
     fn reject_paste(&mut self) {
-        if !matches!(self.dialog, Some(Dialog::Calculator)) {
+        if !matches!(self.dialog, Some(Dialog::Calculator | Dialog::Assembly(_))) {
             self.pending_nibble = None;
         }
         if self.reopen_required {
@@ -655,6 +673,12 @@ impl<S: ByteSource> Ui<S> {
         {
             return self.dispatch(Command::ToggleReferenceAlignment);
         }
+        if (key.code, key.modifiers) == (KeyCode::F(2), KeyModifiers::ALT)
+            && self.editor.is_editing()
+            && self.editor.mode() == ViewMode::Code
+        {
+            return self.dispatch(Command::NopInstruction);
+        }
         if key.modifiers.contains(KeyModifiers::ALT)
             || (!matches!(key.code, KeyCode::Char(_)) && !key.modifiers.is_empty())
         {
@@ -720,6 +744,7 @@ impl<S: ByteSource> Ui<S> {
             Some(Dialog::Input(_)) => true,
             Some(Dialog::Search(search)) => search.help.is_none(),
             Some(Dialog::Calculator) => self.calculator.help.is_none(),
+            Some(Dialog::Assembly(input)) => input.has_caret(),
             Some(Dialog::BlockWrite(dialog)) => dialog.focus != block::BlockField::Format,
             None => self.editor.is_editing() && !self.editor.document().is_empty(),
             _ => false,
@@ -881,6 +906,9 @@ impl<S: ByteSource> Ui<S> {
     fn edit_key(&mut self, code: KeyCode) -> UiAction {
         match code {
             KeyCode::F(9) => self.save(),
+            KeyCode::Enter | KeyCode::F(2) if self.editor.mode() == ViewMode::Code => {
+                self.dispatch(Command::OpenAssembly)
+            }
             KeyCode::Tab => {
                 self.pending_nibble = None;
                 self.entry_column = match self.entry_column {
@@ -1065,6 +1093,10 @@ impl<S: ByteSource> Ui<S> {
                 return UiAction::Continue;
             }
             Dialog::BlockWrite(dialog) => return self.block_write_key(dialog, key),
+            Dialog::Assembly(input) => {
+                self.assembly_key(input, key);
+                return UiAction::Continue;
+            }
             Dialog::Search(search) => {
                 self.search_key(search, key);
                 return UiAction::Continue;

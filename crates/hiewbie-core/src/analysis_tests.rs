@@ -4,8 +4,7 @@ use crate::formats::{Endian, Machine, VirtualAddress};
 use crate::instructions::{AddressOperand, DecodeMode, DecodeStatus};
 use crate::*;
 
-#[path = "../../../tests/fixtures/aarch64_images.rs"]
-mod aarch64_images;
+use crate::aarch64_images;
 
 fn put16(bytes: &mut [u8], offset: usize, value: u16) {
     bytes[offset..offset + 2].copy_from_slice(&value.to_le_bytes());

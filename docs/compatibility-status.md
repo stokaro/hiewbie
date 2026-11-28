@@ -63,8 +63,8 @@ cover visiting, switching, and reopening files.
 | KEY-002 | Partial | [A], [T], [ACLI]: terminal dialogs, shortcuts and headless inspection use shared application commands; macro/browser callers pending. |
 | KEY-003 | Partial | [C], [A], [T], [ACLI], [Reference]: hexadecimal, decimal t, relative and dotted absolute-VA syntax reject overflow/unavailable mappings; original current-section-relative dotted interpretation remains open. |
 | KEY-004 | Partial | [A], [T]: shared position, bounded branch and reference navigation history, an independent search resume point, file history, and eight screen bookmarks per view [Bookmark observation]. General navigation return remains open. |
-| KEY-005 | Partial | [C], [T], [P], [Reference], [Observation]: observed Hex input is nibble-oriented and F3 restores the current source byte then advances; buffer boundaries, Backspace, assembly, truncation and timestamps remain open. |
-| KEY-006 | Partial | [C], [T], [P], [Commands], [Files observation], [Files replay], [Reference observations]: F3/F9, file navigation, F4 mode and search area, F2 export, Shift+F7, headers, and Hex/Decode x86 reference keys have tests. F2 textual assembly and broader reference scenarios remain open. |
+| KEY-005 | Partial | [C], [T], [P], [Reference], [Observation]: observed Hex input is nibble-oriented and F3 restores the current source byte then advances; Decode assembly and prior-byte restore have regressions. Additional buffer, truncation, and timestamp behavior remain open. |
+| KEY-006 | Partial | [C], [T], [P], [Commands], [Files observation], [Files replay], [Reference observations]: F3/F9, file navigation, F4 mode and search area, F2 export, Shift+F7, headers, and Hex/Decode x86 reference keys have tests. [Assembly replay] covers contextual F2 and F9. Broader reference scenarios remain open. |
 | KEY-007 | Implemented | [T], [P]: Esc cancels search/dialog, discards edits, then exits view. |
 | KEY-008 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 
@@ -76,7 +76,7 @@ cover visiting, switching, and reopening files.
 | EDIT-002 | Implemented | [C], [N], [P]: pending changes do not write until explicit save. |
 | EDIT-003 | Implemented | [C], [N], [P]: discard restores original bytes and does not rewrite mtime. |
 | EDIT-004 | Implemented | [C], [N], [T]: successful save rebases and clears transaction/history. |
-| EDIT-005 | Partial | [C], [A], [T]: bounded overwrite/restore command undo/redo refreshes Code and remains distinct from source-byte restoration; blocks and textual assembly pending. |
+| EDIT-005 | Partial | [C], [A], [T]: bounded overwrite/restore command undo/redo refreshes Code and remains distinct from source-byte restoration. [Patch preview] and [Assembly replay] verify one undo boundary per textual patch. Block edits remain open. |
 | EDIT-006 | Partial | [C], [T], [Block export], [Block observation]: overwrite and native raw block export implemented. Insert/delete/copy/move/fill/import remain open. |
 | EDIT-007 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | EDIT-008 | Partial | [C], [N], [Fuzz]: ranges and limits validated before mutation; bounded command fuzzing checks rejected operations and retained history against an independent byte model. Later edit operations remain pending. |
@@ -144,14 +144,14 @@ cover visiting, switching, and reopening files.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| ASM-001 | Partial | [Assembly] and [AArch64 Assembly]: bounded x86 text in 16/32/64 and a single little-endian A64 word. Interactive input remains open. |
+| ASM-001 | Partial | [Assembly] and [AArch64 Assembly] supply bounded x86 and A64 input through F2/Enter in Decode edit. Further instruction families and syntax remain open. |
 | ASM-002 | Partial | [Assembly] and [AArch64 Assembly]: mode, instruction order and checked mapped or raw address drive encoding. Additional ISA and profile coverage remains open. |
-| ASM-003 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ASM-004 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ASM-005 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ASM-006 | Partial | [Assembly] and [AArch64 Assembly]: syntax, range and missing names preserve bytes, cursor, generation and undo/redo in the core adapter. The patch workflow remains open. |
+| ASM-003 | Partial | [Patch preview] and [Commands]: Ctrl+P reviews actual bytes, ISA, address, and range. The HIEW default applies a fitting encoding immediately. Browser integration remains open. |
+| ASM-004 | Implemented | [Patch preview] and [Assembly UI] reject larger candidates until the user explicitly widens the contiguous file-backed span. Rejected actions preserve bytes and undo state. |
+| ASM-005 | Partial | [Patch preview] and [Assembly UI]: explicit x86 or aligned A64 NOP padding and Alt+F2 without a marked block. Full original Alt+F2 behavior remains open. |
+| ASM-006 | Partial | [Assembly] and [AArch64 Assembly]: syntax, range and missing names preserve bytes, cursor, generation and undo/redo in the core adapter. [Assembly UI] exercises the nested alert and cancellation. Broader grammar and original diagnostics remain open. |
 | ASM-007 | Partial | [Assembly] and [AArch64 Assembly]: published mode, syntax, labels and implemented families. Complete HIEW grammar and wider extension support remain open. |
-| ASM-008 | Partial | [Assembly] and [AArch64 Assembly]: range, address, mode, symbol and byte-order regressions plus independent A64 words. Interactive and full platform qualification remain open. |
+| ASM-008 | Partial | [Assembly] and [AArch64 Assembly]: range, address, mode, symbol and byte-order regressions plus independent A64 words. [Assembly replay] exercises the interactive routes on Unix PTY. Full platform qualification remains open. |
 
 ## FMT
 
@@ -264,8 +264,8 @@ cover visiting, switching, and reopening files.
 | TEST-001 | Implemented | [P], [Recording], [Observation]: generated scenarios replay mode choice, source-byte restore, entry/VA goto, Code branch/return, byte edit and save through a real PTY; selected original behavior is recorded, while automated differential replay remains pending. |
 | TEST-002 | Implemented | [N], [P]: discard checks expected bytes and mtime on generated ordinary files. |
 | TEST-003 | Implemented | [N], [P]: exact persisted byte changes; reopen via file reads. |
-| TEST-004 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| TEST-005 | Partial | [Assembly] and [AArch64 Assembly]: x86 near and short branches and A64 PC-relative operands encode at multiple actual addresses. Applied patch and broader ISA checks remain open. |
+| TEST-004 | Implemented | [Patch preview] and [Assembly UI] exercise invalid and oversized encodings with exact unchanged bytes, dirty state, or undo history checks. |
+| TEST-005 | Partial | [Assembly] and [AArch64 Assembly]: x86 near and short branches and A64 PC-relative operands encode at multiple actual addresses. [Patch preview] verifies exact relative replacements and one undo boundary in the core. [Assembly replay] covers save and reopen. Broader ISA checks remain open. |
 | TEST-006 | Partial | [F], [D], [A], [ACLI]: host-independent x86 PE, ARM64 Mach-O and ELF fixtures are shared by six native CI jobs; per-commit results are recorded in PR/CI, while the full required host/runtime matrix remains incomplete. |
 | TEST-007 | Partial | [N], [C], [F], [A], [T]: real Unix sparse file, synthetic 1 TiB format source and large-offset code windows; interactive large-file benchmark pending. |
 | TEST-008 | Partial | [C], [T]: chunk-boundary literal matches in both directions, cancellation, and [native PTY search replay][Search replay]; latency benchmark pending. |
@@ -334,6 +334,9 @@ cover visiting, switching, and reopening files.
 [Fuzz]: fuzzing.md
 [Assembly]: x86-text-assembly.md
 [AArch64 Assembly]: aarch64-text-assembly.md
+[Patch preview]: ../crates/hiewbie-core/src/command/assembly_patch_tests.rs
+[Assembly UI]: ../crates/hiewbie/src/terminal/assembly_tests.rs
+[Assembly replay]: evidence/native-assembly.cast
 [AArch64 Decode coverage]: aarch64-decode-coverage.md
 [Analysis]: adr/0004-analysis-backends.md
 [Symbols]: adr/0005-symbol-navigation.md

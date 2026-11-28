@@ -21,6 +21,7 @@ pub(super) enum HelpTopic {
     View(ViewMode),
     Edit(ViewMode),
     Search,
+    Assembly,
     Calculator,
 }
 
@@ -37,6 +38,7 @@ impl HelpTopic {
             Self::Edit(ViewMode::Hex) => "[HexEdit]",
             Self::Edit(ViewMode::Code) => "[CodeEdit]",
             Self::Search => "[FindEdit]",
+            Self::Assembly => "[Assembler]",
             Self::Calculator => "[Calculator]",
         }
     }
@@ -52,6 +54,7 @@ impl HelpTopic {
             Self::Edit(ViewMode::Text | ViewMode::Hex) => [HEX_EDIT, &[], &[]],
             Self::Edit(ViewMode::Code) => [CODE_EDIT, &[], &[]],
             Self::Search => [FIND, &[], &[]],
+            Self::Assembly => [ASSEMBLY, &[], &[]],
             Self::Calculator => [CALCULATOR_HELP, &[], &[]],
         }
     }
@@ -504,9 +507,9 @@ const HEX_EDIT: &[Entry] = &[
 
 const CODE_EDIT: &[Entry] = &[
     DISCARD,
-    key("Enter", "Open the assembler (planned)"),
+    key("Enter", "Open the assembler"),
     FUNCTIONS,
-    function("F2", "Asm", "Open the assembler (planned)"),
+    function("F2", "Asm", "Open the assembler"),
     RESTORE,
     CRYPT,
     UPDATE,
@@ -515,13 +518,28 @@ const CODE_EDIT: &[Entry] = &[
     function(
         "Alt-F2",
         "NOPs",
-        "Replace the current instruction with NOPs (planned)",
+        "Replace the current instruction with NOPs when no block is marked",
     ),
     TABLE,
     CURSORS,
     FIRST_BYTE,
     LAST_BYTE,
     RESTORE_PREVIOUS,
+];
+
+const ASSEMBLY: &[Entry] = &[
+    key(
+        "Enter",
+        "Apply an encoding that fits the current instruction",
+    ),
+    key("Escape", "Return without applying the current source"),
+    key(
+        "Ctrl-P",
+        "Preview the affected bytes and explicitly change the span or padding",
+    ),
+    key("Ctrl-U", "Clear the source input"),
+    FUNCTIONS,
+    function("F4", "Select", "Toggle the encoding-choice list"),
 ];
 
 const FILE_HISTORY_HELP: &[Entry] = &[

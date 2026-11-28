@@ -12,8 +12,8 @@ The editor core obtains the current address from a file-backed image mapping
 or from the checked raw base plus file offset. Executable symbols are resolved
 on demand and refer to the inspected image. Obtaining candidate bytes leaves
 the cursor, document bytes, pending patches, generation, and undo and redo
-history intact. The interactive prompt and patch transaction belong to
-[#78](https://github.com/stokaro/hiewbie/issues/78).
+history intact. The native [Decode assembler](commands.md#decode-assembler)
+uses the same core for review and application.
 
 ## Input
 

@@ -922,6 +922,96 @@ def pe_fixture_bytes() -> bytes:
     return bytes(data)
 
 
+def instruction_patch(binary: Path, directory: Path, *, record: bool) -> list[list]:
+    directory.mkdir()
+    path = directory / "assembly.exe"
+    original = bytearray(pe_fixture_bytes())
+    original[0x200:0x210] = bytes.fromhex("B8 01 02 03 04 CC CC CC CC CC CC CC CC CC CC CC")
+    path.write_bytes(original)
+    mtime_ns = path.stat().st_mtime_ns
+
+    def open_code(session: PtySession) -> None:
+        session.send(F8, "Inspect the executable")
+        session.send(F5, "Go to its file-backed entry")
+        session.send(F4, "Open the view selector")
+        session.send(DOWN, "Select Decode")
+        session.send(b"\r", "Enter Decode")
+
+    with PtySession(binary, path, "review x86 instruction patches", record=record) as session:
+        def step(data: bytes, label: str, *checks: bytes) -> None:
+            before = len(session.output)
+            session.send(data, label)
+            for check in checks:
+                if session.output.find(check, before) < 0:
+                    session.fail(f"missing assembler output {check!r} after {label}")
+
+        open_code(session)
+        session.send(F3, "Enter Decode edit mode")
+        step(F2, "Open the HIEW-style assembler with the current instruction", b"CommandSelect: Off")
+        step(b"\x15badopcode\r", "Reject an invalid instruction in a nested alert", b"Illegal instruction")
+        step(ESC, "Dismiss the error and restore typed source", b"badopcode")
+        step(b"\x15nop", "Enter a shorter replacement")
+        step(F4, "Enable encoding selection")
+        step(b"\r", "Show the candidate encodings before accepting one", b"Select command", b"6690")
+        session.send(DOWN * 2, "Select the three-byte NOP")
+        session.expect_file(bytes(original), mtime_ns=mtime_ns)
+        session.send(b"\r", "Apply the selected three-byte NOP and reseed")
+        session.send(ESC, "Close the assembly prompt")
+        session.send(b"\x1a", "Undo the entire selected encoding")
+        session.send(b"\x19", "Redo the same encoding")
+        session.expect_file(bytes(original), mtime_ns=mtime_ns)
+        session.send(F9, "Save the reviewed patch", commit_path=path)
+        expected = bytearray(original)
+        expected[0x200:0x203] = bytes.fromhex("0F 1F 00")
+        session.expect_file(bytes(expected))
+        session.send(ESC, "Exit Decode view", expect_exit=True)
+        session.finish()
+        events = sanitized_events(session.events, str(path.parent.resolve()))
+
+    with PtySession(binary, path, "reopen x86 instruction patch") as session:
+        open_code(session)
+        session.send(F3, "Begin a clean transaction on the reopened file")
+        before = len(session.output)
+        session.send(F2, "Seed assembly from the saved NOP")
+        if b"nop" not in session.output[before:]:
+            session.fail("reopened Decode view did not seed the saved NOP")
+        session.expect_file(bytes(expected))
+        session.send(ESC, "Close assembly without changes")
+        session.send(ESC, "Discard the clean edit transaction")
+        session.send(ESC, "Exit the reopened file", expect_exit=True)
+        session.finish()
+    return events
+
+
+def aarch64_instruction_patch(binary: Path, directory: Path) -> None:
+    directory.mkdir()
+    path = directory / "arm64.exe"
+    original = bytearray(pe_fixture_bytes())
+    struct.pack_into("<H", original, 0x84, 0xAA64)
+    original[0x200:0x210] = bytes.fromhex("1F 20 03 D5 C0 03 5F D6 1F 20 03 D5 1F 20 03 D5")
+    path.write_bytes(original)
+    with PtySession(binary, path, "assemble mapped AArch64 branch") as session:
+        session.send(F8, "Inspect the ARM64 image")
+        session.send(F5, "Go to its file-backed entry")
+        session.send(F4, "Open the view selector")
+        session.send(DOWN, "Select Decode")
+        session.send(b"\r", "Enter Decode")
+        session.send(F3, "Begin ARM64 edit")
+        session.send(b"\r", "Open the assembly prompt with Enter")
+        session.send(b"\x15b 14000100C\x10", "Review the branch to the checked virtual address")
+        if b"After   03 00 00 14" not in session.output:
+            session.fail("AArch64 preview did not show the expected PC-relative word")
+        session.expect_file(bytes(original))
+        session.send(b"\r", "Apply the one-word patch")
+        session.send(ESC, "Close assembly")
+        session.send(F9, "Save the ARM64 instruction", commit_path=path)
+        expected = bytearray(original)
+        expected[0x200:0x204] = bytes.fromhex("03 00 00 14")
+        session.expect_file(bytes(expected))
+        session.send(ESC, "Exit Decode view", expect_exit=True)
+        session.finish()
+
+
 def analyze_edit_save(binary: Path, directory: Path, *, record: bool) -> list[list]:
     directory.mkdir()
     path = directory / "analysis.exe"
@@ -1059,21 +1149,21 @@ def structures_edit_save(binary: Path, directory: Path, *, record: bool) -> list
     expected = bytearray(original)
     with PtySession(binary, path, "TE structure source and target bytes", record=record) as session:
         session.send(F8 + F5, "Headers: follow TE entry through stripped-header bias")
-        session.send(F3 + b"CC" + F9, "Patch and save exactly entry byte F18")
+        session.send(F3 + b"CC" + F9, "Patch and save exactly entry byte F18", commit_path=path)
         expected[0xF18] = 0xCC
         session.expect_file(bytes(expected))
         session.send(F8 + b"t\r", "T structures / Enter: follow first section target F08")
-        session.send(F3 + b"A5" + F9, "Patch and save exactly section byte F08")
+        session.send(F3 + b"A5" + F9, "Patch and save exactly section byte F08", commit_path=path)
         expected[0xF08] = 0xA5
         session.expect_file(bytes(expected))
         session.send(F8 + b"tr", "T structures / R: follow exact section record 28")
-        session.send(F3 + b"54" + F9, "Rename first section byte without changing TE translation fields")
+        session.send(F3 + b"54" + F9, "Rename first section byte without changing TE translation fields", commit_path=path)
         expected[40] = 0x54
         session.expect_file(bytes(expected))
         session.send(F8 + b"t" + DOWN * 5, "Select unsupported relocation type15")
         session.send(b"\r", "Enter rejects unknown target and keeps the structure dialog")
         session.send(b"r", "R still follows raw relocation record 1F12")
-        session.send(F3 + b"31" + F9, "Save one metadata byte without applying relocations")
+        session.send(F3 + b"31" + F9, "Save one metadata byte without applying relocations", commit_path=path)
         expected[0x1F12] = 0x31
         session.expect_file(bytes(expected))
         session.send(F8 + b"t", "Reopen refreshed structures after the save")
@@ -1089,7 +1179,7 @@ def structures_edit_save(binary: Path, directory: Path, *, record: bool) -> list
         session.send(F8 + b"s" + DOWN + b"\r", "Select second universal member explicitly")
         session.send(b"t\r", "Unknown command target is unavailable; raw record remains accessible")
         session.send(b"r", "Follow member-relative command as global file offset21C")
-        session.send(F3 + b"01" + F9, "Save one raw load-command byte in the second member")
+        session.send(F3 + b"01" + F9, "Save one raw load-command byte in the second member", commit_path=path)
         expected = bytearray(original)
         expected[0x21C] = 1
         session.expect_file(bytes(expected))
@@ -1184,6 +1274,7 @@ def main() -> int:
     parser.add_argument("--record-files", type=Path, help="record startup Files, filtering, selection, F9 cancellation, and save")
     parser.add_argument("--record-cursor", type=Path, help="record native editing and search focus, Help, and mode selection")
     parser.add_argument("--record-calculator", type=Path, help="record calculator focus, evaluation, errors, and return to Hex editing")
+    parser.add_argument("--record-assembly", type=Path, help="record the assembler, encoding choice, undo, and save")
     options = parser.parse_args()
     if os.name != "posix":
         parser.error("Unix PTYs are required; Windows ConPTY needs a separate harness")
@@ -1205,6 +1296,9 @@ def main() -> int:
             print("PASS: native edit/search cursor shape, cell position, and default restoration")
             calculator_events = calculator(binary, root / "calculator", record=options.record_calculator is not None)
             print("PASS: calculator wrapping/checked/endian evaluation, Help, diagnostics, and pending Hex input")
+            assembly_events = instruction_patch(binary, root / "assembly", record=options.record_assembly is not None)
+            aarch64_instruction_patch(binary, root / "arm-assembly")
+            print("PASS: x86 instruction selection, cancel, undo/redo, save/reopen, and mapped AArch64 patch review")
             discard_resize(binary, root / "discard")
             print("PASS: narrow resize, 80x25 restoration, discard preserves bytes and mtime")
             read_only(binary, root / "readonly")
@@ -1322,6 +1416,14 @@ def main() -> int:
                 filename=FIXTURE_NAME,
             )
             print(f"Calculator recording: {options.record_calculator}")
+        if options.record_assembly is not None:
+            write_recording(
+                options.record_assembly,
+                assembly_events,
+                title="hiewbie Decode: instruction choice, undo, and save",
+                filename="assembly.exe",
+            )
+            print(f"Assembly recording: {options.record_assembly}")
         print("PASS: exact termios and alternate-screen/paste/cursor restoration in all sessions")
         return 0
     except (SmokeFailure, OSError, subprocess.SubprocessError) as error:

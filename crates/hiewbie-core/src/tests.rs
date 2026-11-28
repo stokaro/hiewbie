@@ -775,6 +775,8 @@ fn command_registry_contains_every_stable_command_once() {
         Command::GotoBlockBoundary(BlockBoundary::First),
         Command::ExportBlock,
         Command::OpenCalculator,
+        Command::OpenAssembly,
+        Command::NopInstruction,
         Command::Bookmark(BookmarkCommand::Store(BookmarkViewport::default())),
         Command::Bookmark(BookmarkCommand::Recall),
         Command::Bookmark(BookmarkCommand::Select(1)),

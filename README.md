@@ -6,9 +6,9 @@ Native macOS use is a first-class goal.
 **Status: native byte editing and initial executable analysis.** Text/Hex/Code,
 PE/ELF/Mach-O/TE headers and load mappings, x86/ARM-family decoding, direct branch
 navigation, selected symbol/import/export tables, literal search, overwrite
-transactions, undo/redo and explicit save are implemented. Complete loader
-metadata, textual assembly, advanced/legacy
-parity, browser UI and release packages remain planned. See the
+transactions, undo/redo, explicit save, and a bounded x86/AArch64
+assembler are implemented. Complete loader metadata, legacy parity, the
+browser UI, and release packages remain planned. See the
 [compatibility ledger](docs/compatibility-status.md).
 
 The project aims to preserve HIEW's compact, keyboard-driven workflow: open a
@@ -67,6 +67,9 @@ beyond 4 GiB, without loading the complete file into memory.
 | Hex / Code view | `*` / `[` / `]` | Start, finish, or clear a block / first byte / last byte |
 | Hex / Code view | Alt+`*` / Ctrl+`*` or Ctrl+K | Move the marked endpoint / select the whole file |
 | Completed block | F2 | Write raw bytes to a file. Confirm its path, offset, and format. Use `*` as the offset to append |
+| Decode edit | F2 / Enter | Open the assembler at the current instruction |
+| Assembler | F4 / Ctrl+P | Toggle CommandSelect / preview the bytes and patch span |
+| Decode edit, no block | Alt+F2 | Replace the current instruction with architecture-appropriate NOPs |
 | View | F9 | Browse and open a file |
 | View | Ctrl+Backspace / Tab | Open session history / cycle its files |
 | View | Ctrl+F9 / Ctrl+F11 / Ctrl+F12 | Select / previous / next command-line file |
@@ -170,8 +173,8 @@ per page; `--structure-page N` reaches subsequent pages and every coverage note
 is printed. These seven output modes are
 mutually exclusive. `--arch`, `--endian`, `--raw` and `--base`
 are explicit interpretation controls. Setting a base selects raw addressing;
-it cannot be combined with slice selection. Code editing remains byte editing,
-without textual assembly. Unknown/truncated instructions retain their bytes.
+it cannot be combined with slice selection. Unknown or truncated instructions
+retain their bytes. See the [Decode assembler workflow](docs/commands.md#decode-assembler).
 
 In headers, T opens the shared structure list. Enter follows a checked target;
 R follows the exact source record even when its interpretation is unsupported.

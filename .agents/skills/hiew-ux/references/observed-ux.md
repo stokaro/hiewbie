@@ -138,8 +138,32 @@ view. The saved byte lost the pending-change color, the cursor position was
 retained, and the title access token changed from `FWO` to `FUO`.
 
 F10 in edit mode is labeled Trunc. Its destructive confirmation and boundary
-behavior remain unobserved. Text editing and Code assembler entry were not part
-of this capture.
+behavior remain unobserved. Text editing was outside this capture.
+
+## Code assembler
+
+A separate Windows Server Core 100 by 30 run used generated raw x86 fixtures.
+F3 entered Code edit. F2 and Enter opened the assembler at the current
+instruction. The prompt used a gray 72 by 5 surface with a double inset frame,
+cyan shaded field, one interior column of horizontal padding, and the window
+shadow offset two columns right and one row down. The field started at column
+18 and row 15 in zero-based coordinates. The caret followed the prefilled
+source. F4 toggled the bottom-border CommandSelect label. The bar displayed
+F1 Help and F4 Select.
+
+Applying a fitting instruction advanced by its encoding length and seeded
+the next instruction. CommandSelect On opened a cyan selection dialog for
+the nine observed x86-32 NOP encodings, with a black highlight and blank
+function slots. Esc from selection showed a cancellation alert. Dismissing
+it restored the source and caret. Invalid mnemonics showed a red alert and
+restored the typed source when dismissed. Esc from the input retained the
+edit transaction. The next Esc discarded it. The measured seed includes
+`nop` and the three far memory forms in the reference observation.
+[Windows assembly observation](../../../../docs/evidence/hiew-8.63-windows-x86-assembly.json)
+
+hiewbie preserves the measured input and choice flow. Its checked explicit
+span policy and Ctrl+P before-and-after review are documented in the
+[Decode assembler workflow](../../../../docs/commands.md#decode-assembler).
 
 ## Block selection and export
 
