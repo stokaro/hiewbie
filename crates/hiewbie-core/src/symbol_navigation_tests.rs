@@ -5,6 +5,8 @@ use crate::*;
 
 use crate::symbol_fixtures as fixtures;
 
+use crate::macho_fixtures;
+
 fn editor(bytes: Vec<u8>) -> Editor<MemorySource> {
     Editor::new(Document::new(MemorySource::new(bytes)), false)
 }
@@ -212,4 +214,147 @@ fn textual_assembly_resolves_symbols_from_the_current_logical_generation() {
     );
     assert!(editor.document().is_dirty());
     assert_eq!(editor.cursor(), FileOffset::new(0x200));
+}
+
+#[test]
+fn textual_assembly_requires_an_unambiguous_object_cursor_address() {
+    use crate::formats::{AddressError, VirtualAddress};
+
+    let cpu = 0x0100_0007;
+    let original = macho_fixtures::object(cpu, false, &[]);
+    let mut unique = editor(original.clone());
+    unique
+        .dispatch(Command::Goto(FileOffset::new(
+            macho_fixtures::CONTENT as u64,
+        )))
+        .unwrap();
+    assert_eq!(
+        unique.assemble_at_cursor("jmp _target").unwrap(),
+        [vec![0xe9, 0xfb, 0x00, 0x00, 0x00]],
+    );
+    assert_eq!(unique.document().source().as_slice(), original);
+    assert!(!unique.document().is_dirty());
+
+    let mut bytes = original;
+    // Different file sections share the same virtual range. Forward mapping
+    // alone would encode an apparent self-branch instead of rejecting it.
+    macho_fixtures::put64(
+        &mut bytes,
+        macho_fixtures::section_at(cpu, 1) + 32,
+        0x1000,
+        false,
+    );
+    macho_fixtures::put64(&mut bytes, macho_fixtures::SYMBOLS + 16 + 8, 0x1000, false);
+    let mut ambiguous = editor(bytes.clone());
+    let cursor = FileOffset::new(macho_fixtures::CONTENT as u64);
+    ambiguous.dispatch(Command::Goto(cursor)).unwrap();
+    ambiguous.refresh_analysis();
+    let image = ambiguous.executable().unwrap();
+    assert_eq!(image.file_to_va(cursor), Ok(VirtualAddress::new(0x1000)));
+    assert_eq!(
+        image.va_to_file(VirtualAddress::new(0x1000)),
+        Err(AddressError::Ambiguous),
+    );
+    let context = ambiguous.decode_context();
+    assert!(matches!(
+        ambiguous.assemble_at_cursor("jmp _target"),
+        Err(Error::Analysis(_))
+    ));
+    assert!(
+        ambiguous.symbols().is_none(),
+        "reject the cursor before resolving source operands"
+    );
+    assert_eq!(ambiguous.cursor(), cursor);
+    assert_eq!(ambiguous.decode_context(), context);
+    assert_eq!(ambiguous.document().source().as_slice(), bytes);
+    assert_eq!(ambiguous.document().generation(), 0);
+}
+
+#[test]
+fn textual_assembly_rejects_object_file_symbols_without_unique_roundtrips() {
+    use crate::formats::{AddressError, VirtualAddress};
+
+    let cpu = 0x0100_0007;
+    for virtual_overlap in [true, false] {
+        let mut bytes = macho_fixtures::object(cpu, false, &[]);
+        let second = macho_fixtures::section_at(cpu, 1);
+        let target_file = if virtual_overlap {
+            // The cursor VA remains unique, but _target shares its VA with
+            // another byte in __text. Both symbols remain valid file targets.
+            macho_fixtures::put64(&mut bytes, second + 32, 0x1040, false);
+            macho_fixtures::put64(&mut bytes, macho_fixtures::SYMBOLS + 16 + 8, 0x1040, false);
+            FileOffset::new(macho_fixtures::DATA as u64)
+        } else {
+            // The other direction is ambiguous: these file bytes belong to
+            // two different declared section VAs.
+            macho_fixtures::put32(
+                &mut bytes,
+                second + 48,
+                (macho_fixtures::CONTENT + 0x20) as u32,
+                false,
+            );
+            FileOffset::new((macho_fixtures::CONTENT + 0x20) as u64)
+        };
+        let mut editor = editor(bytes.clone());
+        let cursor = FileOffset::new(macho_fixtures::CONTENT as u64);
+        editor.dispatch(Command::Goto(cursor)).unwrap();
+        let index = named(&mut editor, "_target");
+        assert_eq!(
+            editor.symbols().unwrap().entries[index].target,
+            SymbolTarget::File(target_file)
+        );
+        let image = editor.executable().unwrap();
+        assert_eq!(image.va_to_file(VirtualAddress::new(0x1000)), Ok(cursor));
+        if virtual_overlap {
+            assert_eq!(
+                image.file_to_va(target_file),
+                Ok(VirtualAddress::new(0x1040))
+            );
+            assert_eq!(
+                image.va_to_file(VirtualAddress::new(0x1040)),
+                Err(AddressError::Ambiguous)
+            );
+        } else {
+            assert_eq!(image.file_to_va(target_file), Err(AddressError::Ambiguous));
+        }
+        let context = editor.decode_context();
+        assert!(matches!(
+            editor.assemble_at_cursor("jmp _target"),
+            Err(Error::Assembly(
+                crate::assembly::AssemblyError::UnresolvedSymbol(_)
+            ))
+        ));
+        assert_eq!(editor.cursor(), cursor);
+        assert_eq!(editor.decode_context(), context);
+        assert_eq!(editor.document().source().as_slice(), bytes);
+        assert_eq!(editor.document().generation(), 0);
+    }
+}
+
+#[test]
+fn textual_assembly_preserves_automatic_and_explicit_raw_address_modes() {
+    use crate::{formats::VirtualAddress, instructions::DecodeMode};
+
+    let bytes = vec![0x90; 0x40];
+    let mut editor = editor(bytes.clone());
+    editor.dispatch(Command::Goto(FileOffset::new(2))).unwrap();
+    assert_eq!(
+        editor.assemble_at_cursor("jmps 20").unwrap(),
+        [vec![0xeb, 0x1c]]
+    );
+    assert!(editor.executable().is_none());
+    assert_eq!(editor.decode_context().mode, Some(DecodeMode::X86_32));
+    editor
+        .dispatch(Command::SetRawBase(VirtualAddress::new(0x140000000)))
+        .unwrap();
+    editor
+        .dispatch(Command::SetDecodeMode(Some(DecodeMode::X86_64)))
+        .unwrap();
+    assert_eq!(
+        editor.assemble_at_cursor("jmps 00000001`40000020").unwrap(),
+        [vec![0xeb, 0x1c]]
+    );
+    assert_eq!(editor.cursor(), FileOffset::new(2));
+    assert_eq!(editor.document().source().as_slice(), bytes);
+    assert_eq!(editor.document().generation(), 0);
 }

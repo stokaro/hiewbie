@@ -1,6 +1,7 @@
 //! Native command-line entry point. File bytes and commands live in the shared core.
 
 mod capability_output;
+mod structure_output;
 mod symbol_output;
 mod terminal;
 
@@ -24,6 +25,8 @@ Options:
   -r, --read-only      Inspect without allowing an edit transaction
       --dump          Print at most 16 hex rows without requiring a terminal
       --headers       Print bounded executable fields, load mappings, and slices
+      --structures    Print a page of format records and checked target ranges
+      --structure-page N  Select a zero-based page of 64 records (decimal)
       --disassemble   Print at most 32 code rows without requiring a terminal
       --symbols       Print at most 64 parsed symbols, imports, and exports
       --imports       Print at most 64 parsed imports
@@ -41,7 +44,7 @@ Options:
   -V, --version        Print the version
       --              Treat remaining arguments as filenames
 
-The dump/headers/disassemble/symbols/imports/exports modes are mutually exclusive.
+The dump/headers/structures/disassemble/symbols/imports/exports modes are mutually exclusive.
 Raw/base interpretation cannot be combined with --slice.
 Capability reporting accepts no files or inspection options.
 
@@ -52,6 +55,7 @@ Examples:
   hiewbie --dump --offset 0x100 program.bin
   hiewbie --dump --offset 256t program.bin
   hiewbie --headers program.exe
+  hiewbie --structures --structure-page 0 firmware.te
   hiewbie --imports program.exe
   hiewbie --symbols --slice 1 universal-macho
   hiewbie --disassemble --entry program.exe
@@ -69,8 +73,8 @@ View: F9 opens the file browser; Enter cycles Text/Hex/Code; F4 selects a mode; 
 Code: F8/Ctrl+O shows headers; Shift+F1/Ctrl+A opens the analysis profile.
       Ctrl+F1/Ctrl+B cycles x86 bitness; / resynchronizes; Backspace returns.
       The profile selects architecture, instruction byte order, and raw base.
-      Headers: S selects a slice; F7 imports; F9 exports; N all parsed symbols.
-      Symbol tables: Enter follows target bytes; R follows the metadata record.
+      Headers: S selects a slice; F7 imports; F9 exports; N symbols; T structures.
+      Symbol/structure tables: Enter follows target bytes; R follows the record.
       Branch numbers follow, never execute.
 Edit: F9/Ctrl+S saves; Esc discards; Tab switches hex/ASCII entry;
       F3 restores the original current byte; Backspace restores the previous;
@@ -78,9 +82,10 @@ Edit: F9/Ctrl+S saves; Esc discards; Tab switches hex/ASCII entry;
       Backspace cancels an incomplete hex digit first.
 F1 opens help. Esc exits from view mode. Bracketed paste is rejected.
 
-PE/ELF/Mach-O inspection covers headers, load mappings, and selected symbol tables.
+PE/ELF/Mach-O/TE inspection covers headers and load mappings.
 Symbols are loaded on request; coverage notes identify unparsed loader metadata.
-Relocations and textual assembly remain planned.
+Mach-O/TE expose bounded relocation metadata; relocations are never applied.
+Textual assembly remains planned.
 Big-endian instruction decoding is explicitly unsupported.
 ";
 
@@ -92,6 +97,7 @@ enum OutputMode {
     Interactive,
     Dump,
     Headers,
+    Structures,
     Disassemble,
     Symbols,
     Imports,
@@ -111,6 +117,7 @@ struct Options {
     base: Option<VirtualAddress>,
     raw: bool,
     slice: Option<usize>,
+    structure_page: usize,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -134,6 +141,7 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
     let mut base = None;
     let mut raw = false;
     let mut slice = None;
+    let mut structure_page = None;
     let mut positional_only = false;
     let mut capabilities = false;
     let mut json = false;
@@ -166,12 +174,13 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
                     continue;
                 }
                 Some(
-                    "--dump" | "--headers" | "--disassemble" | "--symbols" | "--imports"
-                    | "--exports",
+                    "--dump" | "--headers" | "--structures" | "--disassemble" | "--symbols"
+                    | "--imports" | "--exports",
                 ) => {
                     let mode = match arg.to_str() {
                         Some("--dump") => OutputMode::Dump,
                         Some("--headers") => OutputMode::Headers,
+                        Some("--structures") => OutputMode::Structures,
                         Some("--symbols") => OutputMode::Symbols,
                         Some("--imports") => OutputMode::Imports,
                         Some("--exports") => OutputMode::Exports,
@@ -179,7 +188,7 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
                     };
                     if output.replace(mode).is_some() {
                         return Err(
-                            "--dump, --headers, --disassemble, --symbols, --imports, and --exports are mutually exclusive".into(),
+                            "--dump, --headers, --structures, --disassemble, --symbols, --imports, and --exports are mutually exclusive".into(),
                         );
                     }
                     continue;
@@ -200,7 +209,7 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
                     .map_or((argument, None), |(flag, value)| (flag, Some(value)));
                 if matches!(
                     flag,
-                    "--offset" | "--arch" | "--endian" | "--base" | "--slice"
+                    "--offset" | "--arch" | "--endian" | "--base" | "--slice" | "--structure-page"
                 ) {
                     let value = match inline {
                         Some(value) => value.to_owned(),
@@ -251,6 +260,21 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
                                 flag,
                             )?;
                         }
+                        "--structure-page" => {
+                            if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit())
+                            {
+                                return Err(
+                                    "--structure-page requires a non-negative decimal index".into(),
+                                );
+                            }
+                            set_once(
+                                &mut structure_page,
+                                value
+                                    .parse::<usize>()
+                                    .map_err(|_| "--structure-page index is too large")?,
+                                flag,
+                            )?;
+                        }
                         _ => unreachable!(),
                     }
                     continue;
@@ -277,6 +301,7 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
             || base.is_some()
             || raw
             || slice.is_some()
+            || structure_page.is_some()
         {
             return Err("--capabilities does not accept files or inspection options".into());
         }
@@ -284,6 +309,9 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
     }
     if json {
         return Err("--json requires --capabilities".into());
+    }
+    if structure_page.is_some() && output != Some(OutputMode::Structures) {
+        return Err("--structure-page requires --structures".into());
     }
     if entry && offset.is_some() {
         return Err("--entry and --offset are mutually exclusive".into());
@@ -321,6 +349,7 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
         base,
         raw,
         slice,
+        structure_page: structure_page.unwrap_or(0),
     }))
 }
 
@@ -381,6 +410,9 @@ fn run(options: Options) -> Result<(), String> {
         let result = match options.output {
             OutputMode::Dump => write_dump(editor.document_mut(), offset, &mut output),
             OutputMode::Headers => write_headers(&mut editor, &mut output),
+            OutputMode::Structures => {
+                structure_output::write(&mut editor, options.structure_page, &mut output)
+            }
             OutputMode::Disassemble => write_disassembly(&mut editor, &mut output),
             OutputMode::Symbols => symbol_output::write(&mut editor, None, &mut output),
             OutputMode::Imports => {
@@ -410,7 +442,7 @@ fn run_terminal(
     additional_paths: Vec<PathBuf>,
 ) -> Result<(), String> {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
-        return Err("interactive editing requires terminal input and output; use --dump, --headers, --disassemble, --symbols, --imports, or --exports for noninteractive inspection".into());
+        return Err("interactive editing requires terminal input and output; use --dump, --headers, --structures, --disassemble, --symbols, --imports, or --exports for noninteractive inspection".into());
     }
     terminal::run(start, read_only, additional_paths)
         .map_err(|error| format!("terminal error: {error}"))
@@ -430,7 +462,13 @@ fn write_headers<S: ByteSource>(editor: &mut Editor<S>, output: &mut impl Write)
     writeln!(
         output,
         "Machine: {}; {}-bit; {}-endian",
-        image.machine, image.bitness, image.endian
+        image.machine,
+        if image.bitness == 0 {
+            "unknown".to_owned()
+        } else {
+            image.bitness.to_string()
+        },
+        image.endian
     )?;
     writeln!(output, "Generation: {}", image.generation)?;
     writeln!(
@@ -446,6 +484,9 @@ fn write_headers<S: ByteSource>(editor: &mut Editor<S>, output: &mut impl Write)
         writeln!(output, "Entry: VA {:016X}", entry.get())?;
     } else {
         writeln!(output, "Entry: unavailable")?;
+    }
+    if let Some(mode) = image.entry_mode {
+        writeln!(output, "Entry execution state: {mode:?}")?;
     }
     if let Some(index) = image.selected_slice {
         writeln!(
@@ -501,7 +542,15 @@ fn write_headers<S: ByteSource>(editor: &mut Editor<S>, output: &mut impl Write)
     }
     writeln!(
         output,
-        "Scope: image headers and load mappings; use --symbols, --imports, or --exports for on-demand tables and their coverage notes. Relocations are not interpreted."
+        "Structure records: {}; use --structures and --structure-page N for all bounded records.",
+        image.records.len()
+    )?;
+    for note in &image.notes {
+        writeln!(output, "Coverage: {}", terminal::escaped_text(note))?;
+    }
+    writeln!(
+        output,
+        "Scope: image headers and load mappings; --structures exposes supported format records without applying relocations. Use --symbols, --imports, or --exports for on-demand symbol tables and their coverage notes."
     )
 }
 
@@ -714,6 +763,7 @@ mod tests {
                 base: None,
                 raw: false,
                 slice: None,
+                structure_page: 0,
             })
         );
     }

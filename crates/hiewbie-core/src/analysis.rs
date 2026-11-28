@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use crate::formats::{self, Endian, Executable, Machine, VirtualAddress};
+use crate::formats::{self, Endian, EntryMode, Executable, Machine, VirtualAddress};
 use crate::instructions::{
     AddressOperand, DecodeMode, DecodedInstruction, InstructionProfile, decode_in_profile,
 };
@@ -187,10 +187,11 @@ impl Analysis {
         let inferred = parsed.and_then(|image| match image.machine {
             Machine::X86 => Some(DecodeMode::X86_32),
             Machine::X86_64 => Some(DecodeMode::X86_64),
-            Machine::Arm => Some(if image.entry.is_some_and(|entry| entry.get() & 1 != 0) {
-                DecodeMode::Thumb
-            } else {
-                DecodeMode::Arm
+            Machine::Arm => Some(match image.entry_mode {
+                Some(EntryMode::Thumb) => DecodeMode::Thumb,
+                Some(EntryMode::Arm) => DecodeMode::Arm,
+                None if image.entry.is_some_and(|entry| entry.get() & 1 != 0) => DecodeMode::Thumb,
+                None => DecodeMode::Arm,
             }),
             Machine::Aarch64 => Some(DecodeMode::Aarch64),
             Machine::Thumb => Some(DecodeMode::Thumb),
@@ -340,9 +341,21 @@ impl Analysis {
         let mut entry = image.entry.ok_or_else(|| {
             Error::Analysis("this image declares no supported entry point".into())
         })?;
-        // ARM ELF/PE entry pointers may carry the Thumb-state bit. This is not a
-        // byte to skip in the file, nor a rule for arbitrary user-entered VAs.
-        if matches!(image.machine, Machine::Arm | Machine::Thumb) {
+        // A thread PC is a register value, with its mode supplied separately
+        // by CPSR. Do not silently turn a malformed register into another VA.
+        if let Some(mode) = image.entry_mode {
+            let mask = match mode {
+                EntryMode::Arm => 3,
+                EntryMode::Thumb => 1,
+            };
+            if entry.get() & mask != 0 {
+                return Err(analysis_error(
+                    "thread entry PC is misaligned for its execution state",
+                ));
+            }
+        } else if matches!(image.machine, Machine::Arm | Machine::Thumb) {
+            // ARM ELF/PE/TE entry pointers may carry the Thumb-state bit. This
+            // is not a byte to skip, nor a rule for user-entered arbitrary VAs.
             entry = VirtualAddress::new(entry.get() & !1);
         }
         self.virtual_offset(entry, len)

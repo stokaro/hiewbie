@@ -4,7 +4,7 @@ An open-source HIEW-inspired terminal hex editor and disassembler in Rust.
 Native macOS use is a first-class goal.
 
 **Status: native byte editing and initial executable analysis.** Text/Hex/Code,
-PE/ELF/Mach-O headers and load mappings, x86/ARM-family decoding, direct branch
+PE/ELF/Mach-O/TE headers and load mappings, x86/ARM-family decoding, direct branch
 navigation, selected symbol/import/export tables, literal search, overwrite
 transactions, undo/redo and explicit save are implemented. Complete loader
 metadata, textual assembly, advanced/legacy
@@ -36,6 +36,7 @@ noninteractive inspection are also available:
 cargo run --locked --package hiewbie -- --read-only path/to/file.bin
 cargo run --locked --package hiewbie -- --dump --offset 0x100 path/to/file.bin
 cargo run --locked --package hiewbie -- --headers path/to/program
+cargo run --locked --package hiewbie -- --structures --structure-page 0 path/to/firmware.te
 cargo run --locked --package hiewbie -- --imports path/to/program.exe
 cargo run --locked --package hiewbie -- --symbols --slice 1 path/to/universal-macho
 cargo run --locked --package hiewbie -- --disassemble --entry path/to/program
@@ -73,7 +74,7 @@ beyond 4 GiB, without loading the complete file into memory.
 | History | F2 / F5 / F8 | Toggle full paths / mark for Tab / remove a history entry |
 | Files | Arrows / Enter / Esc | Select / open a directory or file / cancel |
 | Files | F2 / F3–F8 / F10 | Toggle hidden entries / sort and reverse / set a filename mask |
-| View | F8 / Ctrl+O | Executable headers; F5 entry, F6 regions, F4 fields, S slices |
+| View | F8 / Ctrl+O | Executable headers; F5 entry, F6 regions, F4 fields, S slices, T structures |
 | Headers | F7 / F9 / N | Parsed imports / exports / all symbols; tables load on request |
 | Symbols | Enter / R | Follow target bytes / the exact metadata record |
 | View / Edit | Alt+= / Ctrl+L | Open the 64-bit Calculator |
@@ -152,8 +153,9 @@ visible rows. The headless listing reports each instruction individually.
 | --- | --- |
 | PE32 / PE32+ | Headers, mappings, entry, ordinary name/ordinal imports and exports, explicit forwarders |
 | ELF32 / ELF64 | Headers, load segments and section-backed `SYMTAB`/`DYNSYM` in either byte order |
-| Mach-O32 / Mach-O64 | Headers, segments, `LC_MAIN` entry and `LC_SYMTAB`/nlist in either byte order |
+| Mach-O32 / Mach-O64 | Every load-command record, section flags/ranges, `LC_MAIN` and baseline `LC_UNIXTHREAD` entries, `SG_HIGHVM`, section relocations and `LC_SYMTAB`/nlist in either byte order |
 | Universal Mach-O | Fat32/fat64 tables, explicit `--slice N` or header-dialog selection; indices start at zero |
+| TE / TE64 | One 40-byte firmware header, machine-based width, checked stripped-header translation, sections, entry, relocation/debug records and raw patch/save/reopen |
 
 The first fat slice is the default, independent of the computer's CPU. Invalid
 metadata leaves raw viewing and byte editing available. Edited headers and
@@ -163,11 +165,21 @@ actual backing bytes and never rebuilds the executable.
 
 `--headers` prints at most 64 fields, regions and slices per category;
 `--disassemble` prints at most 32 rows. `--symbols`, `--imports` and `--exports`
-print at most 64 entries and every coverage note. These six output modes are
+print at most 64 entries and every coverage note. `--structures` prints 64 records
+per page; `--structure-page N` reaches subsequent pages and every coverage note
+is printed. These seven output modes are
 mutually exclusive. `--arch`, `--endian`, `--raw` and `--base`
 are explicit interpretation controls. Setting a base selects raw addressing;
 it cannot be combined with slice selection. Code editing remains byte editing,
 without textual assembly. Unknown/truncated instructions retain their bytes.
+
+In headers, T opens the shared structure list. Enter follows a checked target;
+R follows the exact source record even when its interpretation is unsupported.
+Left/Right scroll the selected detail. Selections are tied to document generation
+and fat member; edits and member changes invalidate them. Relocations are
+inspected, never applied. [Format-record scope and fixtures](docs/format-records.md)
+explain unsupported commands, loader-specific relocations, TE machine labels,
+and source provenance. TE symbol/import/export tables remain unavailable.
 
 `--capabilities` reports the backends compiled into this executable without
 opening a file. Add `--json` for the versioned, machine-readable contract shared

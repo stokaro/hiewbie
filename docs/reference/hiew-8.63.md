@@ -405,6 +405,13 @@ This extends hiewbie-side evidence without an original-runtime observation or
 a claim of complete original table, loader or navigation behavior. Remaining
 format-specific scope is recorded in [ADR 0005](../adr/0005-symbol-navigation.md).
 
+Header T now adds a shared [Mach-O/TE structure list](../format-records.md):
+Enter follows a checked target and R follows exact metadata bytes, including
+unsupported records. Generated H21 scenarios cover old-thread entry metadata,
+high-VM backing, relocation records, stripped TE addresses and raw save/reopen.
+These are hiewbie implementation tests; the record layout, added T control and
+TE/TE64 machine-width labels have no paired original-runtime observation.
+
 The distribution's `file_id.diz` predates documented Mach-O support (8.51) and
 TE support (8.60). Use the manuals, contextual help and release notes together.
 Retain older formats, indirect references, instruction-pattern search, assembly

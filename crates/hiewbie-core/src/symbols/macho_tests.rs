@@ -736,10 +736,11 @@ fn section_zero_fill_and_resolvers_never_borrow_unrelated_mapped_bytes() {
         Endian::Little,
     );
     let (image, table) = inspect(fixture.bytes).unwrap();
-    assert!(
-        image
-            .va_to_file(VirtualAddress::new(fixture.addresses[0] + 4))
-            .is_ok()
+    // Link-time sections now supply the object mapping. Overlapping BSS and
+    // text coordinates are ambiguous; neither can borrow the other's bytes.
+    assert_eq!(
+        image.va_to_file(VirtualAddress::new(fixture.addresses[0] + 4)),
+        Err(crate::formats::AddressError::Ambiguous)
     );
     assert_eq!(named(&table, "_bss").target, SymbolTarget::Unavailable);
     assert_eq!(named(&table, "_entry").target, SymbolTarget::Unavailable);

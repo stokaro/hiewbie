@@ -29,9 +29,11 @@ from it. The public core exports `COMMANDS` and `Command::id()` from
 | `navigate.goto` | `FileOffset` | Move to a raw offset, clamped to the existing range |
 | `navigate.virtual` | `VirtualAddress` | Map an absolute VA to a file-backed byte; reject missing, ambiguous, or zero-fill mappings |
 | `navigate.entry` | None | Follow the selected executable's entry point |
-| `navigate.region` | Zero-based region index | Follow a PE section or ELF/Mach-O segment to its first backed byte |
+| `navigate.region` | Zero-based region index | Follow a PE/TE section or ELF/Mach-O load region to its first backed byte |
 | `navigate.symbol` | Global zero-based parsed entry index | Follow a definition's backed byte or a PE import pointer slot; reject unresolved targets |
 | `navigate.symbol-record` | Global zero-based parsed entry index | Follow the exact interpreted source record, including unresolved entries |
+| `navigate.structure-target` | `StructureRef` with generation, slice and record index | Follow a complete checked target span; reject missing/empty targets and stale selections before movement |
+| `navigate.structure-record` | `StructureRef` with generation, slice and record index | Follow the exact metadata record bytes independently of interpretation status |
 | `analysis.select-slice` | Zero-based slice index | Select a fat Mach-O image and refresh its interpretation |
 | `analysis.set-architecture` | Optional `DecodeMode` | Select x86-16/32/64, ARM, Thumb, or AArch64; `None` restores inferred architecture |
 | `analysis.set-endian` | Optional `Endian` | Override or restore inferred instruction endianness |
@@ -263,7 +265,7 @@ for a read-only source and requires a distinct regular output file.
 ## Analysis contexts
 
 F8/Ctrl+O opens executable metadata. F5 follows the entry point; F6 lists PE
-sections or ELF/Mach-O segments; F4 lists numeric header fields; S lists fat
+or TE sections, or ELF/Mach-O load regions; F4 lists numeric header fields; S lists fat
 Mach-O slices. Enter follows the selected backed range or selects a slice.
 F7 lists parsed imports, F9 exports, and N all parsed entries. These pages load
 symbols lazily. Enter dispatches `navigate.symbol`; R dispatches
@@ -274,6 +276,24 @@ the IAT pointer slot, not executable code in another module. Unsupported loader
 tables appear in coverage notes; an empty parsed list does not establish the
 absence of runtime imports/exports. `--symbols`, `--imports` and `--exports`
 provide bounded headless equivalents and print every note.
+
+T opens [format structure records](format-records.md). Each row shows its kind,
+interpreted/unsupported status, exact metadata span and optional checked target.
+Enter follows the target; R follows the source record. Unsupported or zero-fill
+targets leave the cursor and bytes unchanged; source records remain browsable.
+Up/Down, Page Up/Page Down and Home/End select every bounded record. Left/Right
+scroll detail text. `--structures --structure-page N` provides the complete
+headless equivalent in zero-based pages of 64 records, including all notes.
+`--structure-page` is invalid without `--structures`.
+
+The record selection includes logical generation and complete selected-member
+identity, so callers cannot reuse an index after editing or selecting another fat
+slice. Mach-O object references retain section-relative file targets; thread PC
+and CPSR state are separate. TE entry pointers keep the original value while
+navigation accounts for stripped-header bias and any Thumb state bit. These
+controls are additive hiewbie behavior, without an original HIEW table-layout
+or contextual-key parity claim. No navigation command applies a relocation,
+reconstructs a header or repairs a file.
 
 ARM/Thumb symbol metadata supplies an advisory decoder hint below an explicit
 user profile. Successful absolute/entry/region/record navigation, byte-generation

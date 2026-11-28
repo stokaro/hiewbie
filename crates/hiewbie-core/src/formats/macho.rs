@@ -1,7 +1,6 @@
 use super::{
-    BinaryFormat, Endian, Executable, FatSlice, FormatError, HeaderField, MAX_FAT_SLICES,
-    MAX_FORMAT_ENTRIES, Machine, Reader, Region, VirtualAddress, image, name, parse_image, u32_at,
-    u64_at,
+    Endian, Executable, FatSlice, FormatError, HeaderField, MAX_FAT_SLICES, MAX_FORMAT_FIELDS,
+    Machine, Reader, parse_image, u32_at, u64_at,
 };
 use crate::ByteSource;
 
@@ -35,249 +34,11 @@ fn machine(cpu: u32) -> Machine {
     }
 }
 
-// Segment and entry-point structures follow the published Apple Mach-O headers.
-// Old thread-state entries, high-VM core mappings and symbols remain explicit gaps.
-pub(super) fn parse<S: ByteSource>(
-    reader: &mut Reader<'_, S>,
-    magic: [u8; 4],
-    generation: u64,
-) -> Result<Executable, FormatError> {
-    let endian = if magic[0] == 0xfe {
-        Endian::Big
-    } else {
-        Endian::Little
-    };
-    let bitness = if magic == [0xcf, 0xfa, 0xed, 0xfe] || magic == [0xfe, 0xed, 0xfa, 0xcf] {
-        64
-    } else {
-        32
-    };
-    let header_size = if bitness == 64 { 32 } else { 28 };
-    let header = reader.read::<28>(0)?;
-    reader.range(0, header_size)?;
-    let cpu = u32_at(&header, 4, endian);
-    if matches!(
-        (machine(cpu), bitness),
-        (Machine::X86_64 | Machine::Aarch64, 32) | (Machine::X86 | Machine::Arm, 64)
-    ) {
-        return Err(reader.invalid("Mach-O CPU and header width disagree", 4));
-    }
-    let count = usize::try_from(u32_at(&header, 16, endian)).map_err(|_| FormatError::Limit {
-        resource: "load commands",
-        limit: MAX_FORMAT_ENTRIES,
-    })?;
-    if count > MAX_FORMAT_ENTRIES {
-        return Err(FormatError::Limit {
-            resource: "load commands",
-            limit: MAX_FORMAT_ENTRIES,
-        });
-    }
-    let commands_size = u64::from(u32_at(&header, 20, endian));
-    reader.range(header_size, commands_size)?;
-    let commands_end = header_size + commands_size;
-    let format = if bitness == 64 {
-        BinaryFormat::MachO64
-    } else {
-        BinaryFormat::MachO32
-    };
-    let mut result = image(reader, generation, format, machine(cpu), endian, bitness);
-    reader.field(&mut result, "MachO.CpuType", u64::from(cpu), 4, 4)?;
-    reader.field(
-        &mut result,
-        "MachO.CpuSubtype",
-        u64::from(u32_at(&header, 8, endian)),
-        8,
-        4,
-    )?;
-    reader.field(
-        &mut result,
-        "MachO.FileType",
-        u64::from(u32_at(&header, 12, endian)),
-        12,
-        4,
-    )?;
-    reader.field(&mut result, "MachO.CommandCount", count as u64, 16, 4)?;
-    reader.field(&mut result, "MachO.CommandBytes", commands_size, 20, 4)?;
-    reader.field(
-        &mut result,
-        "MachO.Flags",
-        u64::from(u32_at(&header, 24, endian)),
-        24,
-        4,
-    )?;
-    let mut at = header_size;
-    let mut entry = None;
-    let mut total_sections = 0_usize;
-    for index in 0..count {
-        if commands_end - at < 8 {
-            return Err(reader.invalid("Mach-O load-command header is truncated", at));
-        }
-        let command = reader.read::<8>(at)?;
-        let kind = u32_at(&command, 0, endian);
-        let size = u64::from(u32_at(&command, 4, endian));
-        let alignment = if bitness == 64 { 8 } else { 4 };
-        if size < 8 || size % alignment != 0 || size > commands_end - at {
-            return Err(reader.invalid("Mach-O load command has invalid size or alignment", at + 4));
-        }
-        reader.field(
-            &mut result,
-            format!("Command[{index}].Type"),
-            u64::from(kind),
-            at,
-            4,
-        )?;
-        reader.field(
-            &mut result,
-            format!("Command[{index}].Size"),
-            size,
-            at + 4,
-            4,
-        )?;
-        match kind {
-            1 | 0x19 => {
-                if (kind == 0x19) != (bitness == 64) {
-                    return Err(reader.invalid("Mach-O segment and header widths disagree", at));
-                }
-                let segment_size = if bitness == 64 { 72 } else { 56 };
-                let section_size = if bitness == 64 { 80 } else { 68 };
-                if size < segment_size {
-                    return Err(reader.invalid("Mach-O segment command is too short", at));
-                }
-                let mut segment = [0; 72];
-                if bitness == 64 {
-                    segment = reader.read::<72>(at)?;
-                } else {
-                    segment[..56].copy_from_slice(&reader.read::<56>(at)?);
-                }
-                let (address, memory_size, offset, file_size, protection, sections, flags) =
-                    if bitness == 64 {
-                        (
-                            u64_at(&segment, 24, endian),
-                            u64_at(&segment, 32, endian),
-                            u64_at(&segment, 40, endian),
-                            u64_at(&segment, 48, endian),
-                            u32_at(&segment, 60, endian),
-                            u32_at(&segment, 64, endian),
-                            u32_at(&segment, 68, endian),
-                        )
-                    } else {
-                        (
-                            u64::from(u32_at(&segment, 24, endian)),
-                            u64::from(u32_at(&segment, 28, endian)),
-                            u64::from(u32_at(&segment, 32, endian)),
-                            u64::from(u32_at(&segment, 36, endian)),
-                            u32_at(&segment, 44, endian),
-                            u32_at(&segment, 48, endian),
-                            u32_at(&segment, 52, endian),
-                        )
-                    };
-                total_sections = total_sections
-                    .checked_add(sections as usize)
-                    .filter(|count| *count <= MAX_FORMAT_ENTRIES)
-                    .ok_or(FormatError::Limit {
-                        resource: "Mach-O sections",
-                        limit: MAX_FORMAT_ENTRIES,
-                    })?;
-                if size != segment_size + u64::from(sections) * section_size {
-                    return Err(
-                        reader.invalid("Mach-O section count does not match command size", at)
-                    );
-                }
-                if file_size > memory_size {
-                    return Err(
-                        reader.invalid("Mach-O segment has more file bytes than memory", at)
-                    );
-                }
-                if bitness == 32 && memory_size > (1_u64 << 32) - address {
-                    return Err(reader.invalid("Mach-O32 virtual range exceeds 32 bits", at));
-                }
-                if flags & 1 != 0 {
-                    return Err(FormatError::Unsupported("Mach-O high-VM core segments"));
-                }
-                reader.region(
-                    &mut result,
-                    Region {
-                        name: name(&segment[8..24]),
-                        file: reader.range(offset, file_size)?,
-                        address: VirtualAddress::new(address),
-                        memory_size,
-                        readable: protection & 1 != 0,
-                        writable: protection & 2 != 0,
-                        executable: protection & 4 != 0,
-                        header: reader.range(at, size)?,
-                    },
-                )?;
-                let scalar_size = u64::from(bitness / 8);
-                for (label, value, relative) in [
-                    ("VirtualAddress", address, 24),
-                    (
-                        "MemorySize",
-                        memory_size,
-                        if bitness == 64 { 32 } else { 28 },
-                    ),
-                    ("FileOffset", offset, if bitness == 64 { 40 } else { 32 }),
-                    ("FileSize", file_size, if bitness == 64 { 48 } else { 36 }),
-                ] {
-                    reader.field(
-                        &mut result,
-                        format!("Segment[{index}].{label}"),
-                        value,
-                        at + relative,
-                        scalar_size,
-                    )?;
-                }
-            }
-            0x8000_0028 => {
-                if size != 24 || entry.is_some() {
-                    return Err(
-                        reader.invalid("Mach-O LC_MAIN is duplicated or has the wrong size", at)
-                    );
-                }
-                let bytes = reader.read::<24>(at)?;
-                let offset = u64_at(&bytes, 8, endian);
-                reader.field(&mut result, "Main.EntryOffset", offset, at + 8, 8)?;
-                entry = Some((offset, at + 8));
-            }
-            _ => {}
-        }
-        at += size;
-    }
-    if at != commands_end {
-        return Err(reader.invalid(
-            "Mach-O command count does not consume the command table",
-            at,
-        ));
-    }
-    if let Some((offset, field)) = entry {
-        let mut text = result
-            .regions
-            .iter()
-            .filter(|region| region.name == "__TEXT");
-        let region = text
-            .next()
-            .ok_or_else(|| reader.invalid("Mach-O LC_MAIN has no __TEXT mapping", field))?;
-        if text.next().is_some() {
-            return Err(reader.invalid("Mach-O LC_MAIN has ambiguous __TEXT mappings", field));
-        }
-        if region.file.offset != reader.slice.offset {
-            return Err(FormatError::Unsupported(
-                "Mach-O LC_MAIN with nonzero __TEXT file offset",
-            ));
-        }
-        let address = region
-            .address
-            .get()
-            .checked_add(offset)
-            .ok_or_else(|| reader.invalid("Mach-O entry address overflow", field))?;
-        result
-            .va_to_file(VirtualAddress::new(address))
-            .map_err(|_| {
-                reader.invalid("Mach-O LC_MAIN is unmapped, zero-fill, or ambiguous", field)
-            })?;
-        result.entry = Some(VirtualAddress::new(address));
-    }
-    Ok(result)
-}
+mod commands;
+mod relocations;
+mod threads;
+
+pub(super) use commands::parse;
 
 pub(super) fn parse_fat<S: ByteSource>(
     reader: &mut Reader<'_, S>,
@@ -403,6 +164,17 @@ pub(super) fn parse_fat<S: ByteSource>(
     }
     result.selected_slice = Some(index);
     result.slices = slices;
+    if result
+        .fields
+        .len()
+        .checked_add(fields.len())
+        .is_none_or(|count| count > MAX_FORMAT_FIELDS)
+    {
+        return Err(FormatError::Limit {
+            resource: "header fields",
+            limit: MAX_FORMAT_FIELDS,
+        });
+    }
     result.fields.extend(fields);
     Ok(result)
 }

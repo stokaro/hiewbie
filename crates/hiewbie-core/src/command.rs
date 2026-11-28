@@ -9,7 +9,7 @@ use crate::bookmark::{
     BOOKMARK_SLOTS, Bookmark, BookmarkCommand, BookmarkMark, BookmarkViewport, Bookmarks,
 };
 use crate::calculator::{self, CalculationError};
-use crate::formats::{Endian, Executable, FileRange, VirtualAddress};
+use crate::formats::{Endian, Executable, FileRange, StructureRef, VirtualAddress};
 use crate::instructions::{AddressOperand, DecodeMode};
 use crate::references::{ReferenceScan, ReferenceSearch};
 use crate::search::SearchSession;
@@ -60,6 +60,8 @@ pub enum Command {
     GotoRegion(usize),
     GotoSymbol(usize),
     GotoSymbolRecord(usize),
+    GotoStructure(StructureRef),
+    GotoStructureRecord(StructureRef),
     SelectSlice(usize),
     SetDecodeMode(Option<DecodeMode>),
     SetEndian(Option<Endian>),
@@ -120,6 +122,8 @@ impl Command {
             Self::GotoRegion(_) => "navigate.region",
             Self::GotoSymbol(_) => "navigate.symbol",
             Self::GotoSymbolRecord(_) => "navigate.symbol-record",
+            Self::GotoStructure(_) => "navigate.structure-target",
+            Self::GotoStructureRecord(_) => "navigate.structure-record",
             Self::SelectSlice(_) => "analysis.select-slice",
             Self::SetDecodeMode(_) => "analysis.set-architecture",
             Self::SetEndian(_) => "analysis.set-endian",
@@ -256,6 +260,14 @@ pub const COMMANDS: &[CommandInfo] = &[
     CommandInfo {
         id: "navigate.region",
         description: "Go to a selected file-backed section or segment",
+    },
+    CommandInfo {
+        id: "navigate.structure-target",
+        description: "Follow a checked metadata target in the current image generation",
+    },
+    CommandInfo {
+        id: "navigate.structure-record",
+        description: "Go to the exact backing bytes of a metadata record",
     },
     CommandInfo {
         id: "analysis.select-slice",
@@ -505,6 +517,16 @@ impl<S: ByteSource> Editor<S> {
                 "Current offset has no file-backed instruction address",
             ));
         }
+        // Object sections may share a virtual range while owning distinct file
+        // bytes. A forward mapping alone cannot identify the instruction's PC.
+        // Raw addresses already use checked base + offset arithmetic above.
+        if self.analysis.executable.is_some()
+            && self.analysis.operand_offset(address, self.document.len())? != self.cursor
+        {
+            return Err(analysis_error(
+                "Instruction address does not map back to the current offset",
+            ));
+        }
         assembly::assemble_x86(source, mode, context.endian, address, |name| {
             self.resolve_assembly_symbol(name)
         })
@@ -526,6 +548,14 @@ impl<S: ByteSource> Editor<S> {
                     let (address, true) = self.analysis.address_at(offset).ok()? else {
                         continue;
                     };
+                    if self
+                        .analysis
+                        .operand_offset(address, self.document.len())
+                        .ok()
+                        != Some(offset)
+                    {
+                        return None;
+                    }
                     address
                 }
                 _ => continue,
@@ -826,6 +856,42 @@ impl<S: ByteSource> Editor<S> {
             }
             Command::SelectSlice(index) => {
                 self.cursor = self.analysis.select_slice(&mut self.document, index)?;
+            }
+            Command::GotoStructure(selection) | Command::GotoStructureRecord(selection) => {
+                self.refresh_analysis();
+                let image = self
+                    .executable()
+                    .ok_or_else(|| analysis_error("executable structures are unavailable"))?;
+                if image.generation != selection.generation
+                    || image.generation == u64::MAX
+                    || image.slice != selection.slice
+                    || image.selected_slice != selection.selected_slice
+                {
+                    return Err(analysis_error(
+                        "structure selection is stale; reopen the current image's records",
+                    ));
+                }
+                let record = image
+                    .records
+                    .get(selection.index)
+                    .ok_or_else(|| analysis_error("no such structure record"))?;
+                let range = if matches!(command, Command::GotoStructureRecord(_)) {
+                    record.record
+                } else {
+                    record.target.ok_or_else(|| analysis_error(
+                        "this structure has no file-backed target; inspect its metadata record instead",
+                    ))?
+                };
+                if range.len == 0
+                    || range.end().map_err(analysis_error)?.get() > self.document.len()
+                {
+                    return Err(analysis_error(
+                        "structure span has no backing bytes in the document",
+                    ));
+                }
+                self.analysis.symbol_mode = None;
+                self.analysis.walk.clear();
+                self.cursor = range.offset;
             }
             Command::GotoSymbol(index) | Command::GotoSymbolRecord(index) => {
                 self.refresh_symbols();
