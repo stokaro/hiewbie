@@ -95,6 +95,10 @@ jobs:
           fi
       - name: Check formatting, Clippy, and workspace tests
         run: cargo xtask check
+      - name: Run the text assembler evaluation
+        run: |
+          cargo fmt --manifest-path experiments/assembler/Cargo.toml -- --check
+          cargo run --locked --manifest-path experiments/assembler/Cargo.toml --features compare-asm-rs
       - name: Build and exercise the native command
         run: |
           cargo build --package hiewbie --locked
@@ -129,3 +133,12 @@ jobs:
           rustup target add --toolchain "$RUSTUP_TOOLCHAIN" "$BUILD_TARGET"
       - name: Check target compilation without linking or runtime claims
         run: cargo check --locked --package "$BUILD_PACKAGE" --target "$BUILD_TARGET"
+      - name: Check both portable assembler candidates for the target
+        run: cargo check --locked --manifest-path experiments/assembler/Cargo.toml --features compare-asm-rs --target "$BUILD_TARGET"
+      - name: Link and run the standalone WebAssembly assembler probe
+        if: ${{ matrix.target == 'wasm32-unknown-unknown' }}
+        env:
+          CARGO_TARGET_DIR: target/assembler-probe
+        run: |
+          cargo build --locked --manifest-path experiments/assembler/Cargo.toml --lib --release --features compare-asm-rs --target "$BUILD_TARGET"
+          node experiments/assembler/check-wasm.mjs "target/assembler-probe/$BUILD_TARGET/release/hiewbie_assembler_probe.wasm"

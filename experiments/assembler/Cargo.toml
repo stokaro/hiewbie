@@ -1,0 +1,19 @@
+[package]
+name = "hiewbie-assembler-probe"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[features]
+compare-asm-rs = ["dep:asm-rs"]
+
+[dependencies]
+iced-x86 = { version = "=1.22.0", default-features = false, features = ["std", "encoder"] }
+asm-rs = { version = "=0.2.0", default-features = false, features = ["x86", "x86_64", "avx", "aarch64"], optional = true }

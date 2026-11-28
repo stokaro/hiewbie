@@ -1,9 +1,8 @@
 # ADR 0004: select bounded executable readers and portable instruction decoders
 
-Status: accepted for the first M2 analysis slice, 2026-11-28. Textual assembly
-remains an open decision gate. This decision implements part of the analysis
-contract; it does not mark M2, the complete HIEW baseline, or browser execution
-as supported.
+Status: accepted for the first M2 analysis slice, 2026-11-28. This decision
+covers the initial readers and decoders. [ADR 0006](0006-text-assembler-selection.md)
+records the text assembly path.
 
 ## Constraints
 
@@ -198,15 +197,11 @@ broader structure support justifies a change. The initial mapping surface uses
 focused readers with explicit budgets instead. The `object` crate's documented
 trusted-input scope still requires an arbitrary-input assessment before adoption.
 
-### Textual assembly remains a decision gate
+### Textual assembly
 
-No textual assembly backend is accepted. iced-x86's encoder/CodeAssembler API
-does not itself parse user-entered assembly. A future choice must demonstrate
-syntax handling, explicit current address/mode/endianness, preview, instruction
-length rejection, atomic document transactions, licensing, and packaging for the
-full target matrix. LLVM MC integration or a separate parser and encoder may be
-evaluated against those requirements. Keystone's GPLv2/FOSS-exception terms must
-not be represented as MIT; no Keystone dependency is introduced.
+[ADR 0006](0006-text-assembler-selection.md) chooses a bounded, in-tree parser
+with separate x86 and AArch64 encoders. Production encoding and integration
+remain implementation work.
 
 ## Primary references
 
