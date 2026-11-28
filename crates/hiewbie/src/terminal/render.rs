@@ -10,7 +10,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
 use super::block::{BlockField, BlockWrite};
-use super::hex_view::HEX_BODY;
+use super::hex_view::BYTE_BODY;
 use super::search::{SearchDialog, SearchField};
 use super::{
     Dialog, EntryColumn, InputDialog, ModeChoice, PromptKind, Ui, escaped_text, printable,
@@ -23,7 +23,7 @@ pub(super) const MARK: Style = Style::new().fg(Color::Yellow).bg(Color::Magenta)
 const ADDRESS_COLUMNS: usize = 18;
 pub(super) const PANEL: Style = Style::new().fg(Color::Black).bg(Color::Gray);
 const HELP_PANEL: Style = Style::new().fg(Color::LightYellow).bg(Color::Green);
-const FOCUSED_ROW: Style = Style::new().fg(Color::White).bg(Color::Black);
+pub(super) const FOCUSED_ROW: Style = Style::new().fg(Color::White).bg(Color::Black);
 const ERROR_PANEL: Style = Style::new().fg(Color::LightYellow).bg(Color::Red);
 const ACTIVE_SEARCH_FIELD: Style = Style::new().fg(Color::White).bg(Color::Cyan);
 const ACTIVE: Style = Style::new().fg(Color::Black).bg(Color::Yellow);
@@ -36,24 +36,34 @@ impl<S: ByteSource> Ui<S> {
             return;
         }
         let hex = self.editor.mode() == ViewMode::Hex;
+        let text = self.text_navigation();
         if self.editor.mode() == ViewMode::Code
             || (hex && !self.editor.is_editing())
             || matches!(self.dialog, Some(Dialog::Analysis(_)))
         {
             self.editor.refresh_analysis();
         }
+        if text {
+            self.prepare_text(area);
+        } else {
+            self.update_viewport(area);
+        }
         frame.render_widget(
-            Block::default().style(if hex { HEX_BODY } else { BASE }),
+            Block::default().style(if hex || text { BYTE_BODY } else { BASE }),
             area,
         );
         let header = format!(" hiewbie {} | {}", env!("CARGO_PKG_VERSION"), self.label);
         let title = row(area, 0);
-        if hex {
+        if hex || text {
             let scan = self
                 .editor
                 .is_searching()
                 .then(|| self.scan_position.unwrap_or(self.editor.cursor()).get());
-            self.render_hex_title(frame, title, scan);
+            if hex {
+                self.render_hex_title(frame, title, scan);
+            } else {
+                self.render_text_title(frame, title, scan);
+            }
         }
         if self.editor.is_searching() {
             let width = (area.width / 3).min(18);
@@ -61,7 +71,7 @@ impl<S: ByteSource> Ui<S> {
             let address = format!("{next:08X}│");
             let address_width = (address.chars().count() as u16).min(area.width - width);
             let title_width = area.width - width - address_width;
-            if !hex {
+            if !hex && !text {
                 frame.render_widget(
                     Paragraph::new(header).style(HEADER),
                     Rect::new(area.x, area.y, title_width, 1),
@@ -82,10 +92,9 @@ impl<S: ByteSource> Ui<S> {
                 Paragraph::new(bar).style(PANEL),
                 Rect::new(area.right() - width, area.y, width, 1),
             );
-        } else if !hex {
+        } else if !hex && !text {
             frame.render_widget(Paragraph::new(header).style(HEADER), title);
         }
-        self.update_viewport(area);
 
         if area.width < 23 || area.height < 5 {
             if area.height > 1 {
@@ -103,6 +112,11 @@ impl<S: ByteSource> Ui<S> {
                 Rect::new(area.x, area.y + 1, area.width, area.height - 2),
                 &self.hex_layout(area.width),
             );
+        } else if text {
+            self.render_text(
+                frame,
+                Rect::new(area.x, area.y + 1, area.width, area.height - 2),
+            );
         } else {
             self.render_status_details(frame, row(area, 1));
             if self.editor.mode() == ViewMode::Code {
@@ -111,7 +125,7 @@ impl<S: ByteSource> Ui<S> {
                 self.render_bytes(frame, area);
             }
         }
-        if !hex
+        if (!hex && !text)
             || self.show_hex_message
             || self
                 .editor
@@ -124,7 +138,7 @@ impl<S: ByteSource> Ui<S> {
                 && self.editing_caret_visible()
                 && cursor / self.bytes_per_row as u64 == u64::from(last - 1);
             let mut message = row(area, last - u16::from(editing_last_row));
-            if hex {
+            if hex || text {
                 message.x += 1;
                 message.width -= 1;
             }
@@ -167,6 +181,9 @@ impl<S: ByteSource> Ui<S> {
                 }
             }
             Some(Dialog::Mode(selected)) => render_mode_picker(frame, area, *selected),
+            Some(Dialog::LineFeed(selected)) => {
+                super::text_view::render_line_feed(frame, area, *selected)
+            }
             Some(Dialog::Analysis(dialog)) => self.render_analysis_dialog(frame, area, dialog),
             None => {}
         }
@@ -516,6 +533,9 @@ impl<S: ByteSource> Ui<S> {
                 Some(Dialog::Mode(_)) => {
                     Some(["Text", "Hex", "Decode", "Next", "", "", "", "", "", ""])
                 }
+                Some(Dialog::LineFeed(_)) => {
+                    Some(["CR/LF", "CR", "LF", "NULL", "", "Next", "", "", "", ""])
+                }
                 Some(Dialog::Search(s)) if !s.help => {
                     Some(["Help", "Direct", "", "Area", "GoLast", "", "", "", "", ""])
                 }
@@ -588,6 +608,22 @@ impl<S: ByteSource> Ui<S> {
                     Rect::new(area.right() - tail, area.y, tail, 1),
                 );
             }
+            return;
+        }
+        if self.text_navigation() {
+            let labels = [
+                "Help",
+                self.text_wrap_label(),
+                "",
+                "Mode",
+                "Goto",
+                "LnFeed",
+                "Search",
+                "Table",
+                "Files",
+                "Quit",
+            ];
+            render_function_slots(frame, area, &labels, &[8, 9, 10]);
             return;
         }
         let labels = if self.editor.is_editing() {
@@ -719,7 +755,7 @@ fn draw_dialog(
     }
 
     let inset = surface.inner(Margin::new(
-        if surface.width >= 28 { 2 } else { 1 },
+        if surface.width >= 27 { 2 } else { 1 },
         u16::from(surface.height >= 5),
     ));
     let border = Block::default()

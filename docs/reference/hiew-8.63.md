@@ -202,10 +202,19 @@ cross-file block history, and import remain open.
 ### Text is a line-oriented view, with encoding and layout settings
 
 The original Text help describes line wrapping, selectable line endings,
-tab expansion and translation tables (`hiew8.hlp`, `[Text]`, lines 211-226;
-`hiew8.ini`, lines 19-44). Hiewbie's current Text mode is an ASCII byte grid.
-Keep that limitation visible until line indexing, bounded scanning and byte-to-
-display-position mapping are implemented. Editing must still address raw bytes.
+tab expansion and translation tables (`hiew8.hlp`, `[Text]`, lines 211–226 and
+`hiew8.ini`, lines 19–44). Generated Windows fixtures confirmed CP437 control
+glyphs, eight-column tabs, screen-width wrapping, and the 512-cell limit when
+horizontal scrolling is enabled. The Text viewport starts at the byte offset
+shown in the title. Up and Down move that offset by a displayed row. Left and
+Right scroll horizontally and keep the offset fixed. F2 toggles wrapping and
+F6 opens the line-feed selector.
+
+Hiewbie renders the single-byte Text view from bounded reads and preserves raw
+offsets for Goto, Search, and view changes. It estimates the initial layout
+from the first 4 KiB. Exact classification, scrollbar fill, backward navigation
+from arbitrary mid-line offsets, and translation-table selection remain open.
+[Paired Windows observations](../evidence/hiew-8.63-windows-text.json)
 
 The supplied profile selects Text initially and overrides the default decoding
 width to 16 bits. These are settings of this distribution, not proof of built-in

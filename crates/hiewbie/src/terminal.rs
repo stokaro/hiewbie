@@ -8,6 +8,7 @@ mod search;
 mod symbols;
 #[cfg(test)]
 mod tests;
+mod text_view;
 #[cfg(windows)]
 mod windows_cursor;
 
@@ -148,14 +149,8 @@ impl Drop for TerminalGuard {
     }
 }
 
-pub(crate) fn run(editor: Editor<FileSource>) -> io::Result<()> {
-    let label = editor
-        .document()
-        .source()
-        .path()
-        .to_string_lossy()
-        .into_owned();
-    let mut ui = Ui::new(editor, label);
+pub(crate) fn run(editor: Editor<FileSource>, path: &Path) -> io::Result<()> {
+    let mut ui = Ui::new(editor, path.to_string_lossy().into_owned());
     let mut guard = TerminalGuard::enter()?;
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal: Terminal<CrosstermBackend<Stdout>> = Terminal::new(backend)?;
@@ -287,6 +282,7 @@ enum Dialog {
     BlockWrite(BlockWrite),
     Help { selected: usize },
     Mode(ModeChoice),
+    LineFeed(text_view::LineFeed),
     Analysis(AnalysisDialog),
 }
 
@@ -297,6 +293,7 @@ struct Ui<S: ByteSource> {
     top: u64,
     bytes_per_row: usize,
     visible_rows: usize,
+    text: text_view::TextView,
     entry_column: EntryColumn,
     pending_nibble: Option<u8>,
     message: String,
@@ -330,6 +327,7 @@ impl<S: ByteSource> Ui<S> {
             top: 0,
             bytes_per_row: 16,
             visible_rows: 21,
+            text: text_view::TextView::default(),
             entry_column: EntryColumn::Hex,
             pending_nibble: None,
             message: "F1 help | Enter cycle | F4 select mode | F8 headers | Esc quit".into(),
@@ -486,6 +484,12 @@ impl<S: ByteSource> Ui<S> {
             self.pending_nibble = None;
             self.notice("This modified binding is not implemented; F1 lists available commands");
             return UiAction::Continue;
+        }
+
+        if self.text_navigation()
+            && let Some(action) = self.text_key(key.code)
+        {
+            return action;
         }
 
         match key.code {
@@ -752,6 +756,9 @@ impl<S: ByteSource> Ui<S> {
             {
                 self.cycle_bitness()
             }
+            KeyCode::F(6) if key.modifiers == KeyModifiers::CONTROL && self.text_navigation() => {
+                self.toggle_text_tabs()
+            }
             KeyCode::Char('b' | 'B') if !self.editor.is_editing() => self.cycle_bitness(),
             KeyCode::Char('a' | 'A') if !self.editor.is_editing() => {
                 self.open_analysis(AnalysisPage::Profiles);
@@ -849,6 +856,10 @@ impl<S: ByteSource> Ui<S> {
                 } else {
                     self.dialog = Some(Dialog::Help { selected });
                 }
+                return UiAction::Continue;
+            }
+            Dialog::LineFeed(selected) => {
+                self.text_line_feed_key(selected, key);
                 return UiAction::Continue;
             }
             Dialog::Mode(mut selected) => {

@@ -511,7 +511,160 @@ fn large_offsets_and_large_windows_only_read_a_bounded_viewport() {
     assert!(largest.get() <= hiewbie_core::MAX_READ_BYTES);
     ui.dispatch(Command::Goto(FileOffset::new(u64::MAX - 1)));
     let output = screen(&mut ui, 80, 25);
-    assert!(output.contains("FFFFFFFFFFFFFFFE"));
+    assert!(output.contains("FFFFFFFF`FFFFFFFE"));
+}
+
+#[test]
+fn text_view_wraps_binary_rows_and_scrolls_by_original_byte_offset() {
+    let mut fixture = b"Alpha\tBeta\r\nBravo\nCharlie\rDelta\r\n".to_vec();
+    fixture.extend([b'X'; 76]);
+    fixture.extend(b"1234567890YZ\r\nnext\tend\xff");
+    let mut ui = ui(&fixture);
+    ui.dispatch(Command::SetMode(ViewMode::Text));
+
+    let mut terminal = Terminal::new(TestBackend::new(80, 25)).unwrap();
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    let buffer = terminal.backend().buffer();
+    let lines: Vec<_> = buffer
+        .content
+        .chunks(80)
+        .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
+        .collect();
+    assert_eq!(lines[1].trim_end(), "↑Alpha○Beta");
+    assert_eq!(lines[2].trim_end(), "▓Bravo◙Charlie♪Delta");
+    assert_eq!(lines[3], format!("▓{}123", "X".repeat(76)));
+    assert_eq!(lines[4].trim_end(), "▓4567890YZ");
+    assert!(lines[5].starts_with("▓next○end\u{a0}"));
+    assert!(lines[23].starts_with('▼'));
+    assert_eq!(
+        lines[24],
+        " 1Help   2Unwrap 3       4Mode   5Goto   6LnFeed 7Search 8Table  9Files 10Quit  "
+    );
+    assert_eq!(buffer[(1, 1)].fg, ratatui::style::Color::LightCyan);
+    assert_eq!(buffer[(79, 23)].bg, ratatui::style::Color::Blue);
+    assert!(!ui.has_input_caret());
+
+    key(&mut ui, KeyCode::Right);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(0));
+    for offset in [12, 33, 112] {
+        key(&mut ui, KeyCode::Down);
+        assert_eq!(ui.editor.cursor(), FileOffset::new(offset));
+    }
+    key(&mut ui, KeyCode::Up);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(33));
+    key(&mut ui, KeyCode::F(2));
+    key(&mut ui, KeyCode::Right);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(33));
+    let output = screen(&mut ui, 80, 25);
+    assert!(output.lines().next().unwrap().contains("1     00000021│"));
+    assert_eq!(
+        output.lines().nth(1).unwrap(),
+        format!("↑{}1234", "X".repeat(75))
+    );
+    assert_eq!(output.lines().nth(2).unwrap(), "▓ext○end");
+    key(&mut ui, KeyCode::Enter);
+    assert_eq!(ui.editor.mode(), ViewMode::Hex);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(33));
+    assert_eq!(bytes(&mut ui), fixture);
+    assert!(!ui.editor.document().is_dirty());
+}
+
+#[test]
+fn text_line_feed_palette_selection_and_tabs_preserve_the_file_anchor() {
+    use ratatui::style::Color;
+
+    let fixture = b"run\tX\r\nsecond\tYZ\r\nlast\tW";
+    let mut ui = ui(fixture);
+    ui.dispatch(Command::SetMode(ViewMode::Text));
+    assert_eq!(
+        screen(&mut ui, 80, 25).lines().nth(1).unwrap(),
+        "↑run     X"
+    );
+    key(&mut ui, KeyCode::F(6));
+    let mut terminal = Terminal::new(TestBackend::new(80, 25)).unwrap();
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    let buffer = terminal.backend().buffer();
+    let row = |y| {
+        (26..53)
+            .map(|x| buffer[(x, y)].symbol())
+            .collect::<String>()
+    };
+    assert_eq!(row(9), "                        [x]");
+    assert_eq!(row(10), "  ╔═ Select \"LineFeed\" ═╗  ");
+    assert_eq!(buffer[(30, 11)].bg, Color::Black);
+    assert_eq!(buffer[(30, 11)].fg, Color::White);
+    assert_eq!(buffer[(37, 12)].fg, Color::Blue);
+    assert_eq!(buffer[(54, 16)].bg, Color::Black);
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::Esc);
+    assert_eq!(
+        screen(&mut ui, 80, 25).lines().nth(2).unwrap(),
+        "▓second  YZ"
+    );
+
+    key(&mut ui, KeyCode::F(6));
+    key(&mut ui, KeyCode::F(3));
+    assert_eq!(
+        screen(&mut ui, 80, 25).lines().nth(1).unwrap(),
+        "↑run     X♪"
+    );
+    key(&mut ui, KeyCode::Down);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(7));
+    control(&mut ui, KeyCode::F(6));
+    assert_eq!(
+        screen(&mut ui, 80, 25).lines().nth(1).unwrap(),
+        "↑second○YZ♪"
+    );
+    key(&mut ui, KeyCode::F(3));
+    assert!(!ui.editor.is_editing());
+    assert_eq!(bytes(&mut ui), fixture);
+}
+
+#[test]
+fn text_null_line_feed_uses_zero_bytes_and_displays_crlf_as_glyphs() {
+    let fixture = b"A\0B\0C\r\nD\0E";
+    let mut ui = ui(fixture);
+    ui.dispatch(Command::SetMode(ViewMode::Text));
+    assert_eq!(screen(&mut ui, 80, 25).lines().nth(1).unwrap(), "↑A B C");
+    key(&mut ui, KeyCode::F(6));
+    key(&mut ui, KeyCode::F(4));
+    let output = screen(&mut ui, 80, 25);
+    assert_eq!(output.lines().nth(1).unwrap(), "↑A");
+    assert_eq!(output.lines().nth(2).unwrap(), "▓B");
+    assert_eq!(output.lines().nth(3).unwrap(), "▓C♪◙D");
+    key(&mut ui, KeyCode::Down);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(2));
+    assert_eq!(bytes(&mut ui), fixture);
+}
+
+#[test]
+fn text_page_navigation_respects_display_height_and_the_unwrapped_line_limit() {
+    let line = b"0123456789\n";
+    let fixture = line.repeat(55);
+    let mut ui = ui(&fixture);
+    ui.dispatch(Command::SetMode(ViewMode::Text));
+    screen(&mut ui, 80, 25);
+    key(&mut ui, KeyCode::PageDown);
+    assert_eq!(
+        ui.editor.cursor(),
+        FileOffset::new((23 * line.len()) as u64)
+    );
+    key(&mut ui, KeyCode::PageUp);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(0));
+
+    let mut long = self::ui(&[b'A'; 2048]);
+    long.dispatch(Command::SetMode(ViewMode::Text));
+    screen(&mut long, 80, 25);
+    key(&mut long, KeyCode::Down);
+    assert_eq!(long.editor.cursor(), FileOffset::new(512));
+    key(&mut long, KeyCode::Up);
+    assert_eq!(long.editor.cursor(), FileOffset::new(0));
+    key(&mut long, KeyCode::F(2));
+    screen(&mut long, 40, 10);
+    key(&mut long, KeyCode::PageDown);
+    assert_eq!(long.editor.cursor(), FileOffset::new(39 * 8));
+    key(&mut long, KeyCode::PageUp);
+    assert_eq!(long.editor.cursor(), FileOffset::new(0));
 }
 
 /// Independently generated PE32+ headers and bytes; no executable is distributed.
@@ -1007,7 +1160,7 @@ fn search_keeps_exact_hex_separate_and_rejects_unconvertible_input() {
 
 #[test]
 fn backward_text_search_uses_last_hit_and_explicit_origin_resets() {
-    let mut ui = ui(b"ABC abc AbC");
+    let mut ui = ui(b"ABC\nabc\nAbC");
     key(&mut ui, KeyCode::F(4));
     key(&mut ui, KeyCode::F(1));
     control(&mut ui, KeyCode::End);
@@ -1018,7 +1171,9 @@ fn backward_text_search_uses_last_hit_and_explicit_origin_resets() {
     ui.advance_search();
     assert_eq!(ui.editor.cursor(), FileOffset::new(8));
 
-    key(&mut ui, KeyCode::Home);
+    key(&mut ui, KeyCode::Up);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(4));
+    key(&mut ui, KeyCode::Up);
     assert_eq!(ui.editor.cursor(), FileOffset::new(0));
     control(&mut ui, KeyCode::Char('r'));
     ui.advance_search();
@@ -1040,7 +1195,7 @@ fn backward_text_search_uses_last_hit_and_explicit_origin_resets() {
     control(&mut ui, KeyCode::Char('r'));
     ui.advance_search();
     assert_eq!(ui.editor.cursor(), FileOffset::new(8));
-    assert_eq!(bytes(&mut ui), b"ABC abc AbC");
+    assert_eq!(bytes(&mut ui), b"ABC\nabc\nAbC");
     assert!(!ui.editor.document().is_dirty());
 }
 
