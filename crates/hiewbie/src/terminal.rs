@@ -1,5 +1,6 @@
 //! Thin native terminal adapter over the portable document and command model.
 
+mod analysis;
 mod render;
 #[cfg(test)]
 mod tests;
@@ -8,9 +9,10 @@ use std::io::{self, Stdout};
 use std::time::Duration;
 
 use hiewbie::file::{FileSource, SaveError, save_document};
+use hiewbie_core::formats::VirtualAddress;
 use hiewbie_core::{
     ByteSource, Command, Editor, Effect, FileOffset, MAX_SEARCH_PATTERN_BYTES, Search,
-    SearchProgress, ViewMode, parse_goto,
+    SearchProgress, ViewMode,
 };
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
@@ -26,6 +28,7 @@ use ratatui::crossterm::{
 };
 
 const SEARCH_STEP_BYTES: usize = 64 * 1024;
+use analysis::{AnalysisDialog, AnalysisPage};
 
 pub(crate) fn printable(byte: u8) -> char {
     if (b' '..=b'~').contains(&byte) {
@@ -166,6 +169,7 @@ enum EntryColumn {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PromptKind {
     Goto,
+    RawBase,
     SearchHex,
     SearchText,
 }
@@ -179,6 +183,7 @@ struct InputDialog {
 enum Dialog {
     Input(InputDialog),
     Help,
+    Analysis(AnalysisDialog),
 }
 
 struct Ui<S: ByteSource> {
@@ -197,7 +202,8 @@ struct Ui<S: ByteSource> {
 }
 
 impl<S: ByteSource> Ui<S> {
-    fn new(editor: Editor<S>, label: String) -> Self {
+    fn new(mut editor: Editor<S>, label: String) -> Self {
+        editor.refresh_analysis();
         Self {
             editor,
             label: escaped_text(&label),
@@ -206,7 +212,7 @@ impl<S: ByteSource> Ui<S> {
             visible_rows: 21,
             entry_column: EntryColumn::Hex,
             pending_nibble: None,
-            message: "F1 help | Enter/F4 Hex/Text | Esc quit | Code mode planned".into(),
+            message: "F1 help | Enter/F4 Hex/Text/Code | F8 headers | Esc quit".into(),
             dialog: None,
             search: None,
             last_pattern: None,
@@ -277,6 +283,13 @@ impl<S: ByteSource> Ui<S> {
             self.dialog_key(key);
             return UiAction::Continue;
         }
+        if key.code == KeyCode::F(1)
+            && key.modifiers == KeyModifiers::SHIFT
+            && !self.editor.is_editing()
+        {
+            self.open_analysis(AnalysisPage::Profiles);
+            return UiAction::Continue;
+        }
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             return self.control_key(key);
         }
@@ -297,6 +310,18 @@ impl<S: ByteSource> Ui<S> {
             }
             KeyCode::Left => self.dispatch(Command::Move(-1)),
             KeyCode::Right => self.dispatch(Command::Move(1)),
+            KeyCode::Up if self.code_navigation() => self.dispatch(Command::MoveCode(-1)),
+            KeyCode::Down if self.code_navigation() => self.dispatch(Command::MoveCode(1)),
+            KeyCode::PageUp if self.code_navigation() => {
+                self.dispatch(Command::MoveCode(-(self.visible_rows as i32)))
+            }
+            KeyCode::PageDown if self.code_navigation() => {
+                self.dispatch(Command::MoveCode(self.visible_rows as i32))
+            }
+            KeyCode::Home if self.code_navigation() => self.dispatch(Command::ResyncCode),
+            KeyCode::End if self.code_navigation() => {
+                self.dispatch(Command::MoveCode(self.visible_rows.saturating_sub(1) as i32))
+            }
             KeyCode::Up => self.dispatch(Command::Move(-(self.bytes_per_row as i64))),
             KeyCode::Down => self.dispatch(Command::Move(self.bytes_per_row as i64)),
             KeyCode::PageUp => self.dispatch(Command::Move(-self.page_step())),
@@ -323,6 +348,10 @@ impl<S: ByteSource> Ui<S> {
         (self.visible_rows.max(1) * self.bytes_per_row) as i64
     }
 
+    fn code_navigation(&self) -> bool {
+        self.editor.mode() == ViewMode::Code && !self.editor.is_editing()
+    }
+
     fn cancel_or_exit(&mut self) -> UiAction {
         if self.editor.is_editing() {
             let action = self.dispatch(Command::DiscardEdit);
@@ -340,7 +369,7 @@ impl<S: ByteSource> Ui<S> {
 
     fn begin_edit(&mut self) -> UiAction {
         self.entry_column = match self.editor.mode() {
-            ViewMode::Hex => EntryColumn::Hex,
+            ViewMode::Hex | ViewMode::Code => EntryColumn::Hex,
             ViewMode::Text => EntryColumn::Ascii,
         };
         self.notice("Editing: F9/Ctrl+S saves; Esc discards; Tab hex/ASCII; Ctrl+Z/Y undo/redo");
@@ -360,7 +389,7 @@ impl<S: ByteSource> Ui<S> {
     fn view_key(&mut self, code: KeyCode) -> UiAction {
         match code {
             KeyCode::Enter | KeyCode::F(4) => {
-                self.notice("Hex/Text mode changed; Code mode is not implemented");
+                self.notice("Mode changed; Shift+F1/Ctrl+A selects the Code architecture");
                 self.dispatch(Command::CycleMode)
             }
             KeyCode::F(3) => self.begin_edit(),
@@ -371,6 +400,15 @@ impl<S: ByteSource> Ui<S> {
             KeyCode::F(7) => {
                 self.open_search_prompt();
                 UiAction::Continue
+            }
+            KeyCode::F(8) => {
+                self.open_analysis(AnalysisPage::Overview);
+                UiAction::Continue
+            }
+            KeyCode::Backspace if self.code_navigation() => self.dispatch(Command::ReturnBranch),
+            KeyCode::Char('/') if self.code_navigation() => self.dispatch(Command::ResyncCode),
+            KeyCode::Char(number @ '1'..='9') if self.code_navigation() => {
+                self.dispatch(Command::FollowBranch((number as u8 - b'0') as usize))
             }
             KeyCode::F(9) => {
                 self.notice("F9 Open is not implemented; start hiewbie with another file path");
@@ -473,6 +511,20 @@ impl<S: ByteSource> Ui<S> {
             return UiAction::Continue;
         }
         match key.code {
+            KeyCode::F(1)
+                if key.modifiers == KeyModifiers::CONTROL && !self.editor.is_editing() =>
+            {
+                self.cycle_bitness()
+            }
+            KeyCode::Char('b' | 'B') if !self.editor.is_editing() => self.cycle_bitness(),
+            KeyCode::Char('a' | 'A') if !self.editor.is_editing() => {
+                self.open_analysis(AnalysisPage::Profiles);
+                UiAction::Continue
+            }
+            KeyCode::Char('o' | 'O') if !self.editor.is_editing() => {
+                self.open_analysis(AnalysisPage::Overview);
+                UiAction::Continue
+            }
             KeyCode::Home => self.dispatch(Command::Goto(FileOffset::new(0))),
             KeyCode::End => self.dispatch(Command::Goto(FileOffset::new(
                 self.editor.document().len().saturating_sub(1),
@@ -515,7 +567,7 @@ impl<S: ByteSource> Ui<S> {
 
     fn open_search_prompt(&mut self) {
         self.open_prompt(match self.editor.mode() {
-            ViewMode::Hex => PromptKind::SearchHex,
+            ViewMode::Hex | ViewMode::Code => PromptKind::SearchHex,
             ViewMode::Text => PromptKind::SearchText,
         });
     }
@@ -528,13 +580,22 @@ impl<S: ByteSource> Ui<S> {
             self.notice("Dialog cancelled");
             return;
         }
-        let Dialog::Input(mut input) = dialog else {
-            if !matches!(key.code, KeyCode::F(1) | KeyCode::Enter) {
-                self.dialog = Some(Dialog::Help);
-            } else {
-                self.notice("Help closed; Esc cancels or discards editing, and quits from view");
+        let mut input = match dialog {
+            Dialog::Input(input) => input,
+            Dialog::Analysis(dialog) => {
+                self.analysis_key(dialog, key);
+                return;
             }
-            return;
+            Dialog::Help => {
+                if !matches!(key.code, KeyCode::F(1) | KeyCode::Enter) {
+                    self.dialog = Some(Dialog::Help);
+                } else {
+                    self.notice(
+                        "Help closed; Esc cancels or discards editing, and quits from view",
+                    );
+                }
+                return;
+            }
         };
         match key.code {
             KeyCode::Enter => match self.apply_prompt(&input) {
@@ -549,7 +610,7 @@ impl<S: ByteSource> Ui<S> {
                 input.kind = match input.kind {
                     PromptKind::SearchHex => PromptKind::SearchText,
                     PromptKind::SearchText => PromptKind::SearchHex,
-                    PromptKind::Goto => PromptKind::Goto,
+                    PromptKind::Goto | PromptKind::RawBase => input.kind,
                 };
                 input.error = None;
             }
@@ -563,7 +624,7 @@ impl<S: ByteSource> Ui<S> {
                         .modifiers
                         .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
             {
-                let limit = if input.kind == PromptKind::Goto {
+                let limit = if matches!(input.kind, PromptKind::Goto | PromptKind::RawBase) {
                     64
                 } else {
                     MAX_SEARCH_PATTERN_BYTES * 3
@@ -583,16 +644,20 @@ impl<S: ByteSource> Ui<S> {
     fn apply_prompt(&mut self, prompt: &InputDialog) -> Result<(), String> {
         match prompt.kind {
             PromptKind::Goto => {
-                let offset = parse_goto(
-                    &prompt.input,
-                    self.editor.cursor(),
-                    self.editor.document().len(),
-                )
-                .map_err(|error| error.to_string())?;
                 self.editor
-                    .dispatch(Command::Goto(offset))
+                    .goto_expression(&prompt.input)
                     .map_err(|error| error.to_string())?;
-                self.notice(format!("Offset {:016X}", offset.get()));
+                self.notice(format!("File offset {:016X}", self.editor.cursor().get()));
+                Ok(())
+            }
+            PromptKind::RawBase => {
+                let base = analysis::parse_base(&prompt.input)?;
+                self.editor
+                    .dispatch(Command::SetRawBase(VirtualAddress::new(base)))
+                    .map_err(|error| error.to_string())?;
+                self.notice(format!(
+                    "Raw address base {base:016X}; decoder selection is independent"
+                ));
                 Ok(())
             }
             PromptKind::SearchHex | PromptKind::SearchText => {

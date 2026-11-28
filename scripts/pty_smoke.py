@@ -49,6 +49,7 @@ ESC = b"\x1b"
 F3 = b"\x1bOR"
 F4 = b"\x1bOS"
 F5 = b"\x1b[15~"
+F8 = b"\x1b[19~"
 F9 = b"\x1b[20~"
 CTRL_E = b"\x05"
 CTRL_G = b"\x07"
@@ -473,6 +474,7 @@ def edit_save(binary: Path, directory: Path, *, record: bool) -> list[list]:
     path, mtime_ns = fixture(directory)
     with PtySession(binary, path, "edit/save and paste rejection", record=record) as session:
         session.send(F4, "F4: switch to Text")
+        session.send(b"\r", "Enter: switch to Code")
         session.send(b"\r", "Enter: return to Hex")
         session.send(F5, "F5: goto dialog")
         session.send(b"10\r", "goto hexadecimal offset 10")
@@ -531,6 +533,63 @@ def read_only(binary: Path, directory: Path) -> None:
         session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
 
 
+def pe_fixture_bytes() -> bytes:
+    """Generate PE32+ metadata and known branch bytes; no imported executable."""
+    data = bytearray(0x400)
+    data[:2] = b"MZ"
+    struct.pack_into("<I", data, 0x3C, 0x80)
+    data[0x80:0x84] = b"PE\0\0"
+    struct.pack_into("<HH", data, 0x84, 0x8664, 1)
+    struct.pack_into("<H", data, 0x94, 0xF0)
+    optional = 0x98
+    struct.pack_into("<H", data, optional, 0x20B)
+    struct.pack_into("<I", data, optional + 16, 0x1000)
+    struct.pack_into("<Q", data, optional + 24, 0x140000000)
+    struct.pack_into("<II", data, optional + 32, 0x1000, 0x200)
+    struct.pack_into("<II", data, optional + 56, 0x2000, 0x200)
+    section = optional + 0xF0
+    data[section:section + 5] = b".text"
+    struct.pack_into("<IIII", data, section + 8, 0x20, 0x1000, 0x200, 0x200)
+    struct.pack_into("<I", data, section + 36, 0x60000020)
+    data[0x200:0x208] = bytes.fromhex("EB 04 90 90 90 90 C3 90")
+    return bytes(data)
+
+
+def analyze_edit_save(binary: Path, directory: Path, *, record: bool) -> list[list]:
+    directory.mkdir()
+    path = directory / "analysis.exe"
+    original = pe_fixture_bytes()
+    path.write_bytes(original)
+    fixed_ns = 1_700_000_000_123_456_789
+    os.utime(path, ns=(fixed_ns, fixed_ns))
+    mtime_ns = path.stat().st_mtime_ns
+    with PtySession(binary, path, "PE code, branches, and virtual goto", record=record) as session:
+        session.send(F8, "F8: inspect PE32+ headers")
+        session.send(F5, "Header F5: goto entry at file 200 / VA 140001000")
+        session.send(F4, "F4: switch to Text at the entry")
+        session.send(F4, "F4: switch to Code with inferred x86-64")
+        session.send(b"1", "Branch 1: follow jmp to file 206")
+        session.send(b"\x7f", "Backspace: return to file 200")
+        session.send(F3, "F3: verify return location with a byte transaction")
+        session.send(b"EB", "Same opcode at file 200 must leave every byte unchanged")
+        session.send(F9, "F9: complete clean byte transaction")
+        session.expect_file(original, mtime_ns=mtime_ns)
+        session.send(F5, "F5: open virtual-address goto")
+        session.send(b".140001000\r", "Map VA 140001000 to file 200")
+        session.send(b"1", "Branch 1: follow again to file 206")
+        session.send(F3, "F3: begin Code-mode byte editing")
+        session.send(b"CC", "Replace exactly the branch destination byte")
+        session.expect_file(original, mtime_ns=mtime_ns)
+        session.send(F9, "F9: save byte edit from Code mode")
+        expected = bytearray(original)
+        expected[0x206] = 0xCC
+        session.expect_file(bytes(expected))
+        session.send(ESC, "Escape: exit Code view", allow_exit=True)
+        session.finish()
+        session.expect_file(bytes(expected))
+        return sanitized_events(session.events, str(path.parent.resolve()))
+
+
 def sanitized_events(events: list[list], directory: str) -> list[list]:
     """Redact the generated directory even when a read splits the path.
 
@@ -558,7 +617,13 @@ def sanitized_events(events: list[list], directory: str) -> list[list]:
     return sanitized
 
 
-def write_recording(path: Path, events: list[list]) -> None:
+def write_recording(
+    path: Path,
+    events: list[list],
+    *,
+    title: str = "hiewbie native editor: F3/F9, paste rejection, Ctrl fallbacks",
+    filename: str = FIXTURE_NAME,
+) -> None:
     """Write v2 output/marker events without host paths or environment secrets.
 
     Format: https://docs.asciinema.org/manual/asciicast/v2/
@@ -569,8 +634,8 @@ def write_recording(path: Path, events: list[list]) -> None:
         "version": 2,
         "width": WIDTH,
         "height": HEIGHT,
-        "title": "hiewbie native editor: F3/F9, paste rejection, Ctrl fallbacks",
-        "command": f"hiewbie -- {FIXTURE_NAME}",
+        "title": title,
+        "command": f"hiewbie -- {filename}",
         "env": {"TERM": "xterm-256color"},
         "idle_time_limit": 1.0,
     }
@@ -599,6 +664,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True, help="built native hiewbie executable")
     parser.add_argument("--record", type=Path, help="write a successful asciicast v2 recording")
+    parser.add_argument("--record-analysis", type=Path, help="record PE headers, Code, branch/return, virtual goto, and byte save")
     options = parser.parse_args()
     if os.name != "posix":
         parser.error("Unix PTYs are required; Windows ConPTY needs a separate harness")
@@ -616,9 +682,19 @@ def main() -> int:
             print("PASS: narrow resize, 80x25 restoration, discard preserves bytes and mtime")
             read_only(binary, root / "readonly")
             print("PASS: read-only edit/save refusal preserves bytes and mtime")
+            analysis_events = analyze_edit_save(binary, root / "analysis", record=options.record_analysis is not None)
+            print("PASS: PE headers/entry, Code, branch/return, virtual goto, exact byte save")
         if options.record is not None:
             write_recording(options.record, events)
             print(f"Recording: {options.record}")
+        if options.record_analysis is not None:
+            write_recording(
+                options.record_analysis,
+                analysis_events,
+                title="hiewbie executable analysis: PE headers, branch/return, byte patch",
+                filename="analysis.exe",
+            )
+            print(f"Analysis recording: {options.record_analysis}")
         print("PASS: exact termios and alternate-screen/paste/cursor restoration in all sessions")
         return 0
     except (SmokeFailure, OSError, subprocess.SubprocessError) as error:

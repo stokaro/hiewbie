@@ -147,7 +147,9 @@ All requirements in this section are proposed engineering contracts.
 
 Host CPU and inspected CPU are independent. Every release must publish its capability table.
 A decoder being available does not establish assembly, symbols, or reference-analysis support.
-All rows below are **Planned**; the table does not claim backend availability.
+The table describes the full goal. The [status ledger](compatibility-status.md)
+records implemented decoding and remaining assembly/ISA work separately; the
+table does not imply that a selected backend implements every extension.
 
 | ID | Inspected ISA | Decode goal | Text assembly goal | Basis |
 |---|---|---|---|---|
@@ -180,7 +182,9 @@ All rows below are **Planned**; the table does not claim backend availability.
 
 For each format, track detection, structure browsing, address translation, symbols,
 imports/exports, editing, and malformed-input handling separately.
-All capabilities are **Planned**; each requires independent fixtures and acceptance evidence.
+The table describes the full goal. The [status ledger](compatibility-status.md)
+records the initial bounded PE/ELF/Mach-O readers and remaining format work;
+each capability requires independent fixtures and acceptance evidence.
 
 | ID | Format family | Planned scope | Evidence |
 |---|---|---|---|
@@ -256,12 +260,15 @@ All capabilities are **Planned**; each requires independent fixtures and accepta
 
 ## 10. Dependency candidates and licensing
 
-Ratatui/Crossterm are selected for the native frontend; other engines below are
-still candidates. Exact selected versions and license review are recorded in
-[dependencies.md](dependencies.md).
+Ratatui/Crossterm are selected for the native frontend. The initial analysis uses
+independent bounded format readers, iced-x86, and yaxpeax-arm/yaxpeax-arch.
+Exact selected versions and license review are recorded in
+[dependencies.md](dependencies.md); [ADR 0004](adr/0004-analysis-backends.md)
+records their acceptance limits. Other engines below remain candidates.
 
 - Ratatui/Crossterm: MIT terminal components; assess input coverage and terminal restoration [S4].
-- iced-x86: MIT x86 decoder/encoder; its CodeAssembler API is not a text parser [S5].
+- iced-x86: selected MIT x86 decoder; its CodeAssembler API is not a text parser and is not enabled [S5].
+- yaxpeax-arm/yaxpeax-arch: selected 0BSD ARM/Thumb/AArch64 decoding; strict mode and extension limits are documented in ADR 0004.
 - Capstone: multi-architecture decoder; preserve its distributed licence notices [S6].
 - Goblin: MIT format-parser candidate; supplement missing formats and test malformed inputs [S7].
 - object: MIT/Apache-2.0 candidate; upstream describes a trusted-input security model [S8].

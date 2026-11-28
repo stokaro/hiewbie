@@ -1,8 +1,9 @@
 # Architecture and implementation plan
 
-Status: implementation contract with an initial native editor slice. The
-workspace, raw-byte core, terminal adapter, and build checks exist; analysis
-backends, the browser adapter, and full releases remain planned. The
+Status: implementation contract with native editing and initial executable
+analysis. The core includes bounded format readers, instruction decoders and
+shared analysis commands. Full analysis, the browser adapter and releases remain
+incomplete. The
 [compatibility ledger](compatibility-status.md) separates evidence from scope.
 
 ## 1. Design objective
@@ -50,9 +51,10 @@ Prefer a small initial workspace with a core library, a terminal application,
 and `xtask`. Add separate backends or frontend crates as actual dependency and
 platform boundaries appear. Do not create empty crates merely to match this table.
 
-Current boundaries are `crates/hiewbie-core` (document, offsets, commands, search),
+Current boundaries are `crates/hiewbie-core` (document, addresses, formats,
+instructions, commands and search),
 `crates/hiewbie` (native storage, CLI, Ratatui frontend), and `xtask` (checks and
-target builds). The current implementation has no format or instruction engine.
+target builds). Selected engines are pure Rust and enter only the portable core.
 The diagram also contains planned consumers; it does not claim a browser UI.
 
 ## 3. Document and storage contracts
@@ -124,9 +126,9 @@ Selected terminal stack and remaining dependency candidates:
 | Area | Candidate | Decision to resolve |
 | --- | --- | --- |
 | Terminal | Ratatui 0.29.0 / Crossterm 0.28.1 selected | [Input ADR](adr/0002-terminal-input.md); enhanced keys and ConPTY remain gaps |
-| x86 | iced-x86 | Decoder/encoder coverage; textual ASM parser is additional work |
-| Other ISAs | Capstone or suitable Rust decoders | Native C build burden, host-target matrix, WASM feasibility |
-| Executable parsing | Goblin, object, or focused readers | Format gaps, malformed-input behavior, resource limits |
+| x86 | iced-x86 1.22.0 selected | Bounded 16/32/64 decoder; text assembly and exhaustive extension coverage remain separate |
+| ARM families | yaxpeax-arm 0.5.0 / yaxpeax-arch 0.3.3 selected | Strict ARM/Thumb/AArch64 decoding; revision, extension, endian and IT-state gaps remain explicit |
+| Executable parsing | Focused bounded readers selected | PE/ELF/Mach-O headers and mappings; full symbols/sections/legacy interpretation remains incomplete |
 | Text assembly | LLVM MC, a permissive parser/backend, or evaluated Keystone integration | Syntax fidelity, footprint, licenses, all host targets and WASM |
 
 Keystone has GPLv2 terms and a FOSS exception; do not call it an MIT dependency.
@@ -210,7 +212,8 @@ not an implementation plan or proof of compatibility.
 
 Implemented decisions: [bounded storage and saving](adr/0001-document-storage.md),
 [terminal/input](adr/0002-terminal-input.md), and
-[build-target strategies](adr/0003-build-targets.md). Analysis and textual assembly
-remain unselected; [their decision gate](adr/0004-analysis-backends.md) records
-the experiments required before selection. M0 and M1 are partial until their full
-exit criteria and affected platform coverage are satisfied.
+[build-target strategies](adr/0003-build-targets.md). The
+[analysis decision](adr/0004-analysis-backends.md) records selected readers and
+decoders, concrete experiments, limits and the remaining text-assembly gate.
+M0, M1 and M2 remain partial until their full exit criteria and affected platform
+coverage are satisfied.

@@ -4,8 +4,8 @@ hiewbie's original application code and documentation remain MIT-licensed.
 
 ## Application and workspace dependencies
 
-The initial native application uses the locked registry packages below. These
-licenses apply to the dependencies themselves. Exact source revisions, purposes,
+The native application and portable analysis core use the locked registry
+packages below. These licenses apply to the dependencies themselves. Exact source revisions, purposes,
 inspected license files, and the native/core boundary are recorded in the
 [dependency inventory](docs/dependencies.md).
 
@@ -17,6 +17,9 @@ inspected license files, and the native/core boundary are recorded in the
 | same-file | `1.0.6` | Unlicense OR MIT; the older manifest spells this `Unlicense/MIT`, and `COPYING` confirms the choice |
 | libc, Unix only | `0.2.191` | MIT OR Apache-2.0 |
 | winapi-util, Windows only | `0.1.11` | Unlicense OR MIT |
+| iced-x86, portable core | `1.22.0` | MIT |
+| yaxpeax-arm, portable core | `0.5.0` | 0BSD |
+| yaxpeax-arch, portable core | `0.3.3` | 0BSD |
 | Serde, `xtask` only | `1.0.229` | MIT OR Apache-2.0 |
 | Serde JSON, `xtask` only | `1.0.154` | MIT OR Apache-2.0 |
 
@@ -24,6 +27,20 @@ The complete transitive graph is not exclusively MIT. Notable distinctions are
 `foldhash 0.1.5` (Zlib), `unicode-ident 1.0.27` (`(MIT OR Apache-2.0) AND
 Unicode-3.0`), and `ryu 1.0.23` (`Apache-2.0 OR BSL-1.0`). Their inspected notices
 and dependency paths are documented in the inventory.
+
+The decoder dependencies additionally resolve `lazy_static 1.5.1` (MIT OR
+Apache-2.0), `bitvec 1.1.1`, `funty 2.0.0`, `wyz 0.5.1`, `tap 1.0.1`, and
+`radium 0.7.0` (each MIT), `num-traits 0.2.19` (MIT OR Apache-2.0), and
+`autocfg 1.5.1` (Apache-2.0 OR MIT). The inventory records their exact upstream
+revisions and inspected package license files.
+
+The iced-x86 license was inspected in the upstream repository at the package's
+reported revision because its crate archive omits that file. yaxpeax-arm declares
+`0BSD` in its pinned manifest; no standalone license file was found in the archive
+or at the inspected revision. yaxpeax-arch includes its 0BSD license and iximeow
+notice. These are distinct dependency licenses; hiewbie's MIT license does not
+relicense them. No decoder source was copied or locally patched, and no assembler
+engine is included.
 
 No application dependency source is vendored here. Release packaging and complete
 target-specific notice aggregation remain unimplemented; this summary is not a

@@ -1,35 +1,44 @@
 # Compatibility implementation ledger
 
 This ledger retains every requirement ID from [compatibility.md](compatibility.md).
-It describes the first native raw-byte editor, not full HIEW parity. **Implemented**
+It covers native byte editing and the initial executable-analysis slice. Full
+HIEW parity remains the goal. **Implemented**
 means the stated initial behavior exists with the linked regression evidence;
 **Partial** means only the recorded subset exists; **Planned** means no application
 implementation is claimed. Actual platform results belong to the identified
 commit's CI runs. No row is promoted to cross-platform **Verified** by configuration
 alone, and no exact HIEW-version comparison has yet been recorded.
 
-Current fixtures are generated in the linked tests (byte vectors, temporary files,
-Unicode paths, sparse files, and PTY input). The native Linux run and source-level
-checks are recorded in the implementation PR; CI supplies the other native hosts.
-M0/M1 remain partial; M2-M6 and the parent epic remain open.
+Current fixtures are generated in the linked tests: byte vectors, PE/ELF/Mach-O
+images, instruction encodings, temporary files, Unicode paths, sparse sources,
+and PTY input. Local evidence for this slice is 151 Rust tests on Linux x86_64,
+an optimized native build, four real PTY scenarios, eight PTY-harness tests, and
+an integrated `wasm32-unknown-unknown` core compilation. The implementation PR
+and CI record the available native-host results for each identified commit.
+
+The [build strategy][Build] retains six native CI targets, compile-only checks
+for RISC-V and FreeBSD x64, and the pinned-toolchain blocker for native FreeBSD
+ARM64. WebAssembly core compilation establishes neither browser execution nor
+a browser frontend. Release packaging remains open. M0-M2 remain partial; M3-M6
+and the parent epic remain open.
 
 ## UI
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| UI-001 | Partial | [T], [C]: shared Hex/Text; Code remains planned. |
-| UI-002 | Partial | [T], [P]: contextual function bar and initial HIEW keys; full keymap parity unverified. |
-| UI-003 | Partial | [T]: file offset, mode, edit/readonly/dirty state; bitness/architecture await analysis. |
-| UI-004 | Partial | [T], [C]: shared cursor survives Hex/Text changes; other views/history pending. |
-| UI-005 | Partial | [T]: view/edit/dialog/search/recovery contexts; selections pending. |
-| UI-006 | Partial | [T]: context-sensitive function bar; modifier-aware hints pending. |
+| UI-001 | Implemented | [A], [T], [P]: Text/Hex/Code share the document, cursor, and pending bytes; no exact HIEW-version comparison is claimed. |
+| UI-002 | Partial | [T], [P], [Commands]: contextual function bar plus Code/header/profile bindings; full keymap parity unverified. |
+| UI-003 | Partial | [T], [ACLI]: FO/VA context, mode, dirty state, effective decoder profile/backend and overrides are displayed; full reference/layout comparison pending. |
+| UI-004 | Partial | [A], [T]: cursor survives all three views; branch return restores position and interpretation; bookmarks and reference-specific per-view behavior pending. |
+| UI-005 | Partial | [T]: view/edit/search/recovery and header/profile dialogs resolve their own commands; selections pending. |
+| UI-006 | Partial | [T], [Commands]: context-sensitive function bar and profile/bitness hints; complete modifier-aware reference behavior pending. |
 | UI-007 | Implemented | [T], [P]: all currently implemented operations are keyboard-accessible. |
 | UI-008 | Partial | [T], [P]: 80-column cells, dynamic rows, resize; full reference comparison pending. |
 | UI-009 | Partial | [T]: blue/cyan default; accessible configurable themes pending. |
-| UI-010 | Partial | [T]: Ctrl alternatives; command menu and all intercepted-key cases pending. |
-| UI-011 | Partial | [Input]: unavailable F9/Open and edit commands are explicit; reference observations pending. |
-| UI-012 | Partial | [T], [Commands]: help and core command inventory; key diagnostics/menu pending. |
-| UI-013 | Implemented | [C], [T], [N]: bounded initial viewport; no eager whole-file scan. |
+| UI-010 | Partial | [T], [Commands]: Ctrl alternatives and keyboard header/profile dialogs; comprehensive command-menu and intercepted-key coverage pending. |
+| UI-011 | Partial | [T], [Input], [Commands]: unavailable Open, textual assembly, imports and exports are explicit; reference observations pending. |
+| UI-012 | Partial | [T], [Commands]: contextual help and shared command inventory cover current analysis; key-event diagnostics and comprehensive command index UI pending. |
+| UI-013 | Implemented | [F], [D], [A], [T]: bounded viewport, metadata reads and per-row decoding; no eager whole-file disassembly or indexing. |
 | UI-014 | Implemented | [CLI], [P]: ordinary editing has no network/service dependency. |
 | UI-015 | Partial | [P], [Input]: acquired-mode guard and normal exit; ConPTY/signal/failure matrix pending. |
 
@@ -37,12 +46,12 @@ M0/M1 remain partial; M2-M6 and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| KEY-001 | Implemented | [C], [Commands]: stable IDs for the initial core command set. |
-| KEY-002 | Partial | [C], [T]: terminal and headless tests share dispatch; macros/menu/browser pending. |
-| KEY-003 | Partial | [C], [T]: hex, decimal t, relative syntax; dotted VAs explicitly unavailable. |
-| KEY-004 | Partial | [T]: cursor preserved across two views; reference navigation/bookmarks pending. |
+| KEY-001 | Implemented | [C], [A], [Commands]: stable IDs include current format, decoder-profile, mapping and branch-navigation commands. |
+| KEY-002 | Partial | [A], [T], [ACLI]: terminal dialogs, shortcuts and headless inspection use shared application commands; macro/browser callers pending. |
+| KEY-003 | Implemented | [C], [A], [T], [ACLI]: hexadecimal, decimal t, relative and dotted absolute-VA syntax; overflow and unavailable mappings are explicit errors. |
+| KEY-004 | Partial | [A], [T]: shared position and bounded branch-return history across views; reference-specific navigation/bookmark comparison pending. |
 | KEY-005 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| KEY-006 | Partial | [T], [P]: F3/F9 collisions covered; F2/assembly and other contexts pending. |
+| KEY-006 | Partial | [T], [P], [Commands]: F3/F9, header keys and Code view/edit collisions covered; F2 textual assembly and full reference scenarios pending. |
 | KEY-007 | Implemented | [T], [P]: Esc cancels search/dialog, discards edits, then exits view. |
 | KEY-008 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 
@@ -54,15 +63,15 @@ M0/M1 remain partial; M2-M6 and the parent epic remain open.
 | EDIT-002 | Implemented | [C], [N], [P]: pending changes do not write until explicit save. |
 | EDIT-003 | Implemented | [C], [N], [P]: discard restores original bytes and does not rewrite mtime. |
 | EDIT-004 | Implemented | [C], [N], [T]: successful save rebases and clears transaction/history. |
-| EDIT-005 | Partial | [C], [T]: bounded byte-command undo/redo; blocks/assembly pending. |
+| EDIT-005 | Partial | [C], [A], [T]: bounded byte-command undo/redo also refreshes Code; blocks and textual assembly pending. |
 | EDIT-006 | Partial | [C], [T]: overwrite implemented; insert/delete/copy/move/fill/import/export pending. |
 | EDIT-007 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | EDIT-008 | Partial | [C], [N]: ranges and limits validated before mutation; later operations pending. |
 | EDIT-009 | Partial | [C], [N], [Storage]: atomic logical edits and documented replacement commit point. |
 | EDIT-010 | Partial | [T]: edit entry column visible; size-changing insert mode unavailable. |
-| EDIT-011 | Partial | [C]: generation invalidates search; parser/disassembly invalidation pending. |
+| EDIT-011 | Implemented | [C], [F], [A], [T]: generation changes invalidate search, metadata, decoding and direct targets after edits, undo, discard and save. |
 | EDIT-012 | Implemented | [N], [P]: saved logical bytes preserve untouched ranges, including copy boundaries. |
-| EDIT-013 | Implemented | [C], [N]: byte edits never invoke format repair or checksum changes. |
+| EDIT-013 | Implemented | [A], [N], [T]: header-field navigation leads to ordinary byte edits; no format repair or checksum rewrite is invoked. |
 | EDIT-014 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | EDIT-015 | Partial | [C], [T], [P]: readonly blocks current command/save paths; extension paths pending. |
 | EDIT-016 | Partial | [N], [Storage]: identity/metadata conflict detection; final-check/rename race documented. |
@@ -71,52 +80,52 @@ M0/M1 remain partial; M2-M6 and the parent epic remain open.
 | EDIT-019 | Implemented | [N]: Unix executable permission test; special metadata is outside this save strategy. |
 | EDIT-020 | Partial | [C]: bounded sorted patch snapshots; display/export pending. |
 | EDIT-021 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| EDIT-022 | Partial | [T], [CLI]: nonprintable bytes render as dots without changing source; Unicode decoding pending. |
+| EDIT-022 | Partial | [T], [CLI], [D]: Text replaces nonprintable bytes with dots; Code retains undecodable raw bytes; Unicode document decoding pending. |
 
 ## ADDR
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| ADDR-001 | Partial | [C]: FileOffset introduced; RVA/VA/slice types await mapping backend. |
-| ADDR-002 | Implemented | [C], [N], [T]: checked u64 boundaries and offsets beyond 4 GiB. |
-| ADDR-003 | Partial | [T]: file-offset display; domain selection/history/annotations pending. |
-| ADDR-004 | Partial | [C]: dotted VA input explicitly rejected; actual VA mapping pending. |
-| ADDR-005 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ADDR-006 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ADDR-007 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ADDR-008 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
+| ADDR-001 | Implemented | [F], [A]: distinct FileOffset, VirtualAddress, Rva and SliceOffset types with explicit translations. |
+| ADDR-002 | Implemented | [C], [N], [F], [A], [D]: checked u64 file/mapping arithmetic, offsets beyond 4 GiB, and decoder PC-width semantics kept separate. |
+| ADDR-003 | Partial | [A], [T], [ACLI]: FO, mapped VA and raw-base context are visible; branch history restores interpretation; annotations pending. |
+| ADDR-004 | Implemented | [F], [A], [T]: unmapped, zero-fill and ambiguous virtual destinations fail explicitly without moving the cursor. |
+| ADDR-005 | Implemented | [F]: current readers check extents, overflow and truncated tables; overlapping mappings remain inspectable but translation reports ambiguity. |
+| ADDR-006 | Implemented | [F], [A], [T], [ACLI]: selected fat member maps through its validated slice to global file offsets; nested fat containers explicitly unsupported. |
+| ADDR-007 | Implemented | [A], [T], [ACLI]: explicit raw base, x86 bitness, architecture and instruction-endian overrides; unsupported decoding orders remain visible. |
+| ADDR-008 | Implemented | [A], [T], [ACLI]: effective overrides are shown separately from parsed machine metadata; changing fat slice clears the prior raw base. |
 
 ## IO
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
 | IO-001 | Implemented | [C], [N], [T]: bounded reads; sparse-file access beyond 4 GiB. |
-| IO-002 | Partial | [C], [T], [Storage]: independent viewport/edit/history/search bounds; analysis budgets pending. |
-| IO-003 | Implemented | [C], [N], [T]: fake large source, real Unix sparse file, large-offset rendering. |
+| IO-002 | Partial | [C], [F], [D], [A], [Analysis]: independent viewport, parser, decoder, edit/history and search budgets; background analysis remains future work. |
+| IO-003 | Implemented | [N], [F], [A], [T]: real Unix sparse file, synthetic 1 TiB source and bounded code reads beyond 4 GiB. |
 | IO-004 | Implemented | [N], [Storage]: seek/read strategy and truncation checks; no unsafe file mapping. |
 | IO-005 | Implemented | [C]: incremental KMP with cross-chunk matches and bounded steps. |
-| IO-006 | Partial | [C], [T]: cancellable search/progress; save is synchronous, analysis pending. |
-| IO-007 | Partial | [Storage]: explicit resource limits; reproducible latency/RSS benchmarks pending. |
+| IO-006 | Partial | [C], [T], [Analysis]: cancellable search/progress; format inspection and decoding are bounded synchronous work, save is synchronous; general long-operation scheduling pending. |
+| IO-007 | Partial | [Storage], [Analysis]: explicit read, table, row, text and history budgets; reproducible latency/RSS benchmarks pending. |
 
 ## ISA
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| ISA-001 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ISA-002 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ISA-003 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ISA-004 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
+| ISA-001 | Partial | [D], [A], [ACLI]: iced-x86 1.22.0 decodes 16/32/64-bit modes with independent instruction lengths; textual assembly remains planned. |
+| ISA-002 | Partial | [D], [Analysis]: version-pinned x86 decoder and AVX regression; exhaustive extension coverage and textual assembly are not established. |
+| ISA-003 | Partial | [D], [A], [Analysis]: separate ARM/Thumb modes, strict decoding and direct mode exchange; precise ARMv6/revision filtering, IT-state propagation and big-endian instructions remain gaps. |
+| ISA-004 | Partial | [D], [A], [ACLI]: AArch64 decoding and checked direct targets independent of host CPU; textual assembly, SVE/SVE2 and complete extension coverage pending. |
 | ISA-005 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | ISA-006 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | ISA-007 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | ISA-008 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ISA-009 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ISA-010 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ISA-011 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ISA-012 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ISA-013 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ISA-014 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ISA-015 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
+| ISA-009 | Implemented | [D], [T], [ACLI]: mode/bitness, endian, instruction lengths and backend version are reported; parsed CPU and explicit profile remain distinct. |
+| ISA-010 | Implemented | [D], [T], [ACLI]: Decoded, Unknown, Truncated and Unsupported preserve raw bytes and guarantee progress for nonempty input; unknown is not a universal invalid-encoding claim. |
+| ISA-011 | Implemented | [A], [T], [ACLI]: unknown machines, malformed metadata and unsupported instruction order preserve raw viewing and byte editing. |
+| ISA-012 | Partial | [D], [A], [T], [P]: visible direct branches can be followed and returned from without execution, including ARM/Thumb mode exchange; indirect/far resolution pending. |
+| ISA-013 | Partial | [Analysis], [README]: scope is explicitly direct targets only; general references, symbols and complete control-flow analysis remain planned. |
+| ISA-014 | Implemented | [A], [T]: current logical bytes drive re-decoding and fresh direct targets after edits/undo; generation changes invalidate dependent interpretation. |
+| ISA-015 | Implemented | [A], [T], [Commands]: Code-view / resynchronizes at the selected byte; instruction navigation retraces known boundaries or uses a bounded byte/alignment fallback. |
 
 ## ASM
 
@@ -135,24 +144,24 @@ M0/M1 remain partial; M2-M6 and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| FMT-001 | Partial | [C], [T], [CLI]: raw byte inspection; no executable parser is selected. |
-| FMT-002 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| FMT-003 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| FMT-004 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| FMT-005 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| FMT-006 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
+| FMT-001 | Partial | [A], [T], [ACLI]: raw viewing/editing and explicit mode/base interpretation are available; COM-specific reference parity remains unverified. |
+| FMT-002 | Planned | [Analysis]: MZ identification routes to PE when present; DOS MZ headers and legacy navigation are not implemented. |
+| FMT-003 | Partial | [F], [A], [ACLI]: PE32/PE32+ numeric headers, sections, preferred base, entry and mappings; directory contents, imports, exports, relocations and resources pending. |
+| FMT-004 | Partial | [F], [ACLI]: ELF32/64 in both data byte orders, numeric headers, PT_LOAD segments and entry; sections/symbols/relocations/dynamic tables pending, extended numbering unsupported. |
+| FMT-005 | Partial | [F], [A], [ACLI]: thin Mach-O32/64 in both data byte orders, bounded load commands, segments and standard LC_MAIN; sections/symbols/imports/relocations and LC_UNIXTHREAD entry pending; high-VM segments unsupported. |
+| FMT-006 | Implemented | [F], [A], [T], [ACLI]: fat32/fat64 descriptors, explicit selection and global mapping; deterministic first-slice default independent of host, selected thin members only. |
 | FMT-007 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | FMT-008 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | FMT-009 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | FMT-010 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| FMT-011 | Partial | [Analysis]: every legacy format row retained; parsers remain planned. |
-| FMT-012 | Partial | [T]: raw-only access works; parser detection/fallback diagnostics pending. |
-| FMT-013 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| FMT-014 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| FMT-015 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| FMT-016 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
+| FMT-011 | Partial | [Analysis]: DOS MZ, NE/LE/LX, TE/TE64 and NetWare rows remain required; initial modern readers do not remove legacy work. |
+| FMT-012 | Implemented | [A], [T], [ACLI]: failed/unsupported detection retains raw access and a diagnostic; --headers fails clearly while --dump remains available. |
+| FMT-013 | Implemented | [F], [T]: each interpreted numeric field retains its exact backing range; the header dialog navigates to those bytes. |
+| FMT-014 | Partial | [F], [A]: zero-fill, overlays and disk padding never acquire invented bytes or VAs; dedicated overlay browsing and broader non-file-backed metadata pending. |
+| FMT-015 | Implemented | [F], [ACLI], [Analysis]: current readers bound reads, parsed tables, counts, names and fields before allocation; malformed/truncated fixtures and bounded mutations exercise failures. |
+| FMT-016 | Implemented | [A], [T], [README]: navigating and editing backing bytes is explicitly separate from executable rebuilding; no structural rebuild action exists yet. |
 | FMT-017 | Partial | [N]: save invokes no signer or repair command; format-aware workflows pending. |
-| FMT-018 | Partial | [C], [N], [T], [P]: current byte fixtures are generated; format fixtures pending. |
+| FMT-018 | Implemented | [F], [D], [A], [ACLI], [P]: executable/instruction fixtures are generated or independently written; no proprietary binary samples are required. |
 
 ## SEARCH
 
@@ -197,18 +206,18 @@ M0/M1 remain partial; M2-M6 and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| TERM-001 | Partial | [Build]: six native CI jobs configured; full target/runtime matrix remains incomplete. |
+| TERM-001 | Partial | [Build]: six native CI jobs run shared fixtures; actual results belong to the identified commit's PR/CI, and the full required host/runtime matrix remains incomplete. |
 | TERM-002 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| TERM-003 | Partial | [P], [T]: Unix PTY and headless cells; Windows ConPTY pending. |
+| TERM-003 | Partial | [P], [T]: Unix PTY now exercises Code/headers/branch navigation as well as editing; Windows ConPTY pending. |
 | TERM-004 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | TERM-005 | Partial | [Input]: legacy fallback documented; enhanced protocol negotiation pending. |
-| TERM-006 | Partial | [T], [P]: ordinary F-keys and modifier rejection; Option/Alt/modified-key matrix pending. |
+| TERM-006 | Partial | [T], [P]: ordinary F-keys, profile/bitness modifier handling and Ctrl alternatives; terminal-specific Option/Alt/modified-key matrix pending. |
 | TERM-007 | Implemented | [Input], [README]: Fn/media-key conflicts and Ctrl fallbacks documented; no settings changed. |
-| TERM-008 | Partial | [T], [Input]: Ctrl alternatives; command-menu access pending. |
+| TERM-008 | Partial | [T], [Input], [Commands]: Ctrl alternatives and keyboard profile/header dialogs; comprehensive command-menu access pending. |
 | TERM-009 | Implemented | [T], [P]: bracketed paste identified and rejected without command execution. |
-| TERM-010 | Partial | [T], [CLI], [N]: Unicode/native paths and control escaping; decoded text and full width corpus pending. |
+| TERM-010 | Partial | [T], [CLI], [ACLI], [N]: native/Unicode paths and escaping of metadata, decoder text and errors; Unicode document decoding and full width corpus pending. |
 | TERM-011 | Implemented | [T], [P]: tiny/narrow/large cells and real PTY resize. |
-| TERM-012 | Partial | [P], [Input]: raw/alternate/paste/cursor guard; wider failure and ConPTY coverage pending. |
+| TERM-012 | Partial | [P], [PH], [Input]: raw/alternate/paste/cursor cleanup and PTY-supervisor failure cases tested locally; broader terminal failure and ConPTY coverage pending. |
 | TERM-013 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 
 ## DEV
@@ -239,28 +248,34 @@ M0/M1 remain partial; M2-M6 and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| TEST-001 | Partial | [P]: open/mode/goto/edit/save subset; branch/return await analysis. |
+| TEST-001 | Implemented | [P], [Recording]: generated PE scenario replays open, mode changes, entry/VA goto, branch/return, Code-mode byte edit and save through a real Linux PTY. |
 | TEST-002 | Implemented | [N], [P]: discard checks expected bytes and mtime on generated ordinary files. |
 | TEST-003 | Implemented | [N], [P]: exact persisted byte changes; reopen via file reads. |
 | TEST-004 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | TEST-005 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| TEST-006 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| TEST-007 | Partial | [N], [C], [T]: real Unix sparse file and fake large sources; interactive large-file benchmark pending. |
+| TEST-006 | Partial | [F], [D], [A], [ACLI]: host-independent x86 PE, ARM64 Mach-O and ELF fixtures are shared by six native CI jobs; per-commit results are recorded in PR/CI, while the full required host/runtime matrix remains incomplete. |
+| TEST-007 | Partial | [N], [C], [F], [A], [T]: real Unix sparse file, synthetic 1 TiB format source and large-offset code windows; interactive large-file benchmark pending. |
 | TEST-008 | Partial | [C], [T]: chunk-boundary literal matches and cancellation; latency benchmark pending. |
 | TEST-009 | Partial | [C]: overlapping overwrites and history; blocks/EOF insertion/deletion pending. |
-| TEST-010 | Partial | [C]: offset overflow and unsupported dotted addresses; malformed executable corpus pending. |
+| TEST-010 | Implemented | [F], [D], [A], [ACLI]: generated malformed/truncated formats, bounded mutation corpora, arithmetic overflow, overlaps, zero-fill and unmapped VAs; not exhaustive fuzzing or format conformance. |
 | TEST-011 | Partial | [P], [T]: F-keys/Ctrl/paste/resize/cleanup subset; terminal application/modifier matrix pending. |
-| TEST-012 | Partial | [T], [CLI]: raw inspection available; format/ISA failure fallback requires backends. |
+| TEST-012 | Implemented | [A], [T], [ACLI]: malformed formats, unknown machines and unavailable decoding retain raw inspection/editing; explicit profile override can decode raw bytes. |
 | TEST-013 | Partial | [N], [T], [Storage]: writer/conflict/temp-path failures and postcommit UI state; fault/crash matrix pending. |
 | TEST-014 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 
 ## Evidence index
 
 [C]: ../crates/hiewbie-core/src/tests.rs
+[F]: ../crates/hiewbie-core/src/formats/tests.rs
+[D]: ../crates/hiewbie-core/src/instructions/tests.rs
+[A]: ../crates/hiewbie-core/src/analysis_tests.rs
 [N]: ../crates/hiewbie/tests/persistence.rs
 [T]: ../crates/hiewbie/src/terminal/tests.rs
 [CLI]: ../crates/hiewbie/tests/cli.rs
+[ACLI]: ../crates/hiewbie/tests/analysis_cli.rs
 [P]: ../scripts/pty_smoke.py
+[PH]: ../scripts/test_pty_smoke.py
+[Recording]: evidence/executable-analysis.cast
 [Storage]: adr/0001-document-storage.md
 [Input]: adr/0002-terminal-input.md
 [Build]: adr/0003-build-targets.md
@@ -269,8 +284,9 @@ M0/M1 remain partial; M2-M6 and the parent epic remain open.
 [README]: ../README.md
 
 - [Core unit/command/search tests][C]
+- [Generated format/mapping fixtures][F], [decoder fixtures and bounded corpora][D], and [shared analysis/navigation regressions][A]
 - [Native persistence and sparse-file tests][N] and [adapter fault tests](../crates/hiewbie/src/file.rs)
-- [Key/rendering tests][T] and [built CLI tests][CLI]
-- [Real Unix PTY scenarios][P] and [recording](evidence/native-editor.cast)
+- [Key/rendering tests][T], [built CLI tests][CLI], and [executable-analysis CLI tests][ACLI]
+- [Real Unix PTY scenarios][P], [PTY-harness regressions][PH], [initial editor recording](evidence/native-editor.cast), and [PE analysis recording][Recording]
 - [Storage guarantees and limits][Storage], [input behavior][Input], [build strategies][Build]
-- [Analysis selection remains open][Analysis]
+- [Selected readers/decoders, limits and remaining analysis decisions][Analysis]

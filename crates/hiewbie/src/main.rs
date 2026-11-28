@@ -9,42 +9,81 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use hiewbie::file::FileSource;
-use hiewbie_core::{ByteSource, Command, Document, Editor, FileOffset, parse_goto};
+use hiewbie_core::formats::{Endian, VirtualAddress};
+use hiewbie_core::instructions::DecodeMode;
+use hiewbie_core::{ByteSource, Command, Document, Editor, FileOffset, parse_virtual_address};
 
-const HELP: &str = "hiewbie - a HIEW-inspired raw-byte terminal editor
+const HELP: &str = "hiewbie - a HIEW-inspired terminal hex editor and binary inspector
 
 Usage: hiewbie [OPTIONS] <FILE>
 
 Options:
-  -r, --read-only     Inspect without allowing an edit transaction
-      --dump          Print the first 16 hex rows; no terminal is required
-      --offset VALUE  Start at an offset (hexadecimal, or decimal with suffix t)
-  -h, --help          Print this help
-  -V, --version       Print the version
+  -r, --read-only      Inspect without allowing an edit transaction
+      --dump          Print at most 16 hex rows without requiring a terminal
+      --headers       Print bounded executable fields, load mappings, and slices
+      --disassemble   Print at most 32 code rows without requiring a terminal
+      --offset VALUE  Start at a file offset, or an absolute VA prefixed by .
+      --entry         Start at the parsed entry point; conflicts with --offset
+      --arch MODE     auto, x86-16, x86-32, x86-64, arm, thumb, or aarch64
+      --endian ORDER  Override instruction order: little or big
+      --base VALUE    Raw virtual base (hex, or decimal with suffix t); implies raw
+      --raw           Ignore executable mappings; raw code requires --arch
+      --slice INDEX   Select a zero-based universal Mach-O slice (decimal)
+  -h, --help           Print this help
+  -V, --version        Print the version
       --              Treat remaining arguments as filenames
+
+The dump/headers/disassemble output modes are mutually exclusive.
+Raw/base interpretation cannot be combined with --slice.
 
 Examples:
   hiewbie program.bin
   hiewbie --read-only program.bin
   hiewbie --dump --offset 0x100 program.bin
   hiewbie --dump --offset 256t program.bin
+  hiewbie --headers program.exe
+  hiewbie --disassemble --entry program.exe
+  hiewbie --disassemble --raw --arch x86-64 --base 0x400000 code.bin
+  hiewbie --disassemble --slice 1 --entry universal-macho
 
-View: Enter/F4 switches Hex/Text; F3/Ctrl+E begins editing;
+View: Enter/F4 switches Hex/Text/Code; F3/Ctrl+E begins byte editing;
       F5/Ctrl+G goes to an offset; F7/Ctrl+F searches; Ctrl+Enter repeats.
+Code: F8/Ctrl+O shows headers; Shift+F1/Ctrl+A opens the analysis profile.
+      Ctrl+F1/Ctrl+B cycles x86 bitness; / resynchronizes; Backspace returns.
+      The profile selects architecture, instruction byte order, and raw base.
+      Headers then S selects a Mach-O slice. Branch numbers follow, never execute.
 Edit: F9/Ctrl+S saves; Esc discards; Tab switches hex/ASCII entry;
       Ctrl+Z/Ctrl+Y undo/redo. A hex byte is applied after both digits.
 F1 opens help. Esc exits from view mode. Bracketed paste is rejected.
 
-This initial editor supports raw-byte overwrite transactions. Code mode,
-executable parsing, assembly, blocks, and multiple files remain planned.
+PE/ELF/Mach-O inspection currently covers headers and load mappings.
+Symbol/import/relocation browsing, textual assembly, blocks, and multiple
+files remain planned. Big-endian instruction decoding is explicitly unsupported.
 ";
+
+const MAX_HEADER_ITEMS: usize = 64;
+const MAX_DISASSEMBLY_ROWS: usize = 32;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OutputMode {
+    Interactive,
+    Dump,
+    Headers,
+    Disassemble,
+}
 
 #[derive(Debug, Eq, PartialEq)]
 struct Options {
     path: PathBuf,
     read_only: bool,
-    dump: bool,
+    output: OutputMode,
     offset: Option<String>,
+    entry: bool,
+    architecture: Option<DecodeMode>,
+    endian: Option<Endian>,
+    base: Option<VirtualAddress>,
+    raw: bool,
+    slice: Option<usize>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -58,8 +97,14 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
     let mut args = args.into_iter();
     let mut path = None;
     let mut read_only = false;
-    let mut dump = false;
+    let mut output = None;
     let mut offset = None;
+    let mut entry = false;
+    let mut architecture = None;
+    let mut endian = None;
+    let mut base = None;
+    let mut raw = false;
+    let mut slice = None;
     let mut positional_only = false;
 
     while let Some(arg) = args.next() {
@@ -75,27 +120,90 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
                     read_only = true;
                     continue;
                 }
-                Some("--dump") => {
-                    dump = true;
-                    continue;
-                }
-                Some("--offset") => {
-                    let value = args.next().ok_or("--offset requires a value")?;
-                    let value = value
-                        .into_string()
-                        .map_err(|_| "offset must be valid text")?;
-                    if offset.replace(value).is_some() {
-                        return Err("--offset may be supplied only once".into());
+                Some("--dump" | "--headers" | "--disassemble") => {
+                    let mode = match arg.to_str() {
+                        Some("--dump") => OutputMode::Dump,
+                        Some("--headers") => OutputMode::Headers,
+                        _ => OutputMode::Disassemble,
+                    };
+                    if output.replace(mode).is_some() {
+                        return Err(
+                            "--dump, --headers, and --disassemble are mutually exclusive".into(),
+                        );
                     }
                     continue;
                 }
-                Some(value) if value.starts_with("--offset=") => {
-                    if offset.replace(value[9..].to_owned()).is_some() {
-                        return Err("--offset may be supplied only once".into());
-                    }
+                Some("--entry") => {
+                    entry = true;
+                    continue;
+                }
+                Some("--raw") => {
+                    raw = true;
                     continue;
                 }
                 _ => {}
+            }
+            if let Some(argument) = arg.to_str() {
+                let (flag, inline) = argument
+                    .split_once('=')
+                    .map_or((argument, None), |(flag, value)| (flag, Some(value)));
+                if matches!(
+                    flag,
+                    "--offset" | "--arch" | "--endian" | "--base" | "--slice"
+                ) {
+                    let value = match inline {
+                        Some(value) => value.to_owned(),
+                        None => args
+                            .next()
+                            .ok_or_else(|| format!("{flag} requires a value"))?
+                            .into_string()
+                            .map_err(|_| format!("{flag} must be valid text"))?,
+                    };
+                    match flag {
+                        "--offset" => set_once(&mut offset, value, flag)?,
+                        "--arch" => {
+                            let mode = if value == "auto" {
+                                None
+                            } else {
+                                Some(
+                                    value
+                                        .parse::<DecodeMode>()
+                                        .map_err(|error| format!("invalid --arch: {error}"))?,
+                                )
+                            };
+                            set_once(&mut architecture, mode, flag)?;
+                        }
+                        "--endian" => {
+                            let order = match value.as_str() {
+                                "little" => Endian::Little,
+                                "big" => Endian::Big,
+                                _ => return Err("--endian must be little or big".into()),
+                            };
+                            set_once(&mut endian, order, flag)?;
+                        }
+                        "--base" => set_once(
+                            &mut base,
+                            parse_virtual_address(&value)
+                                .map_err(|error| format!("invalid --base: {error}"))?,
+                            flag,
+                        )?,
+                        "--slice" => {
+                            if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit())
+                            {
+                                return Err("--slice requires a non-negative decimal index".into());
+                            }
+                            set_once(
+                                &mut slice,
+                                value
+                                    .parse::<usize>()
+                                    .map_err(|_| "--slice index is too large")?,
+                                flag,
+                            )?;
+                        }
+                        _ => unreachable!(),
+                    }
+                    continue;
+                }
             }
             if arg.as_encoded_bytes().first() == Some(&b'-') {
                 return Err(format!(
@@ -109,12 +217,31 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
         }
     }
 
+    if entry && offset.is_some() {
+        return Err("--entry and --offset are mutually exclusive".into());
+    }
+    if slice.is_some() && (raw || base.is_some()) {
+        return Err("--slice cannot be combined with --raw or --base".into());
+    }
     Ok(Invocation::Run(Options {
         path: path.ok_or("a file is required; use --help for usage")?,
         read_only,
-        dump,
+        output: output.unwrap_or(OutputMode::Interactive),
         offset,
+        entry,
+        architecture: architecture.flatten(),
+        endian,
+        base,
+        raw,
+        slice,
     }))
+}
+
+fn set_once<T>(slot: &mut Option<T>, value: T, flag: &str) -> Result<(), String> {
+    if slot.replace(value).is_some() {
+        return Err(format!("{flag} may be supplied only once"));
+    }
+    Ok(())
 }
 
 fn run(options: Options) -> Result<(), String> {
@@ -125,26 +252,243 @@ fn run(options: Options) -> Result<(), String> {
         )
     })?;
     let mut editor = Editor::new(Document::new(source), options.read_only);
-    if let Some(expression) = options.offset {
-        let offset = parse_goto(&expression, editor.cursor(), editor.document().len())
-            .map_err(|error| format!("invalid --offset: {error}"))?;
+    if options.raw {
         editor
-            .dispatch(Command::Goto(offset))
+            .dispatch(Command::SetRaw(true))
             .map_err(|error| error.to_string())?;
     }
+    if let Some(base) = options.base {
+        editor
+            .dispatch(Command::SetRawBase(base))
+            .map_err(|error| error.to_string())?;
+    }
+    if let Some(mode) = options.architecture {
+        editor
+            .dispatch(Command::SetDecodeMode(Some(mode)))
+            .map_err(|error| error.to_string())?;
+    }
+    if let Some(endian) = options.endian {
+        editor
+            .dispatch(Command::SetEndian(Some(endian)))
+            .map_err(|error| error.to_string())?;
+    }
+    if let Some(slice) = options.slice {
+        editor
+            .dispatch(Command::SelectSlice(slice))
+            .map_err(|error| format!("invalid --slice: {error}"))?;
+    }
+    if options.entry {
+        editor
+            .dispatch(Command::GotoEntry)
+            .map_err(|error| format!("invalid --entry: {error}"))?;
+    }
+    if let Some(expression) = options.offset {
+        editor
+            .goto_expression(&expression)
+            .map_err(|error| format!("invalid --offset: {error}"))?;
+    }
 
-    if options.dump {
+    if options.output != OutputMode::Interactive {
         let offset = editor.cursor();
-        return match write_dump(editor.document_mut(), offset, &mut io::stdout().lock()) {
+        let mut output = io::stdout().lock();
+        let result = match options.output {
+            OutputMode::Dump => write_dump(editor.document_mut(), offset, &mut output),
+            OutputMode::Headers => write_headers(&mut editor, &mut output),
+            OutputMode::Disassemble => write_disassembly(&mut editor, &mut output),
+            OutputMode::Interactive => unreachable!(),
+        };
+        return match result {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
-            Err(error) => Err(format!("cannot print file: {error}")),
+            Err(error) => Err(format!("cannot print inspection: {error}")),
         };
     }
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
-        return Err("interactive editing requires terminal input and output; use --dump for noninteractive inspection".into());
+        return Err("interactive editing requires terminal input and output; use --dump, --headers, or --disassemble for noninteractive inspection".into());
     }
     terminal::run(editor).map_err(|error| format!("terminal error: {error}"))
+}
+
+fn write_headers<S: ByteSource>(editor: &mut Editor<S>, output: &mut impl Write) -> io::Result<()> {
+    editor.refresh_analysis();
+    let image = editor.executable().ok_or_else(|| {
+        io::Error::other(format!(
+            "{}; use --dump for raw bytes",
+            editor
+                .analysis_problem()
+                .unwrap_or("no executable metadata is available")
+        ))
+    })?;
+    writeln!(output, "Format: {}", image.format)?;
+    writeln!(
+        output,
+        "Machine: {}; {}-bit; {}-endian",
+        image.machine, image.bitness, image.endian
+    )?;
+    writeln!(output, "Generation: {}", image.generation)?;
+    writeln!(
+        output,
+        "Image: FO {:016X}; {} file bytes",
+        image.slice.offset.get(),
+        image.slice.len
+    )?;
+    if let Some(base) = image.image_base {
+        writeln!(output, "Image base: VA {:016X}", base.get())?;
+    }
+    if let Some(entry) = image.entry {
+        writeln!(output, "Entry: VA {:016X}", entry.get())?;
+    } else {
+        writeln!(output, "Entry: unavailable")?;
+    }
+    if let Some(index) = image.selected_slice {
+        writeln!(
+            output,
+            "Selected slice: {index} of {} (zero-based)",
+            image.slices.len()
+        )?;
+    }
+    writeln!(output, "Regions ({}):", image.regions.len())?;
+    for (index, region) in image.regions.iter().take(MAX_HEADER_ITEMS).enumerate() {
+        writeln!(
+            output,
+            "  [{index}] {} FO {:016X}+{:X} VA {:016X}+{:X} {}{}{}; header FO {:016X}",
+            terminal::escaped_text(&region.name),
+            region.file.offset.get(),
+            region.file.len,
+            region.address.get(),
+            region.memory_size,
+            if region.readable { 'R' } else { '-' },
+            if region.writable { 'W' } else { '-' },
+            if region.executable { 'X' } else { '-' },
+            region.header.offset.get()
+        )?;
+    }
+    omitted(output, "regions", image.regions.len())?;
+    writeln!(output, "Fields ({}):", image.fields.len())?;
+    for field in image.fields.iter().take(MAX_HEADER_ITEMS) {
+        writeln!(
+            output,
+            "  {} = 0x{:X}; FO {:016X}+{}",
+            terminal::escaped_text(&field.name),
+            field.value,
+            field.range.offset.get(),
+            field.range.len
+        )?;
+    }
+    omitted(output, "fields", image.fields.len())?;
+    if !image.slices.is_empty() {
+        writeln!(output, "Slices ({}):", image.slices.len())?;
+        for slice in image.slices.iter().take(MAX_HEADER_ITEMS) {
+            writeln!(
+                output,
+                "  [{}] {} FO {:016X}+{:X}; CPU 0x{:X}/0x{:X}",
+                slice.index,
+                slice.machine,
+                slice.file.offset.get(),
+                slice.file.len,
+                slice.cpu_type,
+                slice.cpu_subtype
+            )?;
+        }
+        omitted(output, "slices", image.slices.len())?;
+    }
+    writeln!(
+        output,
+        "Scope: image headers and load mappings; symbols/imports/relocations are not interpreted."
+    )
+}
+
+fn omitted(output: &mut impl Write, category: &str, count: usize) -> io::Result<()> {
+    if count > MAX_HEADER_ITEMS {
+        writeln!(
+            output,
+            "  ... {} additional {category} omitted",
+            count - MAX_HEADER_ITEMS
+        )?;
+    }
+    Ok(())
+}
+
+fn write_disassembly<S: ByteSource>(
+    editor: &mut Editor<S>,
+    output: &mut impl Write,
+) -> io::Result<()> {
+    let rows = editor
+        .code_rows(MAX_DISASSEMBLY_ROWS)
+        .map_err(io::Error::other)?;
+    let context = editor.decode_context();
+    let mode = context
+        .mode
+        .ok_or_else(|| io::Error::other("raw code requires an explicit --arch"))?;
+    writeln!(
+        output,
+        "Profile: {mode}; {}-endian; backend {}; {}{}",
+        context.endian,
+        mode.backend(),
+        if context.raw { "raw" } else { "parsed" },
+        if context.overridden {
+            "; explicit override"
+        } else {
+            ""
+        }
+    )?;
+    if context.raw {
+        writeln!(output, "Raw base: VA {:016X}", context.base.get())?;
+    }
+    if let Some(image) = editor.executable() {
+        writeln!(
+            output,
+            "Image: {}; declared {}; FO {:016X}+{:X}",
+            image.format,
+            image.machine,
+            image.slice.offset.get(),
+            image.slice.len
+        )?;
+        if let Some(index) = image.selected_slice {
+            writeln!(
+                output,
+                "Selected slice: {index} of {} (zero-based)",
+                image.slices.len()
+            )?;
+        }
+    }
+    if let Some(problem) = editor.analysis_problem() {
+        writeln!(
+            output,
+            "Format fallback: {}",
+            terminal::escaped_text(problem)
+        )?;
+    }
+    if rows.is_empty() {
+        return writeln!(output, "<empty file>");
+    }
+    for row in rows {
+        write!(
+            output,
+            "FO {:016X} {} {:016X}  ",
+            row.offset.get(),
+            if row.mapped { "VA" } else { "FO" },
+            row.instruction.address.get()
+        )?;
+        for byte in row.instruction.bytes() {
+            write!(output, "{byte:02X}")?;
+        }
+        write!(
+            output,
+            "  {}",
+            terminal::escaped_text(&row.instruction.text)
+        )?;
+        if let Some(target) = row.instruction.direct_branch {
+            write!(
+                output,
+                "  -> VA {:016X} ({})",
+                target.address.get(),
+                target.mode
+            )?;
+        }
+        writeln!(output)?;
+    }
+    Ok(())
 }
 
 /// A deterministic, bounded first viewport, also useful through SSH or a pipe.
@@ -236,10 +580,57 @@ mod tests {
             Invocation::Run(Options {
                 path: PathBuf::from("-a b.bin"),
                 read_only: true,
-                dump: true,
+                output: OutputMode::Dump,
                 offset: Some("256t".into()),
+                entry: false,
+                architecture: None,
+                endian: None,
+                base: None,
+                raw: false,
+                slice: None,
             })
         );
+    }
+
+    #[test]
+    fn cli_rejects_conflicting_or_repeated_analysis_options() {
+        for invalid in [
+            &["--dump", "--headers", "file"][..],
+            &["--headers", "--disassemble", "file"],
+            &["--entry", "--offset=10", "file"],
+            &["--raw", "--slice=0", "file"],
+            &["--base=0", "--slice=0", "file"],
+            &["--arch=auto", "--arch=x86-64", "file"],
+            &["--arch=not-an-isa", "file"],
+            &["--endian=middle", "file"],
+            &["--slice=-1", "file"],
+            &["--base=+100", "file"],
+        ] {
+            assert!(args(invalid).is_err(), "accepted {invalid:?}");
+        }
+    }
+
+    #[test]
+    fn cli_parses_explicit_raw_profile_without_assuming_the_host() {
+        let Invocation::Run(options) = args(&[
+            "--disassemble",
+            "--arch",
+            "arm64",
+            "--endian",
+            "little",
+            "--base",
+            "4096t",
+            "--raw",
+            "file",
+        ])
+        .unwrap() else {
+            panic!("expected run");
+        };
+        assert_eq!(options.output, OutputMode::Disassemble);
+        assert_eq!(options.architecture, Some(DecodeMode::Aarch64));
+        assert_eq!(options.endian, Some(Endian::Little));
+        assert_eq!(options.base, Some(VirtualAddress::new(4096)));
+        assert!(options.raw);
     }
 
     #[cfg(unix)]
