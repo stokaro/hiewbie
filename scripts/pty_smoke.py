@@ -827,9 +827,16 @@ def calculator(binary: Path, directory: Path, *, record: bool) -> list[list]:
         def expect_input(data: bytes, label: str, *checks: bytes) -> None:
             before = len(session.output)
             session.send(data, label)
+            # Input redraws may arrive before the evaluation or dialog update.
+            deadline = min(session.deadline, time.monotonic() + ACTION_SECONDS)
             for code in checks:
-                if code not in session.output[before:]:
-                    session.fail(f"missing calculator output {code!r} after {label}")
+                while session.output.find(code, before) < 0:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        session.fail(f"missing calculator output {code!r} after {label}")
+                    session.read_available(min(0.025, remaining))
+                    if session.poll_editor() is not None:
+                        session.fail(f"editor exited while waiting for calculator output after {label}")
 
         session.send(F3, "Start a Hex overwrite")
         session.send(b"A", "Type one pending hex digit")
@@ -837,6 +844,8 @@ def calculator(binary: Path, directory: Path, *, record: bool) -> list[list]:
         expect_input(b"1+2*3\r", "Evaluate the expression", b"\x1b[13;11H7", b"\x1b[14;72H111")
         expect_input(b"\x1bOP", "F1 opens calculator help", b"[Calculator]", b"\x1b[?25l")
         expect_input(ESC, "Restore the expression caret", b"\x1b[4 q", b"\x1b[11;12H")
+        expect_input(PAGE_UP + b"7FFFFFFFFFFFFFFF+1" + CTRL_E, "Ctrl+E checks signed overflow", b"Error:", b"overflow")
+        expect_input(b"\r", "Enter evaluates the same expression with wrapping arithmetic", b"-9223372036854775808")
         expect_input(b"\x1b[5~1/0\r", "Page Up clears the expression before testing division by zero", b"Error:", b"Division", b"zero")
         expect_input(ESC, "Return to the pending low nibble", b"\x1b[2;15H")
         session.send(b"5", "Complete the pending byte")

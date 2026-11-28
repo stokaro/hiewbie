@@ -1750,6 +1750,14 @@ fn calculator_modal_evaluates_on_enter_and_restores_the_edit_context() {
     control(&mut ui, KeyCode::Char('l'));
     assert!(screen(&mut ui, 80, 25).contains("982░"));
     key(&mut ui, KeyCode::PageUp);
+    type_text(&mut ui, "7FFFFFFFFFFFFFFF+1");
+    control(&mut ui, KeyCode::Char('e'));
+    let checked = screen(&mut ui, 80, 25);
+    assert_eq!(checked.lines().nth(11).unwrap().chars().nth(22), Some('^'));
+    assert!(checked.contains("Error: Signed 64-bit arithmetic overflow"));
+    key(&mut ui, KeyCode::Enter);
+    assert!(screen(&mut ui, 80, 25).contains("Sig:-9223372036854775808"));
+    key(&mut ui, KeyCode::PageUp);
     type_text(&mut ui, "1/0");
     key(&mut ui, KeyCode::Enter);
     let error = screen(&mut ui, 80, 25);

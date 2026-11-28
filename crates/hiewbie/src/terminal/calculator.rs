@@ -69,6 +69,8 @@ impl<S: ByteSource> Ui<S> {
             return;
         } else if is_control_char(key, 'u') {
             calculator.clear();
+        } else if is_control_char(key, 'e') {
+            calculator.answer = self.editor.calculate_checked(&calculator.expression);
         } else {
             match (key.code, key.modifiers) {
                 (KeyCode::Enter, KeyModifiers::NONE) => {

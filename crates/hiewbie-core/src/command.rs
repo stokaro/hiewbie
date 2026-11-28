@@ -495,19 +495,28 @@ impl<S: ByteSource> Editor<S> {
 
     /// Evaluate with the same mapped or raw address used for Code rows.
     pub fn calculate(&mut self, expression: &str) -> Result<u64, CalculationError> {
+        let local = self.calculator_local(expression);
+        calculator::evaluate(expression, &mut self.document, self.cursor, local)
+    }
+
+    /// Evaluate with checked signed arithmetic and the same cursor tags as the Calculator.
+    pub fn calculate_checked(&mut self, expression: &str) -> Result<u64, CalculationError> {
+        let local = self.calculator_local(expression);
+        calculator::evaluate_checked(expression, &mut self.document, self.cursor, local)
+    }
+
+    fn calculator_local(&mut self, expression: &str) -> Option<u64> {
         // Only @o needs executable metadata. Plain arithmetic and file-byte
         // reads work independently of the current interpretation.
-        let local =
-            if expression.contains("@o") && expression.len() <= calculator::MAX_EXPRESSION_BYTES {
-                self.refresh_analysis();
-                self.analysis
-                    .address_at(self.cursor)
-                    .ok()
-                    .map(|(address, _)| address.get())
-            } else {
-                None
-            };
-        calculator::evaluate(expression, &mut self.document, self.cursor, local)
+        if expression.contains("@o") && expression.len() <= calculator::MAX_EXPRESSION_BYTES {
+            self.refresh_analysis();
+            self.analysis
+                .address_at(self.cursor)
+                .ok()
+                .map(|(address, _)| address.get())
+        } else {
+            None
+        }
     }
 
     /// All adapters share the same raw/dotted-VA syntax and navigation rules.
