@@ -1,6 +1,7 @@
 # References and source reuse
 
-Research snapshot: 2026-11-27. These sources describe upstream behavior or inform
+Baseline research snapshot: 2026-11-27; analysis selection updated 2026-11-28.
+These sources describe upstream behavior or inform
 implementation choices; they are not evidence that hiewbie already implements it.
 
 ## HIEW behavior references
@@ -57,11 +58,15 @@ those operational dependencies are not hiewbie requirements.
 
 ## Dependency research references
 
-Candidates must be evaluated at a pinned revision before inclusion. A Rust
-wrapper's license does not replace the native engine's license.
+Dependencies must be evaluated at a pinned revision before inclusion. A Rust
+wrapper's license does not replace the native engine's license. The selected
+portable decoders and bounded format readers are documented in
+[ADR 0004](adr/0004-analysis-backends.md), including primary PE/ELF/Mach-O
+specifications, exact source commits, feature choices, and known limitations.
 
-- [Ratatui](https://github.com/ratatui/ratatui) and [Crossterm](https://github.com/crossterm-rs/crossterm): terminal frontend candidates.
-- [iced-x86](https://github.com/icedland/iced) and its [CodeAssembler API](https://docs.rs/iced-x86/latest/iced_x86/code_asm/index.html): x86 decoding and encoding; the API does not itself parse user-entered assembly text.
+- [Ratatui](https://github.com/ratatui/ratatui) and [Crossterm](https://github.com/crossterm-rs/crossterm): selected terminal components.
+- [iced-x86](https://github.com/icedland/iced) and its [CodeAssembler API](https://docs.rs/iced-x86/latest/iced_x86/code_asm/index.html): selected x86 decoder; the assembler API is disabled and does not itself parse user-entered assembly text.
+- [yaxpeax-arm](https://github.com/iximeow/yaxpeax-arm) and [yaxpeax-arch](https://github.com/iximeow/yaxpeax-arch): selected portable ARM/Thumb/AArch64 decoder and shared types, both declared 0BSD. Exact inspected revisions and notices are in [dependencies.md](dependencies.md).
 - [Capstone](https://www.capstone-engine.org/) and [distribution/license guidance](https://www.capstone-engine.org/download): multi-architecture decoding and native-build considerations.
 - [Goblin](https://github.com/m4b/goblin): executable format parsing candidate.
 - [object security scope](https://github.com/gimli-rs/object#security): review its documented trusted-input assumptions before selecting it for arbitrary binary files.

@@ -41,9 +41,12 @@ python3 scripts/pty_smoke.py --binary target/debug/hiewbie
 
 If `CARGO_TARGET_DIR` is set, pass the executable from that directory. The PTY
 script uses Python's standard library and generated temporary fixtures. Its
-`--record PATH` option records the successful edit workflow as asciinema v2.
-The checked-in [recording](evidence/native-editor.cast) is evidence of that
-scenario; byte/state assertions and cleanup checks remain the regression gate.
+`--record PATH` option records the successful edit workflow as asciinema v2;
+`--record-analysis PATH` records the generated PE header/entry/Code/branch/return
+workflow followed by dotted-VA navigation and an exact one-byte save. The
+checked-in [editing](evidence/native-editor.cast) and
+[analysis](evidence/executable-analysis.cast) recordings are evidence of those
+scenarios; byte/state assertions and cleanup checks remain the regression gate.
 The PTY harness keeps a supervisor alive as the controlling session leader
 while the editor exits. It checks the editor's exact exit status, restored
 termios attributes, and terminal cleanup sequences before releasing that

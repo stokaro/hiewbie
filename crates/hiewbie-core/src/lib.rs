@@ -1,24 +1,30 @@
-//! Portable raw-byte documents, transactions, commands, and incremental search.
+//! Portable documents, executable metadata, instruction decoding, and commands.
 //!
 //! This crate uses bounded random access and has no filesystem or terminal
 //! dependency. Native and browser adapters implement [`ByteSource`] and own
-//! persistence. Initial functionality is overwrite-only; it does not interpret
-//! executable formats or claim an instruction-analysis mode.
+//! persistence. Editing is overwrite-only; interpretation always reads the same
+//! logical bytes and never executes inspected code.
 
+mod analysis;
 mod command;
 mod document;
 mod error;
+pub mod formats;
+pub mod instructions;
 mod offset;
 mod search;
 
+pub use analysis::{CodeRow, DecodeContext, MAX_CODE_ROWS, MAX_NAVIGATION_HISTORY};
 pub use command::{COMMANDS, Command, CommandInfo, Editor, Effect, ViewMode};
 pub use document::{
     ByteSource, Document, MAX_EDIT_BYTES, MAX_HISTORY_BYTES, MAX_HISTORY_ENTRIES,
     MAX_PENDING_BYTES, MAX_READ_BYTES, MemorySource, Patch,
 };
 pub use error::Error;
-pub use offset::{FileOffset, parse_goto};
+pub use offset::{FileOffset, parse_goto, parse_virtual_address};
 pub use search::{MAX_SEARCH_PATTERN_BYTES, Search, SearchProgress};
 
+#[cfg(test)]
+mod analysis_tests;
 #[cfg(test)]
 mod tests;
