@@ -24,7 +24,10 @@ pub mod symbols;
 pub use analysis::{BRANCH_LABELS, CodeRow, DecodeContext, MAX_CODE_ROWS, MAX_NAVIGATION_HISTORY};
 pub use block::{BlockBoundary, BlockSelection};
 pub use bookmark::{BOOKMARK_SLOTS, BookmarkCommand, BookmarkMark, BookmarkViewport};
-pub use command::{COMMANDS, Command, CommandInfo, Editor, Effect, FileNavigation, ViewMode};
+pub use command::{
+    AssemblyPadding, AssemblyPatch, AssemblySpan, COMMANDS, Command, CommandInfo, Editor, Effect,
+    FileNavigation, ViewMode,
+};
 pub use document::{
     ByteSource, Document, MAX_EDIT_BYTES, MAX_HISTORY_BYTES, MAX_HISTORY_ENTRIES,
     MAX_PENDING_BYTES, MAX_READ_BYTES, MemorySource, Patch,
@@ -36,6 +39,9 @@ pub use search::{
     SearchRequest,
 };
 
+#[cfg(test)]
+#[path = "../../../tests/fixtures/aarch64_images.rs"]
+mod aarch64_images;
 #[cfg(test)]
 mod analysis_tests;
 #[cfg(test)]

@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, sync::Arc};
 
 use crate::analysis::{
     Analysis, BRANCH_LABELS, CodeWindow, Location, LocationKind, analysis_error,
@@ -34,6 +34,10 @@ impl fmt::Display for ViewMode {
         })
     }
 }
+
+mod assembly_patch;
+
+pub use assembly_patch::{AssemblyPadding, AssemblyPatch, AssemblySpan};
 
 /// Stable semantic commands shared by interactive and headless adapters.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -374,7 +378,7 @@ pub struct Editor<S: ByteSource> {
     document: Document<S>,
     cursor: FileOffset,
     mode: ViewMode,
-    editing: bool,
+    edit_session: Option<Arc<()>>,
     read_only: bool,
     analysis: Analysis,
     search: SearchSession,
@@ -390,7 +394,7 @@ impl<S: ByteSource> Editor<S> {
             document,
             cursor: FileOffset::new(0),
             mode: ViewMode::Hex,
-            editing: false,
+            edit_session: None,
             read_only,
             analysis: Analysis::default(),
             search: SearchSession::default(),
@@ -431,7 +435,7 @@ impl<S: ByteSource> Editor<S> {
 
     #[must_use]
     pub const fn is_editing(&self) -> bool {
-        self.editing
+        self.edit_session.is_some()
     }
 
     #[must_use]
@@ -728,17 +732,17 @@ impl<S: ByteSource> Editor<S> {
                 if self.read_only {
                     return Err(Error::ReadOnly);
                 }
-                if !self.editing {
+                if !self.is_editing() {
                     self.references.pending = None;
                     self.document.discard();
                     self.finish_block();
-                    self.editing = true;
+                    self.edit_session = Some(Arc::new(()));
                 }
             }
             Command::DiscardEdit => {
-                if self.editing {
+                if self.is_editing() {
                     self.document.discard();
-                    self.editing = false;
+                    self.edit_session = None;
                 }
             }
             Command::WriteByte(byte) => {
@@ -962,7 +966,9 @@ impl<S: ByteSource> Editor<S> {
             Command::ReturnBranch => return self.return_code(),
             Command::FindReferences => self.start_references(false)?,
             Command::NextReference => self.start_references(true)?,
-            Command::ToggleReferenceAlignment if !self.editing && self.mode == ViewMode::Code => {
+            Command::ToggleReferenceAlignment
+                if !self.is_editing() && self.mode == ViewMode::Code =>
+            {
                 self.references.bytewise = !self.references.bytewise;
                 self.references.pending = None;
                 self.references.resume = None;
@@ -985,13 +991,13 @@ impl<S: ByteSource> Editor<S> {
                 ViewMode::Code => ViewMode::Text,
             }),
             Command::BrowseFiles => {
-                if self.editing {
+                if self.is_editing() {
                     return Err(Error::EditingInProgress);
                 }
                 return Ok(Effect::BrowseFiles);
             }
             Command::FileNavigation(navigation) => {
-                if self.editing {
+                if self.is_editing() {
                     return Err(Error::EditingInProgress);
                 }
                 return Ok(Effect::FileNavigation(navigation));
@@ -1011,12 +1017,12 @@ impl<S: ByteSource> Editor<S> {
         }
         self.document.rebase(source);
         self.analysis.invalidate();
-        self.editing = false;
+        self.edit_session = None;
         self.cursor = self.clamp(self.cursor.get());
     }
 
     fn bookmark(&mut self, command: BookmarkCommand) -> Result<Effect, Error> {
-        if self.editing {
+        if self.is_editing() {
             return Err(Error::EditingInProgress);
         }
         let decode_mode =
@@ -1071,7 +1077,7 @@ impl<S: ByteSource> Editor<S> {
     }
 
     fn require_block_view(&self) -> Result<(), Error> {
-        if self.editing || self.mode == ViewMode::Text {
+        if self.is_editing() || self.mode == ViewMode::Text {
             return Err(Error::Block(
                 "Block marking is available in Hex and Code view",
             ));
@@ -1086,7 +1092,7 @@ impl<S: ByteSource> Editor<S> {
         if self.read_only {
             return Err(Error::ReadOnly);
         }
-        if !self.editing {
+        if !self.is_editing() {
             return Err(Error::NotEditing);
         }
         Ok(())
@@ -1154,7 +1160,10 @@ impl<S: ByteSource> Editor<S> {
     }
 
     fn start_references(&mut self, resume: bool) -> Result<(), Error> {
-        if self.editing || self.mode == ViewMode::Text || (resume && self.mode != ViewMode::Code) {
+        if self.is_editing()
+            || self.mode == ViewMode::Text
+            || (resume && self.mode != ViewMode::Code)
+        {
             return Err(analysis_error(
                 "reference search is available in Hex and Code view",
             ));

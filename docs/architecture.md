@@ -123,6 +123,15 @@ bytes and instruction length. Reject oversized output before changing the
 document; padding and widening a patch are explicit operations. Encoding failure
 must leave bytes, undo history, and dirty state unchanged.
 
+The editor core prepares a single reviewed encoding in the current Code edit
+session. The default span is one decoded instruction before viewport grouping.
+The caller may explicitly widen it to a contiguous file-backed span within the
+document overwrite limit. Short encodings preserve the remaining bytes.
+Explicit NOP padding uses single-byte x86 NOPs or aligned four-byte A64 NOPs.
+Before one atomic overwrite, the core rechecks the session, cursor, profile,
+generation, mapping, and original bytes in the reviewed span. The terminal
+prompt and key bindings are separate adapter work in #78.
+
 An arbitrary byte patch must not silently rebuild sections, move instructions,
 repair checksums, alter signatures, or rewrite relocations. Such operations may
 exist as named, separately tested commands.

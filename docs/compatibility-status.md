@@ -76,7 +76,7 @@ cover visiting, switching, and reopening files.
 | EDIT-002 | Implemented | [C], [N], [P]: pending changes do not write until explicit save. |
 | EDIT-003 | Implemented | [C], [N], [P]: discard restores original bytes and does not rewrite mtime. |
 | EDIT-004 | Implemented | [C], [N], [T]: successful save rebases and clears transaction/history. |
-| EDIT-005 | Partial | [C], [A], [T]: bounded overwrite/restore command undo/redo refreshes Code and remains distinct from source-byte restoration; blocks and textual assembly pending. |
+| EDIT-005 | Partial | [C], [A], [T]: bounded overwrite/restore command undo/redo refreshes Code and remains distinct from source-byte restoration. [Patch preview] verifies one undo boundary per textual patch. Block edits and interactive acceptance remain open. |
 | EDIT-006 | Partial | [C], [T], [Block export], [Block observation]: overwrite and native raw block export implemented. Insert/delete/copy/move/fill/import remain open. |
 | EDIT-007 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | EDIT-008 | Partial | [C], [N], [Fuzz]: ranges and limits validated before mutation; bounded command fuzzing checks rejected operations and retained history against an independent byte model. Later edit operations remain pending. |
@@ -146,9 +146,9 @@ cover visiting, switching, and reopening files.
 | --- | --- | --- |
 | ASM-001 | Partial | [Assembly] and [AArch64 Assembly]: bounded x86 text in 16/32/64 and a single little-endian A64 word. Interactive input remains open. |
 | ASM-002 | Partial | [Assembly] and [AArch64 Assembly]: mode, instruction order and checked mapped or raw address drive encoding. Additional ISA and profile coverage remains open. |
-| ASM-003 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ASM-004 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ASM-005 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
+| ASM-003 | Partial | [Patch preview]: the portable core returns the current and replacement bytes with the reviewed range and address. Interactive preview remains open. |
+| ASM-004 | Partial | [Patch preview]: oversized candidates require an explicit wider contiguous file-backed span. Interactive span selection remains open. |
+| ASM-005 | Partial | [Patch preview]: explicit x86 and aligned AArch64 NOP padding. Interactive padding and Alt+F2 remain open. |
 | ASM-006 | Partial | [Assembly] and [AArch64 Assembly]: syntax, range and missing names preserve bytes, cursor, generation and undo/redo in the core adapter. The patch workflow remains open. |
 | ASM-007 | Partial | [Assembly] and [AArch64 Assembly]: published mode, syntax, labels and implemented families. Complete HIEW grammar and wider extension support remain open. |
 | ASM-008 | Partial | [Assembly] and [AArch64 Assembly]: range, address, mode, symbol and byte-order regressions plus independent A64 words. Interactive and full platform qualification remain open. |
@@ -265,7 +265,7 @@ cover visiting, switching, and reopening files.
 | TEST-002 | Implemented | [N], [P]: discard checks expected bytes and mtime on generated ordinary files. |
 | TEST-003 | Implemented | [N], [P]: exact persisted byte changes; reopen via file reads. |
 | TEST-004 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| TEST-005 | Partial | [Assembly] and [AArch64 Assembly]: x86 near and short branches and A64 PC-relative operands encode at multiple actual addresses. Applied patch and broader ISA checks remain open. |
+| TEST-005 | Partial | [Assembly] and [AArch64 Assembly]: x86 near and short branches and A64 PC-relative operands encode at multiple actual addresses. [Patch preview] verifies exact relative replacements and one undo boundary in the core. Interactive save/reopen and broader ISA checks remain open. |
 | TEST-006 | Partial | [F], [D], [A], [ACLI]: host-independent x86 PE, ARM64 Mach-O and ELF fixtures are shared by six native CI jobs; per-commit results are recorded in PR/CI, while the full required host/runtime matrix remains incomplete. |
 | TEST-007 | Partial | [N], [C], [F], [A], [T]: real Unix sparse file, synthetic 1 TiB format source and large-offset code windows; interactive large-file benchmark pending. |
 | TEST-008 | Partial | [C], [T]: chunk-boundary literal matches in both directions, cancellation, and [native PTY search replay][Search replay]; latency benchmark pending. |
@@ -334,6 +334,7 @@ cover visiting, switching, and reopening files.
 [Fuzz]: fuzzing.md
 [Assembly]: x86-text-assembly.md
 [AArch64 Assembly]: aarch64-text-assembly.md
+[Patch preview]: ../crates/hiewbie-core/src/command/assembly_patch_tests.rs
 [AArch64 Decode coverage]: aarch64-decode-coverage.md
 [Analysis]: adr/0004-analysis-backends.md
 [Symbols]: adr/0005-symbol-navigation.md
