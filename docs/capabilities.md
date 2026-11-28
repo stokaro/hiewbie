@@ -65,7 +65,7 @@ additional IDs and fields while rejecting unknown required schema versions.
 | ARM and Thumb decoding | yaxpeax-arm 0.5.0 | Little-endian bounded decoding and selected direct branches | Revision filtering, complete IT-state handling, instruction byte-order variants |
 | AArch64 decoding | yaxpeax-arm 0.5.0 and hiewbie-core | Little-endian A64 instructions in either container data order, checked PC-relative operands, and versioned scalar and extension families | Wider scalable-vector, matrix and other extension coverage |
 | x86 textual assembly | iced-x86 1.22.0 and hiewbie-core | Little-endian x86-16/32/64 core API with checked addresses and encoding choices | Full HIEW grammar and #78 editor integration |
-| AArch64 textual assembly | None | Research probe only | Production adapter and editor integration in #77 and #78 |
+| AArch64 textual assembly | hiewbie-core | [One checked little-endian A64 word](aarch64-text-assembly.md) with explicit scalar and extension forms | Wider ISA and #78 editor integration |
 | x86 reference search | iced-x86 and hiewbie-core | Bounded near branches, selected mapped memory and literal operands | General references, loader resolution and control-flow analysis |
 | ARM/Thumb/AArch64 reference search | None | Unavailable | Direct branch following does not establish reference search |
 | PE/ELF structures | hiewbie-core | Bounded headers and load mappings | Remaining per-format directories and relocations |
@@ -229,8 +229,8 @@ Their production implementation issues are
 [#76](https://github.com/stokaro/hiewbie/issues/76),
 [#77](https://github.com/stokaro/hiewbie/issues/77) and
 [#78](https://github.com/stokaro/hiewbie/issues/78).
-The capability report deliberately keeps all textual assembly unavailable
-until those implementations are loaded.
+The report exposes the compiled x86 and AArch64 assembly subsets. The
+interactive command remains in #78.
 
 ## Automated evidence
 

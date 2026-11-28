@@ -266,7 +266,7 @@ fn parse_memory(
     Ok(memory)
 }
 
-fn expression(
+pub(super) fn expression(
     text: &str,
     resolve: &mut impl FnMut(&str) -> Option<VirtualAddress>,
 ) -> Result<i128, AssemblyError> {

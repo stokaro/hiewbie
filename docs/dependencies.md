@@ -77,11 +77,10 @@ experiments, and separate textual-assembly gate are recorded in
 
 No decoder implementation was copied or patched into hiewbie. Cargo retrieves
 the original published archives, identified by their checksums in `Cargo.lock`.
-The production core has no assembler backend or textual assembly parser enabled.
-[ADR 0006](adr/0006-text-assembler-selection.md) selects an in-tree parser,
-iced-x86 encoding and asm-rs 0.2.0 AArch64 for future implementation. Their
-independently locked [evaluation probe](../experiments/assembler/README.md) does
-not enable a user-entered assembly command in the editor.
+The production core uses iced-x86 encoding and an in-tree AArch64 word
+encoder. [ADR 0006](adr/0006-text-assembler-selection.md) records the
+independently locked evaluation of asm-rs 0.2.0. That package is confined to
+the [research probe](../experiments/assembler/README.md).
 
 ## Terminal backend and workspace tools
 

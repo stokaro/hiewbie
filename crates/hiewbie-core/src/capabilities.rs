@@ -254,12 +254,21 @@ const BUILT_INS: &[Capability<'static>] = &[
     Capability {
         id: "assemble.aarch64",
         category: Category::Assembly,
-        status: Status::Unavailable,
-        backend: None,
-        modes: &[],
-        byte_orders: &[],
-        limitations: &["No production textual assembler; research probes do not enable editing."],
-        evidence: &["docs/adr/0006-text-assembler-selection.md"],
+        status: Status::Limited,
+        backend: Some(Backend {
+            name: "hiewbie-core",
+            version: env!("CARGO_PKG_VERSION"),
+        }),
+        modes: &["aarch64"],
+        byte_orders: &["little"],
+        limitations: &[
+            "One four-byte instruction with checked operands and actual address.",
+            "Coverage is limited to the documented instruction forms. Interactive assembly is pending.",
+        ],
+        evidence: &[
+            "docs/aarch64-text-assembly.md",
+            "tests/fixtures/aarch64-assembly.tsv",
+        ],
     },
     Capability {
         id: "assemble.arm",

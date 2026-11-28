@@ -82,12 +82,30 @@ fn x86_assembly_capabilities_link_to_working_portable_modes() {
 }
 
 #[test]
+fn aarch64_assembly_capability_links_to_the_portable_word_encoder() {
+    let report = current();
+    let entry = report.require("assemble.aarch64").unwrap();
+    assert_eq!(entry.category, Category::Assembly);
+    assert_eq!(entry.status, Status::Limited);
+    assert_eq!(entry.modes, [DecodeMode::Aarch64.to_string()]);
+    assert_eq!(entry.byte_orders, ["little"]);
+    let bytes = crate::assembly::assemble(
+        "b 1008",
+        DecodeMode::Aarch64,
+        Endian::Little,
+        VirtualAddress::new(0x1000),
+        |_| None,
+    )
+    .unwrap();
+    assert_eq!(bytes, [[2, 0, 0, 0x14]]);
+}
+
+#[test]
 fn optional_backends_and_research_assembly_remain_explicitly_unavailable() {
     let report = current();
     for id in [
         "assemble.arm",
         "assemble.thumb",
-        "assemble.aarch64",
         "decode.mips32",
         "decode.mips64",
         "decode.powerpc32",

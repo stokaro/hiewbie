@@ -1018,6 +1018,88 @@ fn assembly_uses_checked_mapped_and_raw_addresses_without_editing() {
 }
 
 #[test]
+fn aarch64_assembly_uses_mapped_and_raw_pcs_and_preserves_pending_edits() {
+    use crate::assembly::AssemblyError;
+    use aarch64_images::{ARM64_BASE, ARM64_CODE_OFFSET, arm64_elf};
+
+    for big in [false, true] {
+        let original = arm64_elf(big);
+        let mut editor = editor(original.clone());
+        let source = format!("b {:x}", ARM64_BASE + 0x18);
+        editor.dispatch(Command::GotoEntry).unwrap();
+        assert_eq!(editor.cursor(), FileOffset::new(ARM64_CODE_OFFSET));
+        assert_eq!(
+            editor.assemble_at_cursor(&source).unwrap(),
+            [[6, 0, 0, 0x14]]
+        );
+        editor.dispatch(Command::Move(4)).unwrap();
+        assert_eq!(
+            editor.assemble_at_cursor(&source).unwrap(),
+            [[5, 0, 0, 0x14]]
+        );
+        assert_eq!(editor.document().generation(), 0);
+        assert!(!editor.document().is_dirty());
+
+        editor.dispatch(Command::SetRaw(true)).unwrap();
+        editor
+            .dispatch(Command::SetRawBase(VirtualAddress::new(ARM64_BASE)))
+            .unwrap();
+        editor
+            .dispatch(Command::SetDecodeMode(Some(DecodeMode::Aarch64)))
+            .unwrap();
+        assert_eq!(
+            editor.assemble_at_cursor(&source).unwrap(),
+            [[0xc5, 0xff, 0xff, 0x17]]
+        );
+
+        let cursor = editor.cursor();
+        editor.dispatch(Command::BeginEdit).unwrap();
+        editor.document_mut().overwrite(cursor, &[0x80]).unwrap();
+        editor
+            .document_mut()
+            .overwrite(FileOffset::new(cursor.get() + 4), &[0x81])
+            .unwrap();
+        assert!(editor.document_mut().undo().unwrap());
+        let generation = editor.document().generation();
+        let patches = editor.document().patches();
+        assert!(matches!(
+            editor.assemble_at_cursor("adrp x0, @missing"),
+            Err(Error::Assembly(AssemblyError::UnresolvedSymbol(_)))
+        ));
+        assert!(matches!(
+            editor.assemble_at_cursor("b 0"),
+            Err(Error::Assembly(AssemblyError::OutOfRange(_)))
+        ));
+        assert_eq!(
+            editor.assemble_at_cursor(&source).unwrap(),
+            [[0xc5, 0xff, 0xff, 0x17]]
+        );
+        editor
+            .dispatch(Command::SetEndian(Some(Endian::Big)))
+            .unwrap();
+        assert!(matches!(
+            editor.assemble_at_cursor("nop"),
+            Err(Error::Assembly(AssemblyError::UnsupportedProfile))
+        ));
+        assert_eq!(editor.cursor(), cursor);
+        assert!(editor.is_editing());
+        assert!(editor.document().is_dirty());
+        assert_eq!(editor.document().generation(), generation);
+        assert_eq!(editor.document().patches(), patches);
+        assert!(editor.document_mut().redo().unwrap());
+        assert!(editor.document_mut().undo().unwrap());
+        assert!(editor.document_mut().undo().unwrap());
+        assert!(!editor.document_mut().undo().unwrap());
+        let mut after = vec![0; original.len()];
+        editor
+            .document_mut()
+            .read_at(FileOffset::new(0), &mut after)
+            .unwrap();
+        assert_eq!(after, original);
+    }
+}
+
+#[test]
 fn aarch64_elf_uses_instruction_order_and_only_follows_backed_operands() {
     use aarch64_images::{ARM64_BASE, ARM64_CODE_OFFSET, arm64_elf};
 

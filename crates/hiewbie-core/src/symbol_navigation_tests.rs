@@ -358,3 +358,28 @@ fn textual_assembly_preserves_automatic_and_explicit_raw_address_modes() {
     assert_eq!(editor.document().source().as_slice(), bytes);
     assert_eq!(editor.document().generation(), 0);
 }
+
+#[test]
+fn aarch64_assembly_uses_updated_executable_symbol_addresses() {
+    let mut bytes = fixtures::pe64();
+    bytes[0x84..0x86].copy_from_slice(&0xaa64_u16.to_le_bytes()); // IMAGE_FILE_MACHINE_ARM64
+    let mut editor = editor(bytes);
+    editor.dispatch(Command::GotoEntry).unwrap();
+    assert_eq!(
+        editor.assemble_at_cursor("b @entry_symbol").unwrap(),
+        [[0, 0, 0, 0x14]],
+    );
+
+    editor.dispatch(Command::BeginEdit).unwrap();
+    editor
+        .document_mut()
+        .overwrite(FileOffset::new(0x440), &0x1018_u32.to_le_bytes())
+        .unwrap();
+    assert!(editor.symbols().is_none());
+    assert_eq!(
+        editor.assemble_at_cursor("b @entry_symbol").unwrap(),
+        [[6, 0, 0, 0x14]],
+    );
+    assert_eq!(editor.cursor(), FileOffset::new(0x200));
+    assert!(editor.document().is_dirty());
+}

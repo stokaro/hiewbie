@@ -527,7 +527,7 @@ impl<S: ByteSource> Editor<S> {
                 "Instruction address does not map back to the current offset",
             ));
         }
-        assembly::assemble_x86(source, mode, context.endian, address, |name| {
+        assembly::assemble(source, mode, context.endian, address, |name| {
             self.resolve_assembly_symbol(name)
         })
         .map_err(Error::Assembly)

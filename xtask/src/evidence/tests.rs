@@ -95,7 +95,7 @@ fn unbacked_success_and_unsupported_capabilities_cannot_be_promoted() {
         .as_mut()
         .unwrap()
         .compiled_capabilities
-        .push("assemble.aarch64".into());
+        .push("assemble.thumb".into());
     assert!(
         validate(&manifest, &target, &identity, &wrong)
             .unwrap_err()
