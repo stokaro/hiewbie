@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::analysis::{Analysis, Location, analysis_error};
+use crate::analysis::{Analysis, BRANCH_LABELS, CodeWindow, Location, analysis_error};
 use crate::block::{BlockBoundary, BlockMark, BlockSelection};
 use crate::bookmark::{
     BOOKMARK_SLOTS, Bookmark, BookmarkCommand, BookmarkMark, BookmarkViewport, Bookmarks,
@@ -457,8 +457,39 @@ impl<S: ByteSource> Editor<S> {
     }
 
     pub fn code_rows(&mut self, limit: usize) -> Result<Vec<CodeRow>, Error> {
-        let rows = self.analysis.rows(&mut self.document, self.cursor, limit)?;
-        self.analysis.numbered_window = Some(limit);
+        self.decode_window(self.cursor, limit, false)
+    }
+
+    /// Decode the displayed window, including compact x86 padding rows, and
+    /// bind its branch labels and instruction boundaries to subsequent keys.
+    pub fn code_viewport(
+        &mut self,
+        start: FileOffset,
+        limit: usize,
+    ) -> Result<Vec<CodeRow>, Error> {
+        self.decode_window(start, limit, true)
+    }
+
+    fn decode_window(
+        &mut self,
+        start: FileOffset,
+        limit: usize,
+        group_nops: bool,
+    ) -> Result<Vec<CodeRow>, Error> {
+        let rows = self
+            .analysis
+            .rows(&mut self.document, start, limit, group_nops)?;
+        let selected_row = rows.iter().find_map(|row| {
+            let end = row.offset.get() + row.instruction.length as u64;
+            (row.offset <= self.cursor && self.cursor.get() < end).then_some((row.offset, end))
+        });
+        self.analysis.numbered_window = Some(CodeWindow {
+            start,
+            limit,
+            group_nops,
+            generation: self.document.generation(),
+            selected_row,
+        });
         Ok(rows)
     }
 
@@ -852,13 +883,18 @@ impl<S: ByteSource> Editor<S> {
     }
 
     fn follow_branch(&mut self, number: usize) -> Result<(), Error> {
-        if !(1..=9).contains(&number) {
-            return Err(Error::Analysis(
-                "branch number must be between 1 and 9".into(),
-            ));
+        if !(1..=BRANCH_LABELS.len()).contains(&number) {
+            return Err(Error::Analysis("branch label must be 1–9 or A–Z".into()));
         }
-        let limit = self.analysis.numbered_window.unwrap_or(MAX_CODE_ROWS);
-        let rows = self.code_rows(limit)?;
+        let window = self
+            .analysis
+            .numbered_window
+            .filter(|window| window.generation == self.document.generation());
+        let rows = if let Some(window) = window {
+            self.decode_window(window.start, window.limit, window.group_nops)?
+        } else {
+            self.code_rows(MAX_CODE_ROWS)?
+        };
         let row = rows
             .iter()
             .find(|row| row.branch_number == Some(number))
@@ -870,7 +906,7 @@ impl<S: ByteSource> Editor<S> {
             .ok_or_else(|| Error::Analysis("the selected row has no direct branch".into()))?;
         let offset = self
             .analysis
-            .virtual_offset(target.address, self.document.len())?;
+            .branch_offset(target.address, self.document.len())?;
         let target_mode = target.mode;
         self.analysis.remember(Location {
             offset: self.cursor,
@@ -920,9 +956,22 @@ impl<S: ByteSource> Editor<S> {
             });
         }
         self.refresh_analysis();
+        let window = self
+            .analysis
+            .numbered_window
+            .filter(|window| window.generation == self.document.generation() && window.group_nops);
+        if count != 0
+            && let Some((start, end)) = window.and_then(|value| value.selected_row)
+            && start <= self.cursor
+            && self.cursor.get() < end
+        {
+            self.cursor = start;
+        }
         for _ in 0..count.unsigned_abs() {
             if count > 0 {
-                let rows = self.analysis.rows(&mut self.document, self.cursor, 1)?;
+                let rows =
+                    self.analysis
+                        .rows(&mut self.document, self.cursor, 1, window.is_some())?;
                 let Some(row) = rows.first() else {
                     break;
                 };

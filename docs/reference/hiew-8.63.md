@@ -298,6 +298,18 @@ These modified keys were confirmed with Windows console key events.
 
 [Paired Windows observations](../evidence/hiew-8.63-windows-history.json)
 
+### x86 Decode viewport
+
+At 80x25 and 100x30, Code starts on the first row below the title. A scrollbar
+occupies column zero. Raw Code shows the address, contiguous opcodes, a target
+label column, the mnemonic, and operands. PE32+ moves the opcode and mnemonic
+columns nine cells to the right for its full virtual addresses. The selected
+file byte has its own two-cell highlight. Adjacent single-byte NOPs share an
+opcode row. On the ordinary raw fixtures HIEW chose x86-32 and Ctrl+F1 cycled the
+x86 profiles. Page Down advanced by the visible rows, including grouped NOPs.
+
+[Paired Windows observations](../evidence/hiew-8.63-windows-decode.json)
+
 ### Navigation state is richer than a single cursor
 
 HIEW keeps up to eight screen bookmarks per Text, Hex, and Decode view. A
@@ -318,8 +330,8 @@ Backspace in view returns after navigation/search in HIEW. This is separate
 from edit Backspace (`hiew_en.txt`, lines 211–217; `hiew8.hlp`, `[Bookmark]`).
 Hiewbie has bounded direct-branch return history for Code. General goto/search
 return and exact reference viewport behavior beyond bookmark restoration remain
-open. The documented configurable target labels and `0` return key also
-remain distinct from hiewbie's current `1`–`9` targets and Code-view Backspace.
+open. Hiewbie uses the default direct target labels 1–9 and A–Z. Both `0`
+and Code-view Backspace return. Customized JumpTable remains open.
 
 The initial analysis supports checked absolute dotted VAs and explicit raw
 bases. A dotted PE address can mean a VA or an

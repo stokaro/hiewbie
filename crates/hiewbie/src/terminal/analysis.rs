@@ -81,7 +81,7 @@ impl<S: ByteSource> Ui<S> {
                 return UiAction::Continue;
             }
         };
-        self.notice(format!("Explicit decoder: {mode}"));
+        self.hint(format!("Explicit decoder: {mode}"));
         self.dispatch(Command::SetDecodeMode(Some(mode)))
     }
 
@@ -334,7 +334,7 @@ impl<S: ByteSource> Ui<S> {
             let start = dialog.selected.saturating_sub(available.saturating_sub(1));
             for (index, profile) in PROFILES.iter().enumerate().skip(start).take(available) {
                 let label = profile.map_or_else(
-                    || "Auto from image (raw requires a choice)".to_owned(),
+                    || "Auto from image or ordinary raw x86-32".to_owned(),
                     |mode| format!("{mode} [{}]", mode.backend()),
                 );
                 lines.push(selected_line(

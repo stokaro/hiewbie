@@ -3,6 +3,7 @@
 mod analysis;
 mod block;
 mod calculator;
+mod code_view;
 mod help;
 mod hex_view;
 mod render;
@@ -24,8 +25,8 @@ use std::time::Duration;
 use hiewbie::file::{BlockExport, ExportProgress, FileSource, SaveError, save_document};
 use hiewbie_core::formats::{BinaryFormat, VirtualAddress};
 use hiewbie_core::{
-    BlockBoundary, BookmarkCommand, BookmarkViewport, ByteSource, Command, Document, Editor,
-    Effect, FileNavigation, FileOffset, ViewMode,
+    BRANCH_LABELS, BlockBoundary, BookmarkCommand, BookmarkViewport, ByteSource, Command, Document,
+    Editor, Effect, FileNavigation, FileOffset, ViewMode,
 };
 use ratatui::Terminal;
 use ratatui::backend::{Backend, CrosstermBackend};
@@ -386,6 +387,7 @@ struct Ui<S: ByteSource> {
     top: u64,
     bytes_per_row: usize,
     visible_rows: usize,
+    code_viewport: code_view::CodeViewport,
     text: text_view::TextView,
     entry_column: EntryColumn,
     pending_nibble: Option<u8>,
@@ -421,6 +423,7 @@ impl<S: ByteSource> Ui<S> {
             top: 0,
             bytes_per_row: 16,
             visible_rows: 21,
+            code_viewport: code_view::CodeViewport::default(),
             text: text_view::TextView::default(),
             entry_column: EntryColumn::Hex,
             pending_nibble: None,
@@ -450,8 +453,22 @@ impl<S: ByteSource> Ui<S> {
         if command != Command::OpenCalculator && self.pending_nibble.take().is_some() {
             self.notice("Pending hex digit cancelled; no partial byte was applied");
         }
+        let previous_mode = self.editor.mode();
         match self.editor.dispatch(command) {
-            Ok(Effect::None) => UiAction::Continue,
+            Ok(Effect::None) => {
+                if self.editor.mode() == ViewMode::Code {
+                    let cursor = self.editor.cursor().get();
+                    if previous_mode != ViewMode::Code || matches!(command, Command::ResyncCode) {
+                        self.top = cursor;
+                    } else if matches!(command, Command::MoveCode(1))
+                        && cursor >= self.code_viewport.end
+                        && let Some(top) = self.code_viewport.next_top
+                    {
+                        self.top = top.get();
+                    }
+                }
+                UiAction::Continue
+            }
             Ok(Effect::RestoreBookmark(viewport)) => {
                 self.top = viewport.top.get().min(self.editor.cursor().get());
                 if self.editor.mode() == ViewMode::Text {
@@ -653,12 +670,8 @@ impl<S: ByteSource> Ui<S> {
             KeyCode::Right => self.dispatch(Command::Move(1)),
             KeyCode::Up if self.code_navigation() => self.dispatch(Command::MoveCode(-1)),
             KeyCode::Down if self.code_navigation() => self.dispatch(Command::MoveCode(1)),
-            KeyCode::PageUp if self.code_navigation() => {
-                self.dispatch(Command::MoveCode(-(self.visible_rows as i32)))
-            }
-            KeyCode::PageDown if self.code_navigation() => {
-                self.dispatch(Command::MoveCode(self.visible_rows as i32))
-            }
+            KeyCode::PageUp if self.code_navigation() => self.page_code(false),
+            KeyCode::PageDown if self.code_navigation() => self.page_code(true),
             KeyCode::Home if self.code_navigation() => self.dispatch(Command::ResyncCode),
             KeyCode::End if self.code_navigation() => {
                 self.dispatch(Command::MoveCode(self.visible_rows.saturating_sub(1) as i32))
@@ -705,6 +718,36 @@ impl<S: ByteSource> Ui<S> {
 
     fn page_step(&self) -> i64 {
         (self.visible_rows.max(1) * self.bytes_per_row) as i64
+    }
+
+    fn page_code(&mut self, forward: bool) -> UiAction {
+        let selected = self.code_viewport.selected_line.min(self.visible_rows - 1) as i32;
+        let page = self.visible_rows as i32;
+        if forward {
+            let origin = self.editor.cursor();
+            let action = self.dispatch(Command::MoveCode(page - selected));
+            if self.editor.cursor() != origin {
+                self.top = self.editor.cursor().get();
+            }
+            return action;
+        }
+        if selected > 0 {
+            self.dispatch(Command::MoveCode(-selected));
+        }
+        let origin = self.editor.cursor().get();
+        if origin == 0 {
+            self.top = 0;
+            return UiAction::Continue;
+        }
+        self.dispatch(Command::MoveCode(-page));
+        self.top = self.editor.cursor().get();
+        // Page Up lands at the end of the preceding page. Retain the
+        // preceding page's origin while walking back to its last full row.
+        self.dispatch(Command::MoveCode(page - 1));
+        if self.editor.cursor().get() >= origin {
+            self.dispatch(Command::Goto(FileOffset::new(self.top)));
+        }
+        UiAction::Continue
     }
 
     fn code_navigation(&self) -> bool {
@@ -789,10 +832,18 @@ impl<S: ByteSource> Ui<S> {
                 self.open_analysis(AnalysisPage::Overview);
                 UiAction::Continue
             }
-            KeyCode::Backspace if self.code_navigation() => self.dispatch(Command::ReturnBranch),
+            KeyCode::Backspace | KeyCode::Char('0') if self.code_navigation() => {
+                self.dispatch(Command::ReturnBranch)
+            }
             KeyCode::Char('/') if self.code_navigation() => self.dispatch(Command::ResyncCode),
-            KeyCode::Char(number @ '1'..='9') if self.code_navigation() => {
-                self.dispatch(Command::FollowBranch((number as u8 - b'0') as usize))
+            KeyCode::Char(label) if self.code_navigation() && label.is_ascii_alphanumeric() => {
+                let upper = label.to_ascii_uppercase() as u8;
+                BRANCH_LABELS
+                    .iter()
+                    .position(|candidate| *candidate == upper)
+                    .map_or(UiAction::Continue, |index| {
+                        self.dispatch(Command::FollowBranch(index + 1))
+                    })
             }
             KeyCode::F(9) => self.dispatch(Command::BrowseFiles),
             KeyCode::Tab => self.dispatch(Command::FileNavigation(FileNavigation::NextRecent)),

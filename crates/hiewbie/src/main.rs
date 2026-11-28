@@ -32,7 +32,7 @@ Options:
       --arch MODE     auto, x86-16, x86-32, x86-64, arm, thumb, or aarch64
       --endian ORDER  Override instruction order: little or big
       --base VALUE    Raw virtual base (hex, or decimal with suffix t); implies raw
-      --raw           Ignore executable mappings; raw code requires --arch
+      --raw           Force raw interpretation; use --arch to select its decoder
       --slice INDEX   Select a zero-based universal Mach-O slice (decimal)
   -h, --help           Print this help
   -V, --version        Print the version

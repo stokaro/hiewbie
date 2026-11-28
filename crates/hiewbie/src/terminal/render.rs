@@ -1,5 +1,4 @@
 use hiewbie_core::formats::FileRange;
-use hiewbie_core::instructions::DecodeStatus;
 use hiewbie_core::{
     ByteSource, FileOffset, MAX_CODE_ROWS, MAX_READ_BYTES, SearchDirection, ViewMode,
 };
@@ -36,6 +35,7 @@ impl<S: ByteSource> Ui<S> {
             return;
         }
         let hex = self.editor.mode() == ViewMode::Hex;
+        let code = self.editor.mode() == ViewMode::Code;
         let text = self.text_navigation();
         if self.editor.mode() == ViewMode::Code
             || (hex && !self.editor.is_editing())
@@ -49,7 +49,7 @@ impl<S: ByteSource> Ui<S> {
             self.update_viewport(area);
         }
         frame.render_widget(
-            Block::default().style(if hex || text { BYTE_BODY } else { BASE }),
+            Block::default().style(if hex || text || code { BYTE_BODY } else { BASE }),
             area,
         );
         let header = format!(" hiewbie {} | {}", env!("CARGO_PKG_VERSION"), self.label);
@@ -119,15 +119,16 @@ impl<S: ByteSource> Ui<S> {
                 frame,
                 Rect::new(area.x, area.y + 1, area.width, area.height - 2),
             );
+        } else if code {
+            self.render_code(
+                frame,
+                Rect::new(area.x, area.y + 1, area.width, area.height - 2),
+            );
         } else {
             self.render_status_details(frame, row(area, 1));
-            if self.editor.mode() == ViewMode::Code {
-                self.render_code(frame, area);
-            } else {
-                self.render_bytes(frame, area);
-            }
+            self.render_bytes(frame, area);
         }
-        if (!hex && !text)
+        if (!hex && !text && !code)
             || self.show_hex_message
             || self
                 .editor
@@ -140,7 +141,7 @@ impl<S: ByteSource> Ui<S> {
                 && self.editing_caret_visible()
                 && cursor / self.bytes_per_row as u64 == u64::from(last - 1);
             let mut message = row(area, last - u16::from(editing_last_row));
-            if hex || text {
+            if hex || text || code {
                 message.x += 1;
                 message.width -= 1;
             }
@@ -227,34 +228,11 @@ impl<S: ByteSource> Ui<S> {
         } else {
             ""
         };
-        let status = if self.editor.mode() == ViewMode::Code {
-            let context = self.editor.decode_context();
-            let architecture = context
-                .mode
-                .map_or_else(|| "SELECT ISA".to_owned(), |mode| mode.to_string());
-            let provenance = if context.raw {
-                format!(
-                    "RAW@{:X}{}",
-                    context.base.get(),
-                    if context.overridden { "!" } else { "" }
-                )
-            } else if context.overridden {
-                "OVERRIDE".to_owned()
-            } else {
-                "AUTO".to_owned()
-            };
-            format!(
-                "FO {:016X} {mode} {state} {capability} {dirty} {architecture} {} {provenance}{entry}",
-                self.editor.cursor().get(),
-                context.endian
-            )
-        } else {
-            format!(
-                "{:016X} / {:016X}  {mode} {state} {capability} {dirty}{entry}",
-                self.editor.cursor().get(),
-                self.editor.document().len()
-            )
-        };
+        let status = format!(
+            "{:016X} / {:016X}  {mode} {state} {capability} {dirty}{entry}",
+            self.editor.cursor().get(),
+            self.editor.document().len()
+        );
         frame.render_widget(Paragraph::new(status).style(ADDRESS), area);
     }
 
@@ -282,8 +260,7 @@ impl<S: ByteSource> Ui<S> {
     fn update_viewport(&mut self, area: Rect) {
         if self.editor.mode() == ViewMode::Code {
             self.bytes_per_row = 1;
-            self.visible_rows = usize::from(area.height.saturating_sub(4)).clamp(1, MAX_CODE_ROWS);
-            self.top = self.editor.cursor().get();
+            self.visible_rows = usize::from(area.height.saturating_sub(2)).clamp(1, MAX_CODE_ROWS);
             return;
         }
         self.bytes_per_row = match self.editor.mode() {
@@ -311,112 +288,7 @@ impl<S: ByteSource> Ui<S> {
         }
     }
 
-    fn render_code(&mut self, frame: &mut Frame<'_>, area: Rect) {
-        let body = Rect::new(area.x, area.y + 2, area.width, area.height - 4);
-        if self.reopen_required {
-            frame.render_widget(
-                Paragraph::new("<file was replaced; exit and reopen before analysis>").style(BASE),
-                body,
-            );
-            return;
-        }
-        if self.editor.document().is_empty() {
-            frame.render_widget(
-                Paragraph::new("<empty file - no instructions>").style(BASE),
-                body,
-            );
-            return;
-        }
-        let rows = match self.editor.code_rows(self.visible_rows) {
-            Ok(rows) => rows,
-            Err(error) => {
-                self.notice(format!("Code unavailable; raw bytes: {error}"));
-                self.render_bytes(frame, area);
-                return;
-            }
-        };
-        // Clear only this renderer's transient failure notice after recovery;
-        // keep unrelated save, search, or navigation notices intact.
-        if self.message.starts_with("Code unavailable; raw bytes:") {
-            self.notice("Code analysis available; byte editing does not assemble instructions");
-        }
-        let raw = self.editor.decode_context().raw;
-        let mut lines = Vec::with_capacity(rows.len());
-        let block = self
-            .editor
-            .block_selection()
-            .map(|selection| selection.range);
-        for (index, row) in rows.iter().enumerate() {
-            let domain = if raw {
-                "R:"
-            } else if row.mapped {
-                "V:"
-            } else {
-                "F:"
-            };
-            let branch = row
-                .branch_number
-                .map_or_else(|| "  ".to_owned(), |number| format!("{number}>"));
-            let state = match row.instruction.status {
-                DecodeStatus::Decoded => "",
-                DecodeStatus::Unknown => "unknown: ",
-                DecodeStatus::Truncated => "truncated: ",
-                DecodeStatus::Unsupported => "unsupported: ",
-            };
-            let selected = if index == 0 { SELECTED } else { ADDRESS };
-            let byte_style = if index == 0 && self.editor.is_editing() {
-                ACTIVE
-            } else {
-                BASE
-            };
-            let location = format!(
-                "{:08X} {domain}{:016X} ",
-                row.offset.get(),
-                row.instruction.address.get()
-            );
-            let branch = format!("{branch} ");
-            let encoded = row.instruction.bytes();
-            if index == 0 && !encoded.is_empty() && self.editing_caret_visible() {
-                let nibble = usize::from(
-                    self.entry_column == EntryColumn::Hex && self.pending_nibble.is_some(),
-                );
-                set_body_caret(frame, body, location.len() + branch.len() + nibble, 0);
-            }
-            let mut spans = vec![
-                Span::styled(location, selected),
-                Span::styled(branch, BASE.fg(Color::Yellow)),
-            ];
-            let shortened = encoded.len() > 8;
-            let display = &encoded[..encoded.len().min(if shortened { 7 } else { 8 })];
-            for (column, byte) in display.iter().enumerate() {
-                let position = row.offset.get().checked_add(column as u64);
-                let text = if index == 0 && column == 0 {
-                    format_hex_byte(*byte, self.pending_nibble)
-                } else {
-                    format!("{byte:02X}")
-                };
-                let style = if index == 0 && column == 0 && self.editor.is_editing() {
-                    byte_style
-                } else {
-                    block_style(block, position, byte_style)
-                };
-                spans.push(Span::styled(text, style));
-            }
-            if shortened {
-                spans.push(Span::styled(".. ", byte_style));
-            } else {
-                spans.push(Span::styled(" ".repeat(17 - display.len() * 2), byte_style));
-            }
-            spans.push(Span::raw(format!(
-                "{state}{}",
-                escaped_text(&row.instruction.text)
-            )));
-            lines.push(Line::from(spans));
-        }
-        frame.render_widget(Paragraph::new(lines).style(BASE), body);
-    }
-
-    fn render_bytes(&mut self, frame: &mut Frame<'_>, area: Rect) {
+    pub(super) fn render_bytes(&mut self, frame: &mut Frame<'_>, area: Rect) {
         let body = Rect::new(area.x, area.y + 2, area.width, area.height - 4);
         if self.reopen_required {
             frame.render_widget(
@@ -591,20 +463,41 @@ impl<S: ByteSource> Ui<S> {
             frame.render_widget(Paragraph::new(text).style(HEADER), area);
             return;
         }
-        if self.editor.mode() == ViewMode::Hex {
+        let is_code = self.editor.mode() == ViewMode::Code;
+        if is_code || self.editor.mode() == ViewMode::Hex {
             let (labels, disabled): ([_; 12], &[_]) = if self.editor.is_editing() {
                 (
                     [
-                        "Help", "", "Undo", "Byte", "Word", "Dword", "Crypt", "Xor", "Update",
-                        "Trunc", "", "",
+                        "Help",
+                        if is_code { "Asm" } else { "" },
+                        "Undo",
+                        "Byte",
+                        "Word",
+                        "Dword",
+                        "Crypt",
+                        "Xor",
+                        "Update",
+                        "Trunc",
+                        "",
+                        "",
                     ],
-                    &[4, 5, 6, 7, 8, 10],
+                    &[2, 4, 5, 6, 7, 8, 10],
                 )
             } else {
                 (
                     [
-                        "Help", "PutBlk", "Edit", "Mode", "Goto", "DatRef", "Search", "Header",
-                        "Files", "Quit", "Hem", "Names",
+                        "Help",
+                        "PutBlk",
+                        "Edit",
+                        "Mode",
+                        "Goto",
+                        if is_code { "Refer" } else { "DatRef" },
+                        "Search",
+                        "Header",
+                        "Files",
+                        "Quit",
+                        "Hem",
+                        "Names",
                     ],
                     &[6, 10, 11, 12],
                 )

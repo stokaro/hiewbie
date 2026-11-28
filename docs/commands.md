@@ -263,15 +263,21 @@ This keeps mixed ARM/Thumb navigation separate from persistent user overrides.
 
 Shift+F1/Ctrl+A opens the interpretation profile. Keys 0–6 choose automatic
 architecture, x86-16, x86-32, x86-64, ARM, Thumb, or AArch64; Enter applies it and
-opens Code. L/B/E select little/big/inferred endian, R toggles raw interpretation,
-and V enters a raw base. Automatic architecture does not erase independent
-endian/raw overrides. Ctrl+F1/Ctrl+B cycles x86 bitness in Code. The current
+opens Code. Automatic uses image metadata and selects x86-32 for ordinary
+unrecognized raw input. L/B/E select little/big/inferred endian, R toggles raw
+interpretation, and V enters a raw base. A forced raw profile or invalid image
+can require an explicit decoder. Ctrl+F1/Ctrl+B cycles x86 bitness in Code. The current
 decoder adapters return `Unsupported` for big-endian instruction bytes; parsing
 a big-endian container does not imply instruction support.
 
-In Code view outside edit mode, 1–9 follows direct branches visible in the last requested Code window;
-Backspace returns. Windows contain at most 256 rows. Movement does not silently
-shrink the remembered visible window. Branch and movement histories are bounded
+The Decode viewport shows addresses, contiguous opcode bytes, mnemonic and
+operands on rows between the title and function keys. The x86 view groups runs
+of single-byte NOPs into bounded rows. Up and Down select an instruction while
+keeping it visible, and Page Up and Page Down move by displayed rows.
+
+In Code view outside edit mode, 1–9 and A–Z follow direct destinations labeled
+in the displayed window. 0 or Backspace returns. Windows contain at most 256
+rows. Branch and movement histories are bounded
 to 256 entries. Backward movement retraces known boundaries; without history it
 falls back to the preceding byte or ISA minimum alignment, which need not be a
 true instruction boundary. `/` explicitly resynchronizes at the current byte.

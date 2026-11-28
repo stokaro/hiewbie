@@ -117,10 +117,13 @@ fn modes_share_cursor_and_pending_bytes() {
 }
 
 #[test]
-fn raw_interpretation_requires_a_mode_and_records_explicit_base() {
+fn ordinary_raw_decodes_as_x86_and_forced_raw_preserves_explicit_context() {
     let mut editor = editor(vec![0x90; 8]);
-    assert!(editor.code_rows(2).is_err());
+    assert_eq!(editor.code_rows(2).unwrap().len(), 2);
+    assert_eq!(editor.decode_context().mode, Some(DecodeMode::X86_32));
     assert!(editor.goto_expression(".1").is_err());
+    editor.dispatch(Command::SetRaw(true)).unwrap();
+    assert!(editor.code_rows(2).is_err());
     editor
         .dispatch(Command::SetDecodeMode(Some(DecodeMode::X86_64)))
         .unwrap();
@@ -483,6 +486,35 @@ fn unmapped_to_mapped_transition_preserves_the_first_instruction_in_a_region() {
     assert_eq!(rows[1].offset.get(), 0x200);
     assert_eq!(rows[1].instruction.address.get(), 0x401000);
     assert!(rows[1].mapped);
+}
+
+#[test]
+fn displayed_branch_labels_reach_letters_and_survive_cursor_movement() {
+    let mut editor = editor([0xEB, 0].repeat(14));
+    let rows = editor.code_viewport(FileOffset::new(0), 12).unwrap();
+    assert_eq!(rows[9].branch_number, Some(10));
+    editor.dispatch(Command::MoveCode(1)).unwrap();
+    assert_eq!(editor.cursor(), FileOffset::new(2));
+    editor.dispatch(Command::FollowBranch(10)).unwrap();
+    assert_eq!(editor.cursor(), FileOffset::new(20));
+    editor.dispatch(Command::ReturnBranch).unwrap();
+    assert_eq!(editor.cursor(), FileOffset::new(2));
+}
+
+#[test]
+fn compact_visual_nops_preserve_plain_disassembly_and_instruction_boundaries() {
+    let mut editor = editor(vec![0x90, 0x90, 0x90, 0xC3]);
+    let rows = editor.code_rows(3).unwrap();
+    assert_eq!(rows[1].offset, FileOffset::new(1));
+    assert_eq!(rows[1].instruction.bytes(), [0x90]);
+    let rows = editor.code_viewport(FileOffset::new(0), 3).unwrap();
+    assert_eq!(rows[0].instruction.bytes(), [0x90, 0x90, 0x90]);
+    assert_eq!(rows[1].offset, FileOffset::new(3));
+    editor.dispatch(Command::Move(1)).unwrap();
+    editor.dispatch(Command::MoveCode(1)).unwrap();
+    assert_eq!(editor.cursor(), FileOffset::new(3));
+    editor.dispatch(Command::MoveCode(-1)).unwrap();
+    assert_eq!(editor.cursor(), FileOffset::new(0));
 }
 
 #[test]

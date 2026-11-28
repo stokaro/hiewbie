@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "observation_date": "2026-11-28",
+  "reference_version": "8.63",
+  "environment": {
+    "runtime": "x64 console in a Hyper-V-isolated Windows Server Core LTSC 2022 container",
+    "candidate": "GNU-target x64 build in the same environment",
+    "input": "Win32 console key events with scan codes and modifier state",
+    "fixtures": "Generated raw instruction streams and a generated PE32+ image. No inspected file was executed."
+  },
+  "layout": {
+    "terminal_sizes": [
+      "80x25",
+      "100x30"
+    ],
+    "first_instruction_row_zero_based": 1,
+    "raw_columns_zero_based": {
+      "scrollbar": 0,
+      "address": 2,
+      "opcode": 12,
+      "target_label": 42,
+      "mnemonic": 43,
+      "operands": 56
+    },
+    "pe32_plus": "The 17-character split address shifts opcode, target label, mnemonic, and ordinary operand columns nine cells right.",
+    "selected_byte": "The two opcode digits use dark blue on gray in view mode."
+  },
+  "observations": {
+    "automatic_raw_profile": "The ordinary raw fixtures opened Decode in automatic x86-32.",
+    "short_padding": "Two adjacent 0x90 bytes appeared as a single NOP row. On the 80x25 raw fixture, Page Down moved to 0x1A. Page Up returned the viewport to 0 and selected 0x19.",
+    "operand_examples": "Register, immediate, memory, and branch operand colors matched on the generated 16-, 32-, and 64-bit sequences. The reference uses a prefixed hexadecimal literal, bracketed displacement terms, and a return separator.",
+    "file_bytes": "The SHA-256 values of the three exercised fixtures matched their generated originals after both programs closed."
+  },
+  "paired_checks": {
+    "matching_body_glyphs_and_palette": 14,
+    "matching_title_state_excluding_program_caption": 14,
+    "matching_function_bar_glyphs_in_those_frames": 9,
+    "coverage": "Raw viewing, per-byte selection, forward and backward page movement, entry into byte edit, x86 profile changes, and the initial PE32+ viewport.",
+    "comparison": "The body comparison includes all instruction rows and the scrollbar, normalizes terminal default black, and ignores foreground on spaces.",
+    "limits": "Five matching bodies had a different held-Ctrl function bar. Inline Goto to the PE entry placed the target at row 15 in HIEW and row 1 in the candidate. The exact branch annotations, syntax and decoder behavior of untested instruction families remain open.",
+    "initial_edit_caret_zero_based": [
+      12,
+      1
+    ]
+  }
+}
