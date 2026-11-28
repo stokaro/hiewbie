@@ -18,17 +18,28 @@ the relevant scenarios in
 [`docs/reference/hiew-8.63.md`](../../../docs/reference/hiew-8.63.md) when command
 semantics or remaining unknowns matter.
 
-Treat the observed runtime as behavioral evidence for HIEW 8.63 on the recorded
-Windows console. Preserve the command model and information hierarchy while
-adapting cell measurements to the active terminal. Do not reproduce proprietary
-code, binary assets, graphics, or manual prose.
+## Visual acceptance
+
+At the same terminal dimensions, terminal settings, and application state, a
+user familiar with HIEW 8.63 must be unable to distinguish hiewbie from the
+original at first glance. This is a rendering requirement. Track command and
+feature coverage independently.
+
+Compare matching reference and hiewbie frames, including titles and bars,
+double or single borders, padding, field lengths, shadows, colors, selected
+rows, native cursor shape, and active cell. Capture transient windows such as
+search progress, cancellation, and errors as well as stable screens. Use
+generated fixtures to compare mode selection, search, help, headers, and file
+lists. Identify terminal-dependent limitations and preserve the observed
+geometry at matched sizes. Use independently written rendering code and
+keep proprietary binaries, assets, original captures, and manual prose private.
 
 ## Apply the reference
 
 1. Identify the complete UI state, including view, edit transaction, block,
    active dialog, file format, address representation, and modifier state.
-2. Match the observed screen hierarchy and contextual command availability.
-   Keep familiar labels where they communicate established commands.
+2. Match the observed cells, styles, and contextual command availability.
+   Keep the original labels for corresponding commands and states.
 3. Route keys through stable semantic commands. The main function-key bar,
    modifier bar, dialog bar, and help must describe the same dispatch table.
 4. Preserve the shared cursor and document across Text, Hex, and Code. Keep

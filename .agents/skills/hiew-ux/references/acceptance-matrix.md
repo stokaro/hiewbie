@@ -49,6 +49,7 @@ platform breadth needed before an unqualified drop-in compatibility claim.
 | UX-FRM-06 | P1 | UI-012, TERM-009, TERM-013 | Feed a key, an ambiguous escape sequence, bracketed paste, and an unsupported chord. | Record whether the event becomes a command, text, paste, diagnostic entry, or visible error. | Key diagnostics identify decoded events without sensitive environment data; paste never dispatches embedded command sequences. |
 | UX-FRM-07 | P2 | UI-015, TERM-012, TEST-011 | Exit normally and trigger recoverable render, input, and save errors while modes are acquired. | Record cursor visibility, screen buffer, input mode, and error presentation before and after exit. | PTY or ConPTY tests assert restoration of raw mode, alternate screen, cursor, paste, mouse, and keyboard negotiation. |
 | UX-FRM-08 | P2 | TERM-002..006, TERM-010 | Replay the P0 scenario set in the required macOS, Windows, Linux, SSH, and tmux terminals. | Record only behaviorally relevant transport differences and unavailable chords. | Exact-commit platform jobs pass the declared matrix or record an intentional difference with tested fallback. |
+| UX-FRM-09 | P0 | UI-008, UI-009, UI-011 | Compare paired HIEW 8.63 and hiewbie frames at identical terminal dimensions and settings using generated fixtures. Include Hex edit and view, mode chooser, Search and progress, help, headers, file browser, and errors. | Record bounds, padding, border glyphs, shadow offset, colors, selected rows and fields, cursor form and cell, title, and function bar. The frames must look indistinguishable at first glance. | Assert glyph and style cells plus native caret position and shape. Inspect the paired frames on the reference Windows console and record terminal-specific limits. Report functional coverage separately. |
 
 ## Modes, navigation, and file selection
 
@@ -121,7 +122,7 @@ Use the narrowest accurate claim:
 | Claim | Minimum evidence |
 | --- | --- |
 | **HIEW-inspired interface** | No matrix threshold; deviations remain explicit. |
-| **High-fidelity core UX replacement** | Every P0 row is at least Implemented, with reference-oracle coverage for the behavior attributed to HIEW. |
+| **High-fidelity core UX replacement** | Every P0 row is at least Implemented, with reference-oracle coverage for the behavior attributed to HIEW and a passing visual comparison on the stated Windows reference console. |
 | **Behaviorally compatible core workflow** | Every P0 and P1 row is Verified on the declared terminal/platform subset; intentional differences are listed. |
 | **Drop-in replacement** | Every applicable P0, P1, and P2 row is Verified for the declared CLI, format, terminal, platform, frontend, packaging, extension, and device scope. The claim must name exclusions. |
 
