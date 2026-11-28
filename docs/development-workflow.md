@@ -56,6 +56,8 @@ shapes, restoration of pending Hex and Search input after Help, and the mode cho
 and restoration of a pending Hex digit.
 `--record-files PATH` records startup Files, the mask dialog, a directory
 change, reopening and canceling F9, and an exact byte save to the selected file.
+This recording uses a generated demo path before rendering. Its terminal
+output retains the original cursor positions and cell widths.
 All ten PTY scenarios run in the existing native Unix CI jobs even without
 recording options. The fixtures are generated. The terminal recordings cover
 [editing](evidence/native-editor.cast),

@@ -60,6 +60,21 @@ sys.exit(EXIT_CODE)
 """
 
 
+class FileRecordingTests(unittest.TestCase):
+    def test_demo_directory_uses_synthetic_names_and_removes_only_owned_fixtures(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            existing = parent / "hiewbie-files-demo"
+            existing.mkdir()
+            saved = existing / "keep.bin"
+            saved.write_bytes(b"existing")
+            with pty_smoke.file_recording_workspace(parent) as demo:
+                self.assertEqual(demo.name, "hiewbie-files-demo-1")
+                (demo / "session.bin").write_bytes(b"fixture")
+            self.assertFalse(demo.exists())
+            self.assertEqual(saved.read_bytes(), b"existing")
+
+
 @unittest.skipUnless(os.name == "posix", "Unix controlling-terminal semantics required")
 class PtyLifecycleTests(unittest.TestCase):
     def setUp(self) -> None:

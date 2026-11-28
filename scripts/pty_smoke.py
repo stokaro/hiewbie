@@ -17,12 +17,15 @@ from __future__ import annotations
 
 import argparse
 import codecs
+from collections.abc import Iterator
 import contextlib
 import errno
 import json
+from itertools import count
 import os
 from pathlib import Path
 import select
+import shutil
 import signal
 import struct
 import subprocess
@@ -513,12 +516,31 @@ def fixture(directory: Path) -> tuple[Path, int]:
     return path, path.stat().st_mtime_ns
 
 
+@contextlib.contextmanager
+def file_recording_workspace(parent: Path) -> Iterator[Path]:
+    """Give the file-list recording a synthetic path before rendering it."""
+    for number in count():
+        name = "hiewbie-files-demo" if number == 0 else f"hiewbie-files-demo-{number}"
+        directory = parent / name
+        try:
+            directory.mkdir(mode=0o700)
+            break
+        except FileExistsError:
+            continue
+    try:
+        yield directory
+    finally:
+        shutil.rmtree(directory)
+
+
 def file_picker(binary: Path, directory: Path, *, record: bool) -> list[list]:
     path, mtime_ns = fixture(directory)
     nested = directory / "alpha"
     nested.mkdir()
     target = nested / "chosen.bin"
     target.write_bytes(b"abc")
+    for entry in (target, nested):
+        os.utime(entry, ns=(mtime_ns, mtime_ns))
     with PtySession(binary, path, "startup and F9 file picker", record=record, start_in_picker=True) as session:
         def expect_input(data: bytes, label: str, *checks: bytes) -> None:
             before = len(session.output)
@@ -546,10 +568,9 @@ def file_picker(binary: Path, directory: Path, *, record: bool) -> list[list]:
         session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
         if target.read_bytes() != b"\xa5bc":
             session.fail("F9 did not save exactly the selected file's first byte")
-        events = sanitized_events(session.events, str(directory.resolve()))
-        # The terminal may redraw the generated session name by itself
-        # after the title changes from the parent directory to a child.
-        return sanitized_events(events, directory.parent.name, replacement="hiewbie-pty-fixture0")
+        # Cursor-addressed differential updates refer to the original cells.
+        # Keep the wire output intact because the fixture path was synthesized.
+        return session.events
 
 
 def edit_save(binary: Path, directory: Path, *, record: bool) -> list[list]:
@@ -884,12 +905,12 @@ def symbols_edit_save(binary: Path, directory: Path, *, record: bool) -> list[li
         return sanitized_events(session.events, str(path.parent.resolve()))
 
 
-def sanitized_events(events: list[list], directory: str, *, replacement: str = "<fixture>") -> list[list]:
+def sanitized_events(events: list[list], directory: str) -> list[list]:
     """Redact the generated directory even when a read splits the path.
 
     Keep only a possible partial match between output events. Markers remain
     in order, and terminal input, commands, file bytes, and escape codes are
-    unaffected. The recording substitutes a stable label for this temporary path.
+    unaffected. The recording substitutes ``<fixture>`` for this temporary path.
     """
     sanitized: list[list] = []
     pending = ""
@@ -897,7 +918,7 @@ def sanitized_events(events: list[list], directory: str, *, replacement: str = "
         if kind != "o":
             sanitized.append([timestamp, kind, text])
             continue
-        pending = (pending + text).replace(directory, replacement)
+        pending = (pending + text).replace(directory, "<fixture>")
         keep = 0
         for length in range(1, min(len(pending), len(directory) - 1) + 1):
             if pending.endswith(directory[:length]):
@@ -921,8 +942,8 @@ def write_recording(
     """Write v2 output/marker events without host paths or environment secrets.
 
     Format: https://docs.asciinema.org/manual/asciicast/v2/
-    The header uses a fixed command; output events have their generated fixture
-    directory redacted without changing the editor actions or file assertions.
+    The header uses a fixed command. Callers use generated display paths or
+    sanitize other paths before writing.
     """
     header = {
         "version": 2,
@@ -990,7 +1011,11 @@ def main() -> int:
             print("PASS: narrow resize, 80x25 restoration, discard preserves bytes and mtime")
             read_only(binary, root / "readonly")
             print("PASS: read-only edit/save refusal preserves bytes and mtime")
-            file_events = file_picker(binary, root / "files", record=options.record_files is not None)
+            if options.record_files is None:
+                file_events = file_picker(binary, root / "files", record=False)
+            else:
+                with file_recording_workspace(Path("/tmp")) as demo:
+                    file_events = file_picker(binary, demo / "files", record=True)
             print("PASS: startup and F9 file picker, directory and mask, cancel, exact save to selected file")
             analysis_events = analyze_edit_save(binary, root / "analysis", record=options.record_analysis is not None)
             print("PASS: PE headers/entry, Code, branch/return, virtual goto, exact byte save")
