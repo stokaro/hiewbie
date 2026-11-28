@@ -38,6 +38,7 @@ pub(crate) fn check(data: &[u8]) {
         image_base: (data.get(48).copied().unwrap_or(0) & 1 == 0)
             .then_some(VirtualAddress::new(word(data, 0))),
         entry: None,
+        entry_mode: None,
         slice: FileRange {
             offset: FileOffset::new(word(data, 8)),
             len: word(data, 16),
@@ -46,6 +47,8 @@ pub(crate) fn check(data: &[u8]) {
         slices: Vec::new(),
         regions,
         fields: Vec::new(),
+        records: Vec::new(),
+        notes: Vec::new(),
     };
     let offset = word(data, 24);
     let address = word(data, 32);

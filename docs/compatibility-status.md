@@ -10,7 +10,7 @@ commit's CI runs. No row is promoted to cross-platform **Verified** by configura
 alone. A [versioned Hiew 8.63 comparison][Reference] and selected Windows runtime
 [observations][Observation] are recorded; neither establishes full runtime parity.
 
-Current fixtures are generated in the linked tests: byte vectors, PE/ELF/Mach-O
+Current fixtures are generated in the linked tests: byte vectors, PE/ELF/Mach-O/TE
 images, instruction encodings, temporary files, Unicode paths, sparse sources,
 and PTY input. Workspace tests, native builds, real PTY scenarios, PTY-harness
 regressions and integrated `wasm32-unknown-unknown` core compilation provide
@@ -103,8 +103,8 @@ cover visiting, switching, and reopening files.
 | ADDR-002 | Implemented | [C], [N], [F], [A], [D], [Fuzz]: checked u64 file/mapping arithmetic, offsets beyond 4 GiB, decoder PC-width semantics and an independent u128 address oracle. |
 | ADDR-003 | Partial | [A], [T], [ACLI]: FO, mapped VA and raw-base context are visible; branch history restores interpretation; annotations pending. |
 | ADDR-004 | Implemented | [F], [A], [T]: unmapped, zero-fill and ambiguous virtual destinations fail explicitly without moving the cursor. |
-| ADDR-005 | Implemented | [F]: current readers check extents, overflow and truncated tables; overlapping mappings remain inspectable but translation reports ambiguity. |
-| ADDR-006 | Implemented | [F], [A], [T], [ACLI]: selected fat member maps through its validated slice to global file offsets; nested fat containers explicitly unsupported. |
+| ADDR-005 | Implemented | [F], [Mach-O], [TE], [Records]: current readers check complete extents, overflow and truncated tables; overlapping mappings remain inspectable but translation reports ambiguity; structure targets validate full spans. |
+| ADDR-006 | Implemented | [F], [Mach-O], [Structure commands], [Structures CLI], [P]: selected fat member maps through validated provenance to global offsets; structure selections reject stale members/generations; nested fat containers remain unsupported. |
 | ADDR-007 | Implemented | [A], [T], [ACLI]: explicit raw base, x86 bitness, architecture and instruction-endian overrides; unsupported decoding orders remain visible. |
 | ADDR-008 | Implemented | [A], [T], [ACLI]: effective overrides are shown separately from parsed machine metadata; changing fat slice clears the prior raw base. |
 
@@ -161,17 +161,17 @@ cover visiting, switching, and reopening files.
 | FMT-002 | Planned | [Analysis]: MZ identification routes to PE when present; DOS MZ headers and legacy navigation are not implemented. |
 | FMT-003 | Partial | [F], [S], [SN], [SCLI], [P]: PE32/PE32+ headers, mappings, ordinary named/ordinal imports and exports, aliases and explicit forwarders; delay imports, bound-directory resolution, COFF/PDB, relocations and resources pending. |
 | FMT-004 | Partial | [F], [S], [Symbols]: ELF32/64 headers, PT_LOAD and section-backed SYMTAB/DYNSYM in both byte orders; ET_REL file targets; sectionless dynamic tables, symbol versions/providers and relocations pending; extended numbering unsupported. |
-| FMT-005 | Partial | [F], [S], [Symbols]: thin Mach-O32/64 headers, segments, LC_MAIN, sections for target validation and LC_SYMTAB/nlist in both byte orders; export tries, dyld bindings/chained fixups, indirect-symbol bindings, relocations and LC_UNIXTHREAD pending; high-VM segments unsupported. |
+| FMT-005 | Partial | [Mach-O], [Records], [S], [Symbols], [Structures CLI]: every bounded load command has raw bytes/status; sections/flags, LC_MAIN/LC_UNIXTHREAD for baseline ISAs, SG_HIGHVM, object/scattered/pair relocations and references in both byte orders. Export tries, dyld bindings/chained fixups, indirect-symbol bindings and loader-specific dynamic relocation targets remain open; no relocation application. |
 | FMT-006 | Implemented | [F], [A], [T], [ACLI]: fat32/fat64 descriptors, explicit selection and global mapping; deterministic first-slice default independent of host, selected thin members only. |
 | FMT-007 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| FMT-008 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
+| FMT-008 | Implemented | [TE], [Records], [Structure commands], [Structures UI], [Structures CLI], [Structures replay]: one 40-byte TE/TE64 header with explicit machine-based widths, stripped-prefix translation, entry/sections, bounded relocation/debug records, raw fallback and exact patch/save/reopen. Unknown types/machines stay explicit. TE naming is specification-based; original HIEW TE dialog parity is not claimed. |
 | FMT-009 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | FMT-010 | Partial | [Capabilities]: finite evaluated WASM-module and ar-member candidates with generated experiment plans and explicit unavailable entries. The extension loader and added format readers remain unimplemented. |
-| FMT-011 | Partial | [Analysis]: DOS MZ, NE/LE/LX, TE/TE64 and NetWare rows remain required; initial modern readers do not remove legacy work. |
+| FMT-011 | Partial | [Analysis], [TE], [Records]: TE/TE64 firmware inspection is implemented; DOS MZ, NE/LE/LX and NetWare rows remain required. Modern readers do not remove legacy work. |
 | FMT-012 | Implemented | [A], [T], [ACLI]: failed/unsupported detection retains raw access and a diagnostic; --headers fails clearly while --dump remains available. |
-| FMT-013 | Implemented | [F], [S], [T], [ST]: interpreted fields and symbol records retain exact backing ranges; header and symbol dialogs navigate to those bytes. |
-| FMT-014 | Partial | [F], [A]: zero-fill, overlays and disk padding never acquire invented bytes or VAs; dedicated overlay browsing and broader non-file-backed metadata pending. |
-| FMT-015 | Implemented | [F], [S], [ACLI], [SCLI], [Analysis], [Symbols], [Fuzz]: current readers bound reads, parsed tables, counts, names, fields and retained text. Generated symbol seeds, sparse sources, malformed counts and coverage-guided adapters exercise budget and raw-fallback invariants. |
+| FMT-013 | Implemented | [F], [S], [T], [ST], [Structure commands], [Structures UI]: interpreted fields, symbols and format records retain exact backing ranges; metadata/source and checked target navigation are separate. |
+| FMT-014 | Partial | [F], [A], [Mach-O], [TE], [Records]: zero-fill, overlays and disk padding never acquire invented bytes; SG_HIGHVM prefixes and TE backing semantics have known-answer tests. Dedicated overlay browsing and broader non-file-backed metadata remain open. |
+| FMT-015 | Implemented | [F], [S], [ACLI], [SCLI], [Records], [Fuzz]: current readers bound reads, parsed tables, counts, names, fields, records, notes and retained text, including combined fat-member/container metadata. Generated symbol/TE/relocation/thread seeds, sparse sources, malformed counts and coverage-guided adapters exercise budget and raw-fallback invariants. |
 | FMT-016 | Implemented | [A], [T], [README]: navigating and editing backing bytes is explicitly separate from executable rebuilding; no structural rebuild action exists yet. |
 | FMT-017 | Partial | [N]: save invokes no signer or repair command; format-aware workflows pending. |
 | FMT-018 | Implemented | [F], [D], [A], [ACLI], [P]: executable/instruction fixtures are generated or independently written; no proprietary binary samples are required. |
@@ -280,6 +280,13 @@ cover visiting, switching, and reopening files.
 
 [C]: ../crates/hiewbie-core/src/tests.rs
 [F]: ../crates/hiewbie-core/src/formats/tests.rs
+[Mach-O]: ../crates/hiewbie-core/src/formats/macho_tests.rs
+[TE]: ../crates/hiewbie-core/src/formats/te_tests.rs
+[Records]: format-records.md
+[Structure commands]: ../crates/hiewbie-core/src/structure_navigation_tests.rs
+[Structures UI]: ../crates/hiewbie/src/terminal/structure_tests.rs
+[Structures CLI]: ../crates/hiewbie/tests/structures_cli.rs
+[Structures replay]: evidence/format-structures.cast
 [D]: ../crates/hiewbie-core/src/instructions/tests.rs
 [A]: ../crates/hiewbie-core/src/analysis_tests.rs
 [S]: ../crates/hiewbie-core/src/symbols

@@ -570,6 +570,11 @@ fn section_target<S: ByteSource>(
             symbol
                 .detail
                 .push_str("; unaligned Thumb definition, no interpreted target");
+        } else if metadata.relocatable && !thumb {
+            // MH_OBJECT addresses are link-time section coordinates, even when
+            // the current section mappings happen to be unambiguous.
+            symbol.target = SymbolTarget::File(reader.range(file, 1)?.offset);
+            symbol.detail.push_str("; relocatable file bytes");
         } else if reader.va(image, VirtualAddress::new(value), 1).ok() == Some(file) {
             symbol.target = if thumb {
                 symbol.detail.push_str("; Thumb definition");
@@ -577,11 +582,6 @@ fn section_target<S: ByteSource>(
             } else {
                 SymbolTarget::Virtual(VirtualAddress::new(value))
             };
-        } else if metadata.relocatable && !thumb {
-            // MH_OBJECT section bytes can be located without pretending that
-            // its link-time section addresses are a runnable image mapping.
-            symbol.target = SymbolTarget::File(reader.range(file, 1)?.offset);
-            symbol.detail.push_str("; relocatable file bytes");
         } else {
             symbol
                 .detail

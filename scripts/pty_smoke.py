@@ -1023,6 +1023,82 @@ def symbols_edit_save(binary: Path, directory: Path, *, record: bool) -> list[li
         return sanitized_events(session.events, str(path.parent.resolve()))
 
 
+def te_fixture_bytes() -> bytes:
+    """Original PI field layout; raw pointers retain their stripped PE bias."""
+    bias = 0xF8
+    data = bytearray(0x2100 - bias)
+    struct.pack_into("<2sHBBHIIQIIII", data, 0, b"VZ", 0x14C, 2, 10,
+                     0x120, 0x1010, 0x1000, 0x400000, 0x2000, 12, 0, 0)
+    for at, name, rva, flags in [(40, b".text", 0x1000, 0x60000020),
+                                 (80, b".data", 0x2000, 0xC0000040)]:
+        data[at:at + len(name)] = name
+        struct.pack_into("<IIII", data, at + 8, 0x100, rva, 0x100, rva)
+        struct.pack_into("<I", data, at + 36, flags)
+    data[0xF18:0xF1A] = bytes.fromhex("90 C3")
+    struct.pack_into("<I", data, 0xF28, 0x401010)
+    struct.pack_into("<IIHH", data, 0x1F08, 0x1000, 12, 0x3020, 0xF030)
+    return bytes(data)
+
+
+def fat_structure_fixture_bytes() -> bytes:
+    """Two thin members with original, optional unknown command records."""
+    data = bytearray(0x300)
+    struct.pack_into(">II", data, 0, 0xCAFEBABE, 2)
+    for index, offset in enumerate([0x100, 0x200]):
+        struct.pack_into(">IIIII", data, 8 + index * 20, 7, 3, offset, 0x100, 8)
+        struct.pack_into("<7I", data, offset, 0xFEEDFACE, 7, 3, 1, 2, 16, 0)
+        struct.pack_into("<4I", data, offset + 28, 0x70000000, 8, 0x70000001, 8)
+    return bytes(data)
+
+
+def structures_edit_save(binary: Path, directory: Path, *, record: bool) -> list[list]:
+    directory.mkdir()
+    path = directory / "firmware.te"
+    original = te_fixture_bytes()
+    path.write_bytes(original)
+    expected = bytearray(original)
+    with PtySession(binary, path, "TE structure source and target bytes", record=record) as session:
+        session.send(F8 + F5, "Headers: follow TE entry through stripped-header bias")
+        session.send(F3 + b"CC" + F9, "Patch and save exactly entry byte F18")
+        expected[0xF18] = 0xCC
+        session.expect_file(bytes(expected))
+        session.send(F8 + b"t\r", "T structures / Enter: follow first section target F08")
+        session.send(F3 + b"A5" + F9, "Patch and save exactly section byte F08")
+        expected[0xF08] = 0xA5
+        session.expect_file(bytes(expected))
+        session.send(F8 + b"tr", "T structures / R: follow exact section record 28")
+        session.send(F3 + b"54" + F9, "Rename first section byte without changing TE translation fields")
+        expected[40] = 0x54
+        session.expect_file(bytes(expected))
+        session.send(F8 + b"t" + DOWN * 5, "Select unsupported relocation type15")
+        session.send(b"\r", "Enter rejects unknown target and keeps the structure dialog")
+        session.send(b"r", "R still follows raw relocation record 1F12")
+        session.send(F3 + b"31" + F9, "Save one metadata byte without applying relocations")
+        expected[0x1F12] = 0x31
+        session.expect_file(bytes(expected))
+        session.send(F8 + b"t", "Reopen refreshed structures after the save")
+        session.send(ESC, "Close structures")
+        session.send(ESC, "Exit TE view", expect_exit=True)
+        session.finish()
+        session.expect_file(bytes(expected))
+        recording = sanitized_events(session.events, str(path.parent.resolve()))
+    path = directory / "members.macho"
+    original = fat_structure_fixture_bytes()
+    path.write_bytes(original)
+    with PtySession(binary, path, "fat Mach-O exact record navigation") as session:
+        session.send(F8 + b"s" + DOWN + b"\r", "Select second universal member explicitly")
+        session.send(b"t\r", "Unknown command target is unavailable; raw record remains accessible")
+        session.send(b"r", "Follow member-relative command as global file offset21C")
+        session.send(F3 + b"01" + F9, "Save one raw load-command byte in the second member")
+        expected = bytearray(original)
+        expected[0x21C] = 1
+        session.expect_file(bytes(expected))
+        session.send(ESC, "Exit Mach-O view", expect_exit=True)
+        session.finish()
+        session.expect_file(bytes(expected))
+    return recording
+
+
 def sanitized_events(events: list[list], directory: str) -> list[list]:
     """Redact the generated directory even when a read splits the path.
 
@@ -1099,6 +1175,7 @@ def main() -> int:
     parser.add_argument("--record", type=Path, help="write a successful asciicast v2 recording")
     parser.add_argument("--record-analysis", type=Path, help="record PE headers, Code, branch/return, virtual goto, and byte save")
     parser.add_argument("--record-symbols", type=Path, help="record import/export target and metadata navigation with exact byte saves")
+    parser.add_argument("--record-structures", type=Path, help="record TE entry, structure target/record navigation and exact byte saves")
     parser.add_argument("--record-search", type=Path, help="record the two-field search, backward repeat, and exact byte save")
     parser.add_argument("--record-block", type=Path, help="record reverse selection, scoped search, and raw block export")
     parser.add_argument("--record-decode", type=Path, help="record automatic x86 and branch navigation")
@@ -1160,6 +1237,8 @@ def main() -> int:
             print("PASS: PE headers/entry, Code, branch/return, virtual goto, exact byte save")
             symbol_events = symbols_edit_save(binary, root / "symbols", record=options.record_symbols is not None)
             print("PASS: import slot, export target, unresolved forwarder, metadata record, exact byte saves")
+            structure_events = structures_edit_save(binary, root / "structures", record=options.record_structures is not None)
+            print("PASS: TE entry/targets/records and fat Mach-O member records with exact byte saves")
         if options.record is not None:
             write_recording(options.record, events)
             print(f"Recording: {options.record}")
@@ -1179,6 +1258,11 @@ def main() -> int:
                 filename="symbols.exe",
             )
             print(f"Symbol recording: {options.record_symbols}")
+        if options.record_structures is not None:
+            write_recording(options.record_structures, structure_events,
+                            title="hiewbie format records: TE targets, metadata and exact byte saves",
+                            filename="firmware.te")
+            print(f"Structure recording: {options.record_structures}")
         if options.record_search is not None:
             write_recording(
                 options.record_search,

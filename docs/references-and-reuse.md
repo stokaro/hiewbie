@@ -1,7 +1,7 @@
 # References and source reuse
 
-Baseline research snapshot: 2026-11-27; analysis and symbol readers updated
-2026-11-28.
+Baseline research snapshot: 2026-11-27; analysis, symbol, and structure-record
+readers updated 2026-11-28.
 These sources describe upstream behavior or inform
 implementation choices; they are not evidence that hiewbie already implements it.
 
@@ -111,6 +111,56 @@ It does not establish a complete PE loader inventory, sectionless ELF dynamic
 symbol resolution, dyld export/binding reconstruction, native-platform execution,
 or original-HIEW runtime parity. Those limitations and the distinction between
 metadata records and navigable targets are explicit in ADR 0005.
+
+## Structure-record format references and provenance
+
+The [bounded structure-record contract](format-records.md) adds TE firmware,
+Mach-O commands/sections/thread states, and selected relocation/debug metadata.
+These primary specifications and published source layouts were consulted on
+2026-11-28. They establish field meanings and implementation decisions; they do
+not establish original-HIEW runtime equivalence or complete loader conformance.
+
+| Primary source and inspected revision | Facts used |
+| --- | --- |
+| UEFI PI 1.8A [TE header](https://uefi.org/specs/PI/1.8A/V1_TE_Image.html), [creation](https://uefi.org/specs/PI/1.8A/V1_TE_Image_Creation.html), and [loading](https://uefi.org/specs/PI/1.8A/V1_TE_Image_Loading.html), chapter 17 | One 40-byte header, original PE values, stripped-header bias, the two directories, and the nonzero-RVA/zero-size position-independent convention |
+| UEFI 2.10 [Overview §2.1.1](https://uefi.org/specs/UEFI/2.10/02_Overview.html) | Firmware machine tags, particularly `0x01C2` as ARMTHUMB_MIXED rather than a mandatory Thumb-only entry |
+| Microsoft [PE/COFF specification](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format) | Section headers, machine values, relocation blocks, HIGHADJ's second word, ARM/Thumb MOVW/MOVT pairs, and debug-directory records |
+| EDK2 [`PeImage.h`](https://github.com/tianocore/edk2/blob/cd6f70671097dcccc9b70a4dfcd2d037a51f453c/MdePkg/Include/IndustryStandard/PeImage.h), [`BasePeCoff.c`](https://github.com/tianocore/edk2/blob/cd6f70671097dcccc9b70a4dfcd2d037a51f453c/MdePkg/Library/BasePeCoffLib/BasePeCoff.c), and [`GenFw.c`](https://github.com/tianocore/edk2/blob/cd6f70671097dcccc9b70a4dfcd2d037a51f453c/BaseTools/Source/C/GenFw/GenFw.c), `cd6f70671097dcccc9b70a4dfcd2d037a51f453c` | Retained section headers, unchanged original RVAs, loaded header base, full retained header prefix, adjusted raw/debug pointers, and loader-specific restrictions |
+| EDK2 `edk2-stable202402` [`Elf32Convert.c`](https://github.com/tianocore/edk2/blob/edk2-stable202402/BaseTools/Source/C/GenFw/Elf32Convert.c) and [`GenFw.c`](https://github.com/tianocore/edk2/blob/edk2-stable202402/BaseTools/Source/C/GenFw/GenFw.c) | ARM ELF conversion preserves the entry state bit, emits ARMTHUMB_MIXED, and copies the entry into TE |
+| LLVM `llvmorg-20.1.8` [`CVDebugRecord.h`](https://github.com/llvm/llvm-project/blob/llvmorg-20.1.8/llvm/include/llvm/Object/CVDebugRecord.h) | RSDS/PDB70 and NB10/PDB20 fixed-header field order and age/signature layout |
+| Apple XNU `43a90889846e00bfb5cf1d255cdc0a701a1e05a4`, [`loader.h`](https://github.com/apple-oss-distributions/xnu/blob/43a90889846e00bfb5cf1d255cdc0a701a1e05a4/EXTERNAL_HEADERS/mach-o/loader.h), [`reloc.h`](https://github.com/apple-oss-distributions/xnu/blob/43a90889846e00bfb5cf1d255cdc0a701a1e05a4/EXTERNAL_HEADERS/mach-o/reloc.h), [`x86_64/reloc.h`](https://github.com/apple-oss-distributions/xnu/blob/43a90889846e00bfb5cf1d255cdc0a701a1e05a4/EXTERNAL_HEADERS/mach-o/x86_64/reloc.h), [`arm/reloc.h`](https://github.com/apple-oss-distributions/xnu/blob/43a90889846e00bfb5cf1d255cdc0a701a1e05a4/EXTERNAL_HEADERS/mach-o/arm/reloc.h), and [`arm64/reloc.h`](https://github.com/apple-oss-distributions/xnu/blob/43a90889846e00bfb5cf1d255cdc0a701a1e05a4/EXTERNAL_HEADERS/mach-o/arm64/reloc.h) | Load-command/section layouts, SG_HIGHVM, ordinary/scattered relocations, PAIR/SUBTRACTOR rules, and ARM HALF length-bit meanings |
+| Apple XNU `f6217f891ac0bb64f3d375211650a4c1ff8ca1ea`, [`i386/thread_status.h`](https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/osfmk/mach/i386/thread_status.h), [`i386/_structs.h`](https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/osfmk/mach/i386/_structs.h), [`arm/thread_status.h`](https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/osfmk/mach/arm/thread_status.h), and [`arm/_structs.h`](https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/osfmk/mach/arm/_structs.h) | Explicit x86/x64/ARM/ARM64 thread flavors, 32-bit-word counts, PC offsets, and ARM CPSR state; cross-checked against the earlier XNU layout reference |
+| Apple cctools [`arm64/reloc.h`](https://github.com/apple-oss-distributions/cctools/blob/e0d56624eca2a76c2ace4c21850df9e666de4ca5/include/mach-o/arm64/reloc.h), `e0d56624eca2a76c2ace4c21850df9e666de4ca5` | Updated ARM64 ADDEND description and examples, including BRANCH26 as well as PAGE21/PAGEOFF12 |
+| Apple ld64 [`macho_relocatable_file.cpp`](https://github.com/apple-oss-distributions/ld64/blob/f60a74eaa2c99585de1dc0f2820e7a9f8aaf522c/src/ld/parsers/macho_relocatable_file.cpp), `f60a74eaa2c99585de1dc0f2820e7a9f8aaf522c` | Independent confirmation of relocation pair constraints and signed addend interpretation |
+
+The inspected EDK2 files carry BSD-2-Clause-Patent identifiers. LLVM's CodeView
+header carries Apache-2.0 with the LLVM exception. The Apple loader, relocation,
+and thread headers and the inspected cctools/ld64 files carry APSL 2.0 notices.
+File-specific additional notices matter: XNU's generic `reloc.h` also contains
+Christopher G. Demetriou's three-clause BSD notice, while
+`i386/thread_status.h` additionally carries OSF/Carnegie Mellon notices and the
+Carnegie Mellon permission/retention terms. These source notices were reviewed
+as part of source selection; they are not relabelled as the project's MIT
+license. No upstream header text, implementation, or binary was copied or
+substantially adapted into hiewbie by this work, so it introduces no new
+third-party source distribution or runtime dependency.
+
+The new [TE reader](../crates/hiewbie-core/src/formats/te.rs),
+[Mach-O helpers](../crates/hiewbie-core/src/formats/macho/), shared record model,
+and [TE](../tests/fixtures/te_images.rs),
+[Mach-O image](../tests/fixtures/macho_images.rs), and
+[Mach-O record](../tests/fixtures/macho_records.rs) fixture generators are
+independently written MIT project code. Fixtures construct original byte arrays
+from published integer fields and instruction encodings. They contain no
+redistributed firmware, proprietary HIEW content, third-party executable, or PDB.
+
+The official [HIEW format list](https://www.hiew.ru/) establishes that TE/TE64 and
+Mach-O are advertised formats. It does not establish precise TE/TE64 label
+semantics or the added T/R structure controls. Hiewbie's documented common-header
+and machine-width interpretation is specification-based. The generated tests
+establish its own metadata subset and byte-preservation behavior; firmware
+loadability, complete dyld/fixup resolution, the complete host matrix, and
+original-HIEW runtime equivalence remain distinct evidence requirements.
 
 ## Provenance policy
 

@@ -751,6 +751,15 @@ fn shared_commands_enforce_edit_state_read_only_and_cursor_rules() {
 
 #[test]
 fn command_registry_contains_every_stable_command_once() {
+    let structure = crate::formats::StructureRef {
+        generation: 0,
+        slice: crate::formats::FileRange {
+            offset: offset(0),
+            len: 0,
+        },
+        selected_slice: None,
+        index: 0,
+    };
     let commands = [
         Command::BeginEdit,
         Command::DiscardEdit,
@@ -778,6 +787,8 @@ fn command_registry_contains_every_stable_command_once() {
         Command::GotoRegion(0),
         Command::GotoSymbol(0),
         Command::GotoSymbolRecord(0),
+        Command::GotoStructure(structure),
+        Command::GotoStructureRecord(structure),
         Command::SelectSlice(0),
         Command::SetDecodeMode(None),
         Command::SetEndian(None),

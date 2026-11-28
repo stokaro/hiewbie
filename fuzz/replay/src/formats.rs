@@ -24,6 +24,25 @@ pub(crate) fn check(data: &[u8]) {
             assert!(image.regions.len() <= formats::MAX_FORMAT_ENTRIES);
             assert!(image.fields.len() <= formats::MAX_FORMAT_FIELDS);
             assert!(image.slices.len() <= formats::MAX_FAT_SLICES);
+            assert!(image.records.len() <= formats::MAX_FORMAT_RECORDS);
+            assert!(image.notes.len() <= formats::MAX_FORMAT_NOTES);
+            assert!(
+                image
+                    .notes
+                    .iter()
+                    .all(|note| note.len() <= formats::MAX_FORMAT_TEXT_BYTES)
+            );
+            for record in &image.records {
+                assert!(record.name.len() <= formats::MAX_FORMAT_TEXT_BYTES);
+                assert!(record.detail.len() <= formats::MAX_FORMAT_TEXT_BYTES);
+                for range in [Some(record.record), record.target].into_iter().flatten() {
+                    let start = u128::from(range.offset.get());
+                    let end = start + u128::from(range.len);
+                    let image_start = u128::from(image.slice.offset.get());
+                    assert!(start >= image_start);
+                    assert!(end <= image_start + u128::from(image.slice.len));
+                }
+            }
             assert_eq!(image.generation, 0);
             read.set(0);
             limit.set(symbols::MAX_SYMBOL_READ_BYTES);

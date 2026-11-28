@@ -67,7 +67,9 @@ additional IDs and fields while rejecting unknown required schema versions.
 | Textual assembly | None | Unavailable in the editor | Selected x86 and AArch64 research paths must pass production stories #76–#78 |
 | x86 reference search | iced-x86 and hiewbie-core | Bounded near branches, selected mapped memory and literal operands | General references, loader resolution and control-flow analysis |
 | ARM/Thumb/AArch64 reference search | None | Unavailable | Direct branch following does not establish reference search |
-| PE/ELF/Mach-O structures | hiewbie-core | Bounded headers and load mappings; selected fat Mach-O slices | Per-format directories, relocations and legacy variants |
+| PE/ELF structures | hiewbie-core | Bounded headers and load mappings | Remaining per-format directories and relocations |
+| Mach-O structures | hiewbie-core | Load-command records/status, sections, old thread entries, high-VM mappings, section relocations and selected fat slices | Dyld binding/chained fixups, loader-specific relocation targets, unknown optional types |
+| TE/TE64 structures | hiewbie-core | Common header, machine width, stripped-header mapping, section/entry and relocation/debug records | Unknown types remain raw; no PE reconstruction, PDB loading or relocation application |
 | PE/ELF/Mach-O symbols | hiewbie-core | Ordinary PE imports/exports; section-backed ELF symbols; Mach-O nlist | Delay/bound imports, sectionless dynamic ELF, dyld metadata |
 | Portable extensions | None | A descriptive registration contract exists | Loader, executable ABI, permissions, isolation and lifecycle in #82 |
 | Original Windows HEM binaries | None | Unavailable independently of the portable API | Compatibility investigation in #84 |
@@ -79,6 +81,14 @@ Generated decoder fixtures establish usable little-endian cases and explicit
 unsupported big-endian results. An unknown machine can still retain parsed
 headers and raw bytes. Unavailable optional decoding does not disable raw
 overwrite, undo or the existing image reader.
+
+`format.macho.executable`, `format.macho.object` and `format.macho.core` distinguish
+entry navigation, link-time section/relocation inspection and core segment/state
+inspection. They remain Limited; recognizing `MH_CORE` does not establish process
+restoration, and object metadata does not establish linking. `format.te` likewise
+describes the implemented firmware metadata scope independently of an instruction
+decoder. See [format records](format-records.md) for exact source/target semantics,
+supported entry layouts and the remaining format-specific limits.
 
 The [target manifest](../build/targets.json) and
 [build contract](build-and-release.md) record host triples and evidence separately.

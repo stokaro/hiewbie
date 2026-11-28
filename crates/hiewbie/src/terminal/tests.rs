@@ -10,6 +10,8 @@ use super::search::{SEARCH_STEP_BYTES, parse_hex_pattern};
 use super::*;
 use hiewbie_core::{MAX_SEARCH_PATTERN_BYTES, SearchRequest};
 
+#[path = "structure_tests.rs"]
+mod structures;
 #[path = "symbol_tests.rs"]
 mod symbols;
 

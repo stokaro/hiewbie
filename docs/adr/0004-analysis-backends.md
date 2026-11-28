@@ -44,15 +44,19 @@ addresses, entry navigation, and code interpretation:
 
 This table describes the eager `formats` layer selected by this decision.
 [ADR 0005](0005-symbol-navigation.md) subsequently adds separate, lazy
-symbol/import/export readers; opening an image still performs only the header
-and mapping work below.
+symbol/import/export readers. [Format records](../format-records.md) subsequently
+adds bounded eager Mach-O/TE structure and relocation metadata. Full symbol-table
+enumeration stays on demand; relocation references read only the bounded names
+and records they require. Malformed lazy symbol metadata does not discard usable
+header mappings.
 
 | Container | Implemented scope | Remaining limits |
 | --- | --- | --- |
 | PE32 / PE32+ | DOS and PE identification, COFF and optional headers, section descriptors, preferred image base, entry RVA, and file-backed mappings | Data-directory bounds are checked, but imports, exports, relocations, and other directory contents are not interpreted. DOS MZ, NE, LE, and LX remain outside this reader's supported scope |
 | ELF32 / ELF64 | Little- and big-endian headers, program headers, `PT_LOAD` mappings, and entry address | Section-table extents are checked; section contents, symbols, relocations, and extended numbering are not interpreted |
-| Thin Mach-O32 / Mach-O64 | Little- and big-endian headers, bounded load commands, segments, and `LC_MAIN` entry mapping | Internal sections, symbols, imports, and relocations are not interpreted. `LC_UNIXTHREAD` entry extraction and high-VM core segments remain unsupported |
+| Thin Mach-O32 / Mach-O64 | Little- and big-endian headers, every bounded raw load-command record with status, sections/flags, `LC_MAIN` and baseline `LC_UNIXTHREAD`, `SG_HIGHVM`, object section mappings and relocation records | Unknown commands/types remain explicit; loader-dependent dynamic relocation destinations and dyld bindings/chained fixups are not resolved; relocations are never applied |
 | Universal Mach-O | 32- and 64-bit fat descriptors, slice validation, selection, and translation to global file offsets | Only a selected thin Mach-O member is parsed. Nested fat containers and non-Mach-O members are unsupported |
+| TE / TE64 | Common 40-byte header, explicit recognized machine width, checked stripped-prefix bias, entry/sections, relocation/debug records and complete target spans | Unknown machines/types remain visible; CodeView fixed headers do not load PDBs; no PE reconstruction, symbol tables or relocation application |
 
 Universal files default to slice index zero, in file-table order. The selected
 slice and available descriptors remain visible, and callers can select another
@@ -130,6 +134,9 @@ of terminal layout.
 | Bytes read during one format inspection | 1 MiB |
 | Entries in a format table | 4,096 |
 | Recorded header fields | 32,768 |
+| Structure records / inspection notes | 4,096 / 256 |
+| Record name, detail, or note text | 1,024 UTF-8 bytes per string |
+| Load regions, including split zero-fill/header mappings | 4,096 |
 | Universal Mach-O slices | 64 |
 | Code rows requested from shared analysis | 256 |
 | Input passed to a decoder for one row | 15 bytes maximum; 4 for ARM/Thumb/AArch64 |
@@ -137,6 +144,7 @@ of terminal layout.
 | Return history and instruction-step history | 256 locations each |
 | Headless disassembly output | 32 instructions |
 | Headless header output | 64 items per category |
+| Headless structure output | 64 records per explicit page, all notes |
 
 These are application limits, not assertions about the largest valid executable
 or every backend's complete internal implementation. Exceeding a reader limit
