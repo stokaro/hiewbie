@@ -189,10 +189,21 @@ impl<S: ByteSource> Ui<S> {
     }
 
     pub(super) fn advance_search(&mut self) {
+        let references = self.editor.is_searching_references();
+        let previous_mode = self.editor.mode();
         match self.editor.step_search(SEARCH_STEP_BYTES) {
             Ok(Some(SearchProgress::Pending { next })) => {
                 self.scan_position = Some(next);
                 self.hint(format!("Scanning {:016X}; Esc cancels", next.get()));
+            }
+            Ok(Some(SearchProgress::Found(offset))) if references => {
+                if previous_mode == ViewMode::Hex {
+                    self.top = offset.get();
+                }
+                self.hint(format!(
+                    "Reference at {:016X}; Ctrl+F6 finds the next",
+                    offset.get()
+                ));
             }
             Ok(Some(SearchProgress::Found(offset))) => self.hint(format!(
                 "Found at {:016X}; Shift+F7/Ctrl+R repeats",
@@ -200,7 +211,12 @@ impl<S: ByteSource> Ui<S> {
             )),
             Ok(Some(SearchProgress::NotFound)) => {
                 self.hint("No match; search does not wrap");
-                self.dialog = Some(Dialog::SearchNotice("Target not found"));
+                self.dialog = Some(if references {
+                    self.scan_position = self.editor.reference_scan_position();
+                    Dialog::ReferenceMiss
+                } else {
+                    Dialog::SearchNotice("Target not found")
+                });
             }
             Ok(None) => {}
             Err(error) => self.notice(format!("Search stopped: {error}")),

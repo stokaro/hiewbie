@@ -165,6 +165,14 @@ import pointer slots, unresolved names and exact source records. Frontends use
 shared target/record commands. The [symbol ADR](adr/0005-symbol-navigation.md)
 records current PE/ELF/Mach-O coverage and explicit loader-metadata gaps.
 
+The x86 reference scan runs on demand against the same logical bytes, selected
+image, and decoder profile. It checks one contiguous address span per step and
+reads bounded chunks with up to 14 bytes of lookahead across a chunk boundary.
+The continuation stores the next instruction start or byte, along with the
+generation and interpretation. It does not allocate a file-wide index or
+format every instruction. Terminal adapters use the same progress and
+cancellation path as byte searches.
+
 ## 6. Frontend behavior
 
 Represent input as semantic events and dispatch through a versioned command

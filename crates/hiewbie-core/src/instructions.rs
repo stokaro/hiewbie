@@ -13,6 +13,8 @@ use crate::formats::{Endian, VirtualAddress};
 mod arm;
 mod x86;
 
+pub(crate) use x86::scan_references;
+
 #[cfg(test)]
 mod tests;
 

@@ -372,6 +372,7 @@ enum Dialog {
     Input(InputDialog),
     Search(SearchDialog),
     SearchNotice(&'static str),
+    ReferenceMiss,
     BlockWrite(BlockWrite),
     Calculator,
     Help(Help),
@@ -456,6 +457,9 @@ impl<S: ByteSource> Ui<S> {
         let previous_mode = self.editor.mode();
         match self.editor.dispatch(command) {
             Ok(Effect::None) => {
+                if matches!(command, Command::FindReferences | Command::NextReference) {
+                    self.scan_position = self.editor.reference_scan_position();
+                }
                 if self.editor.mode() == ViewMode::Code {
                     let cursor = self.editor.cursor().get();
                     if previous_mode != ViewMode::Code || matches!(command, Command::ResyncCode) {
@@ -641,6 +645,10 @@ impl<S: ByteSource> Ui<S> {
             self.repeat_search();
             return UiAction::Continue;
         }
+        if key.code == KeyCode::F(9) && key.modifiers == KeyModifiers::ALT && self.code_navigation()
+        {
+            return self.dispatch(Command::ToggleReferenceAlignment);
+        }
         if key.modifiers.contains(KeyModifiers::ALT)
             || (!matches!(key.code, KeyCode::Char(_)) && !key.modifiers.is_empty())
         {
@@ -824,6 +832,9 @@ impl<S: ByteSource> Ui<S> {
                 self.open_prompt(PromptKind::Goto);
                 UiAction::Continue
             }
+            KeyCode::F(6) if self.editor.mode() != ViewMode::Text => {
+                self.dispatch(Command::FindReferences)
+            }
             KeyCode::F(7) => {
                 self.open_search_prompt();
                 UiAction::Continue
@@ -967,6 +978,18 @@ impl<S: ByteSource> Ui<S> {
             KeyCode::F(6) if key.modifiers == KeyModifiers::CONTROL && self.text_navigation() => {
                 self.toggle_text_tabs()
             }
+            KeyCode::F(6) | KeyCode::Char('t' | 'T')
+                if key.modifiers == KeyModifiers::CONTROL && self.code_navigation() =>
+            {
+                self.dispatch(Command::NextReference)
+            }
+            KeyCode::Char('d' | 'D')
+                if key.modifiers == KeyModifiers::CONTROL
+                    && !self.editor.is_editing()
+                    && self.editor.mode() != ViewMode::Text =>
+            {
+                self.dispatch(Command::FindReferences)
+            }
             KeyCode::Char('b' | 'B') if !self.editor.is_editing() => self.cycle_bitness(),
             KeyCode::Char('a' | 'A') if !self.editor.is_editing() => {
                 self.open_analysis(AnalysisPage::Profiles);
@@ -1046,6 +1069,7 @@ impl<S: ByteSource> Ui<S> {
                 }
                 return UiAction::Continue;
             }
+            Dialog::ReferenceMiss => return UiAction::Continue,
             Dialog::Input(input) => input,
             Dialog::Analysis(dialog) => {
                 self.analysis_key(dialog, key);

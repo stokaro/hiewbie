@@ -79,7 +79,10 @@ beyond 4 GiB, without loading the complete file into memory.
 | Calculator | Ctrl+E | Evaluate with checked signed 64-bit arithmetic |
 | View | Shift+F1 / Ctrl+A | Decoder profile, byte order and explicit raw base |
 | Code | Ctrl+F1 / Ctrl+B | Cycle x86 16/32/64 bitness |
-| Decode, viewing | 1–9 / A–Z / 0 / Backspace | Follow a displayed direct destination by label or return |
+| Hex / Decode view | F6 / Ctrl+D | Find the first x86 reference to the current address |
+| Decode, viewing | Ctrl+F6 / Ctrl+T | Find the next x86 reference |
+| Decode, viewing | Alt+F9 | Toggle instruction-aligned and byte-by-byte reference scanning |
+| Decode, viewing | 1–9 / A–Z / 0 / Backspace | Follow a displayed direct destination, return, or cycle through reference hits |
 | Code, viewing | / | Restart decoding at the current byte |
 | Edit | Two hex digits / Tab | Write a byte / select printable ASCII entry |
 | Edit | F3 / Backspace | Restore the original current / previous byte |

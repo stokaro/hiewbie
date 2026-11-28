@@ -54,24 +54,27 @@ impl<S: ByteSource> Ui<S> {
         );
         let header = format!(" hiewbie {} | {}", env!("CARGO_PKG_VERSION"), self.label);
         let title = row(area, 0);
+        let reference_miss = matches!(self.dialog, Some(Dialog::ReferenceMiss));
+        let reference_scan = self.editor.is_searching_references() || reference_miss;
+        let show_progress = self.editor.is_searching() || reference_scan;
         if hex || text {
-            let scan = self
-                .editor
-                .is_searching()
-                .then(|| self.scan_position.unwrap_or(self.editor.cursor()).get());
+            let scan =
+                show_progress.then(|| self.scan_position.unwrap_or(self.editor.cursor()).get());
             if hex {
                 self.render_hex_title(frame, title, scan);
             } else {
                 self.render_text_title(frame, title, scan);
             }
         }
-        if self.editor.is_searching() {
+        if show_progress {
             let width = (area.width / 3).min(18);
             let next = self.scan_position.unwrap_or(self.editor.cursor()).get();
             let address = format!("{next:08X}│");
             let address_width = (address.chars().count() as u16).min(area.width - width);
             let title_width = area.width - width - address_width;
-            if !hex && !text {
+            if code && reference_scan {
+                self.render_code_title(frame, title, Some(next));
+            } else if !hex && !text {
                 frame.render_widget(
                     Paragraph::new(header).style(HEADER),
                     Rect::new(area.x, area.y, title_width, 1),
@@ -82,7 +85,11 @@ impl<S: ByteSource> Ui<S> {
                 );
             }
             let len = self.editor.document().len().max(1);
-            let filled = (u128::from(next.min(len)) * u128::from(width) / u128::from(len)) as usize;
+            let filled = if reference_miss {
+                usize::from(width)
+            } else {
+                (u128::from(next.min(len)) * u128::from(width) / u128::from(len)) as usize
+            };
             let bar = format!(
                 "{}{}",
                 "▓".repeat(filled),
@@ -93,7 +100,7 @@ impl<S: ByteSource> Ui<S> {
                 Rect::new(area.right() - width, area.y, width, 1),
             );
         } else if self.editor.mode() == ViewMode::Code {
-            self.render_code_title(frame, title);
+            self.render_code_title(frame, title, None);
         } else if !hex && !text {
             frame.render_widget(Paragraph::new(header).style(HEADER), title);
         }
@@ -183,6 +190,7 @@ impl<S: ByteSource> Ui<S> {
             Some(Dialog::Input(input)) => render_prompt(frame, area, input),
             Some(Dialog::Search(search)) => render_search(frame, area, search),
             Some(Dialog::SearchNotice(message)) => render_search_notice(frame, area, message),
+            Some(Dialog::ReferenceMiss) => render_search_notice(frame, area, "Target not found"),
             Some(Dialog::BlockWrite(dialog)) => {
                 if !self.export_in_progress {
                     render_block_write(frame, area, dialog);
@@ -424,7 +432,7 @@ impl<S: ByteSource> Ui<S> {
                 Some(Dialog::Search(_)) => {
                     Some(["Help", "Direct", "", "Area", "GoLast", "", "", "", "", ""])
                 }
-                Some(Dialog::SearchNotice(_)) => Some([""; 10]),
+                Some(Dialog::SearchNotice(_) | Dialog::ReferenceMiss) => Some([""; 10]),
                 Some(Dialog::Input(input)) if input.kind == PromptKind::Goto => Some([""; 10]),
                 _ => None,
             }
@@ -499,7 +507,17 @@ impl<S: ByteSource> Ui<S> {
                         "Hem",
                         "Names",
                     ],
-                    &[6, 10, 11, 12],
+                    if self
+                        .editor
+                        .decode_context()
+                        .mode
+                        .is_some_and(|mode| mode.is_x86())
+                        && !self.editor.document().is_empty()
+                    {
+                        &[10, 11, 12]
+                    } else {
+                        &[6, 10, 11, 12]
+                    },
                 )
             };
             render_full_function_bar(frame, area, &labels, disabled);

@@ -37,8 +37,11 @@ from it. The public core exports `COMMANDS` and `Command::id()` from
 | `analysis.set-endian` | Optional `Endian` | Override or restore inferred instruction endianness |
 | `analysis.set-raw-base` | `VirtualAddress` | Set the address of file byte zero and enable raw interpretation |
 | `analysis.set-raw` | `bool` | Enable raw interpretation, or restore parsed mapping and clear the raw base |
+| `analysis.find-references` | None | Start an x86 scan for the current address |
+| `analysis.next-reference` | None | Continue a reference query on the current document and profile |
+| `analysis.toggle-reference-alignment` | None | Switch between instruction starts and every byte |
 | `navigate.follow-branch` | Visible branch number, 1–9 | Decode again and follow a mapped direct target with its mode |
-| `navigate.return-branch` | None | Restore the previous file offset and interpretation |
+| `navigate.return-branch` | None | Restore a branch's origin or cycle through visited reference hits |
 | `navigate.code` | Signed `i32` row delta | Walk decoded rows forward, or retrace recent boundaries backward |
 | `analysis.resynchronize` | None | Start decoding at the selected byte and clear cached movement boundaries |
 | `view.set-mode` | `Hex`, `Text`, or `Code` | Select a view without changing bytes |
@@ -279,20 +282,38 @@ a big-endian container does not imply instruction support.
 
 The Decode viewport shows addresses, contiguous opcode bytes, mnemonic and
 operands on rows between the title and function keys. The x86 view groups runs
-of single-byte NOPs into bounded rows. Up and Down select an instruction while
+of single-byte NOPs and INT3 instructions into bounded rows. Up and Down select an instruction while
 keeping it visible, and Page Up and Page Down move by displayed rows.
 
 In Code view outside edit mode, 1–9 and A–Z follow direct destinations labeled
-in the displayed window. 0 or Backspace returns. Windows contain at most 256
-rows. Branch and movement histories are bounded
+in the displayed window. 0 or Backspace returns after a branch or cycles through
+reference hits, starting with the latest hit. Windows contain at most 256 rows.
+Code navigation and movement histories are bounded
 to 256 entries. Backward movement retraces known boundaries; without history it
 falls back to the preceding byte or ISA minimum alignment, which need not be a
 true instruction boundary. `/` explicitly resynchronizes at the current byte.
-Indirect/far targets and complete reference indexing remain future work.
+Indirect/far targets and full control-flow analysis remain future work.
 In Code edit mode, digits enter byte values, Backspace cancels a pending digit
 or restores the preceding source byte and moves there, and vertical navigation
 follows the byte grid. The active context distinguishes restoration from the
 Code-view branch return command.
+
+#### x86 reference search
+
+F6 or Ctrl+D finds the first reference to the address at the cursor. Starting
+in Hex switches to Decode when a hit is found. In Decode, Ctrl+F6 or Ctrl+T
+continues forwards from the preceding hit. Esc cancels an in-progress scan and
+keeps the current byte selected. A miss displays `Target not found` and leaves
+the cursor on its previous byte.
+
+Alt+F9 toggles the default instruction-aligned scan and a scan that tries every
+byte as an instruction start. The scan starts at file byte zero for raw input
+or at the selected image's first file-backed span. It finds x86 near branch
+operands in raw files. In mapped images it also matches RIP/EIP-relative and
+fixed-address memory operands and full-width address-like immediates. It skips
+unmapped and ambiguous bytes. Embedded data can decode as instructions,
+especially in the byte-by-byte scan. The search uses the current decoder
+profile and does not resolve dynamic addresses or follow control flow.
 
 Parsed metadata is tied to the logical document generation. Edits, undo, discard,
 save, and slice changes cause fresh interpretation before use. A malformed

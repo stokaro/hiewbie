@@ -15,6 +15,7 @@ mod error;
 pub mod formats;
 pub mod instructions;
 mod offset;
+mod references;
 mod search;
 pub mod symbols;
 

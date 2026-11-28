@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "observation_date": "2026-11-28",
+  "reference_version": "8.63",
+  "environment": {
+    "runtime": "x64 console in a Hyper-V-isolated Windows Server Core LTSC 2022 container",
+    "input": "Win32 console key events with scan codes and modifier state",
+    "terminal_sizes": ["80x25", "100x30"]
+  },
+  "raw_x86_32": {
+    "fixture": "A generated 768-byte file with near branches at file offsets 0x00, 0x08, and 0x50 targeting 0x40. Address-like raw operands at 0x10, 0x20, and 0x60 did not match.",
+    "target_file_offset": "0x40",
+    "instruction_aligned_hits": ["0x00", "0x08", "0x50"],
+    "bytewise_hits_after_alt_f9": ["0x00", "0x08", "0x50", "0x71"],
+    "bytewise_candidate": "The instruction at 0x70 begins with B8, and its immediate starts with EB CD. Decoding at 0x71 interprets those two operand bytes as a near jump to 0x40.",
+    "hex_f6": "Switched from Hex to Decode and selected 0x00.",
+    "return_sequence": {
+      "keys": ["Backspace", "Backspace", "0", "0", "0", "0"],
+      "file_offsets": ["0x50", "0x08", "0x00", "0x50", "0x08", "0x00"]
+    },
+    "exhaustion": "Displayed Target not found. Enter or a subsequent Ctrl+F6 dismissed it and restored the previous hit."
+  },
+  "pe32_plus": {
+    "fixture": "A generated PE32+ image with a file-backed section at 0x200 and virtual section address 0x140001000. The inspected image was never executed.",
+    "target_file_offset": "0x240",
+    "target_virtual_address": "0x140001040",
+    "hit_file_offsets": ["0x200", "0x208", "0x210", "0x220", "0x250", "0x260"],
+    "operand_types_in_order": ["near branch", "near branch", "RIP-relative memory", "64-bit immediate", "near branch", "RIP-relative memory"]
+  },
+  "paired_candidate": {
+    "runtime": "An x86_64-pc-windows-gnu hiewbie build in the same Windows console environment.",
+    "matched": "Raw hit sequences in both scan modes, the Hex-to-Decode transition, four steps through the raw return cycle, six PE32+ hit addresses, and the bytewise miss scan endpoint.",
+    "error_dialog": {
+      "inner_border_top_left_zero_based": [18, 11],
+      "inner_border_top_right_zero_based": [61, 11],
+      "border": "Double line",
+      "text_and_border_color": "#ffff00",
+      "panel_color": "#cd0000"
+    },
+    "fixture_sha256_after_both_replays": {
+      "raw": "6f72aa654623490251eb351057592eb3b093dd8dbb769eca2b3fef3fd3fcfad0",
+      "pe32_plus": "9eafc72d4bfd7a8bc8c047424344e8d922a538e9783b28f8f9dd36500e3c5d8e"
+    },
+    "limits": "Selection addresses match. For the first PE32+ hit HIEW starts the viewport at file offset 0x1e4 and the candidate starts it at 0x200. The bytewise raw hit also has a different viewport origin. The candidate does not reproduce the held-modifier function bar."
+  }
+}

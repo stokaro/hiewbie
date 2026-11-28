@@ -310,6 +310,22 @@ x86 profiles. Page Down advanced by the visible rows, including grouped NOPs.
 
 [Paired Windows observations](../evidence/hiew-8.63-windows-decode.json)
 
+### x86 reference search
+
+On a generated raw x86-32 file, F6 searched from the beginning for the address
+at the cursor and selected the first referring instruction. From Hex it opened
+Decode on a hit. Ctrl+F6 advanced to subsequent hits in file order. By default
+it ignored a branch encoding inside a MOV immediate. After Alt+F9 it also found
+that bytewise candidate. The PE32+ fixture returned near branches, RIP-relative
+memory operands, and a literal virtual address. After a miss, the dialog
+showed `Target not found`. Dismissing it restored the preceding address.
+
+After three raw hits, repeated Backspace and 0 started with the current hit and
+cycled backwards through the two earlier hits. The cycle returned to the
+latest hit without stopping at the original target.
+
+[Windows reference observations](../evidence/hiew-8.63-windows-references.json)
+
 ### Navigation state is richer than a single cursor
 
 HIEW keeps up to eight screen bookmarks per Text, Hex, and Decode view. A
@@ -328,10 +344,10 @@ sequence, returning to a previously open file started with empty bookmark slots.
 
 Backspace in view returns after navigation/search in HIEW. This is separate
 from edit Backspace (`hiew_en.txt`, lines 211–217; `hiew8.hlp`, `[Bookmark]`).
-Hiewbie has bounded direct-branch return history for Code. General goto/search
-return and exact reference viewport behavior beyond bookmark restoration remain
-open. Hiewbie uses the default direct target labels 1–9 and A–Z. Both `0`
-and Code-view Backspace return. Customized JumpTable remains open.
+Hiewbie has bounded direct-branch and reference navigation history in Code.
+General goto/search return and deeper reference viewport behavior remain open.
+Hiewbie uses the default direct target labels 1–9 and A–Z. Both `0` and Code-view
+Backspace return. Customized JumpTable remains open.
 
 The initial analysis supports checked absolute dotted VAs and explicit raw
 bases. A dotted PE address can mean a VA or an
