@@ -2,8 +2,10 @@ use std::sync::Arc;
 
 use super::{ByteSource, Editor, Error, FileRange, ViewMode, VirtualAddress};
 use crate::analysis::{DecodeContext, Interpretation, analysis_error};
+use crate::assembly::AssemblyError;
 use crate::document::MAX_EDIT_BYTES;
-use crate::instructions::DecodeMode;
+use crate::formats::Endian;
+use crate::instructions::{DecodeMode, DecodedInstruction};
 
 /// The maximum replacement span selected by the caller.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -57,6 +59,26 @@ impl AssemblyPatch {
 }
 
 impl<S: ByteSource> Editor<S> {
+    /// Decode the current file-backed instruction without altering the viewport.
+    pub fn assembly_site(&mut self) -> Result<(DecodeMode, DecodedInstruction), Error> {
+        self.require_code_edit()?;
+        self.refresh_analysis();
+        let context = self.decode_context();
+        let mode = context
+            .mode
+            .filter(|mode| {
+                (mode.is_x86() || *mode == DecodeMode::Aarch64) && context.endian == Endian::Little
+            })
+            .ok_or(Error::Assembly(AssemblyError::UnsupportedProfile))?;
+        let row = self
+            .analysis
+            .rows(&mut self.document, self.cursor, 1, false)?
+            .pop()
+            .filter(|row| row.mapped)
+            .ok_or_else(|| analysis_error("Current instruction has no file-backed address"))?;
+        Ok((mode, row.instruction))
+    }
+
     /// Review one candidate at the current Code cursor without editing bytes.
     /// The index uses the ordering returned by `assemble_at_cursor`.
     pub fn preview_assembly_patch(
@@ -66,19 +88,13 @@ impl<S: ByteSource> Editor<S> {
         span: AssemblySpan,
         padding: AssemblyPadding,
     ) -> Result<AssemblyPatch, Error> {
-        self.require_code_edit()?;
-        let row = self
-            .analysis
-            .rows(&mut self.document, self.cursor, 1, false)?
-            .pop()
-            .filter(|row| row.mapped)
-            .ok_or_else(|| analysis_error("Current instruction has no file-backed address"))?;
+        let (mode, instruction) = self.assembly_site()?;
         let bytes = self
             .assemble_at_cursor(source)?
             .into_iter()
             .nth(candidate)
             .ok_or_else(|| analysis_error("No such assembly candidate"))?;
-        let current_len = row.instruction.length;
+        let current_len = instruction.length;
         let span = match span {
             AssemblySpan::CurrentInstruction => current_len,
             AssemblySpan::Explicit(span) if span >= current_len => span,
@@ -106,7 +122,7 @@ impl<S: ByteSource> Editor<S> {
             offset: self.cursor,
             len: span as u64,
         };
-        let address = row.instruction.address;
+        let address = instruction.address;
         self.check_assembly_range(range, address)?;
         let mut original = vec![0; span];
         let read = self.document.read_at(range.offset, &mut original)?;
@@ -115,14 +131,14 @@ impl<S: ByteSource> Editor<S> {
         }
         let mut replacement = bytes;
         if padding == AssemblyPadding::Nop {
-            match context.mode {
-                Some(mode) if mode.is_x86() => replacement.resize(span, 0x90),
-                Some(DecodeMode::Aarch64) if span.is_multiple_of(4) => {
+            match mode {
+                mode if mode.is_x86() => replacement.resize(span, 0x90),
+                DecodeMode::Aarch64 if span.is_multiple_of(4) => {
                     while replacement.len() < span {
                         replacement.extend_from_slice(&[0x1f, 0x20, 0x03, 0xd5]);
                     }
                 }
-                Some(DecodeMode::Aarch64) => {
+                DecodeMode::Aarch64 => {
                     return Err(analysis_error(
                         "AArch64 NOP padding requires a four-byte-aligned span",
                     ));
@@ -184,7 +200,7 @@ impl<S: ByteSource> Editor<S> {
             return Err(analysis_error("Assembly span extends beyond the file"));
         }
         let address = address.get();
-        address
+        let virtual_last = address
             .checked_add(range.len - 1)
             .ok_or_else(|| analysis_error("Assembly span overflows virtual addresses"))?;
 
@@ -203,6 +219,21 @@ impl<S: ByteSource> Editor<S> {
         let mut mapped = Vec::new();
         for region in &image.regions {
             let base = region.file.offset.get();
+            let virtual_start = region.address.get();
+            let virtual_end = virtual_start
+                .checked_add(region.memory_size)
+                .ok_or_else(disjoint)?;
+            let shared_address = address.max(virtual_start);
+            if shared_address <= virtual_last && shared_address < virtual_end {
+                let displacement = shared_address - virtual_start;
+                let shared_len =
+                    (virtual_last - shared_address + 1).min(virtual_end - shared_address);
+                if displacement + shared_len > region.file.len
+                    || base.checked_add(displacement) != Some(start + (shared_address - address))
+                {
+                    return Err(disjoint());
+                }
+            }
             let region_end = base
                 .checked_add(region.file.len.min(region.memory_size))
                 .ok_or_else(disjoint)?;

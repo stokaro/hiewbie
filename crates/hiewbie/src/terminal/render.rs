@@ -23,8 +23,8 @@ pub(super) const MARK: Style = Style::new().fg(Color::Yellow).bg(Color::Magenta)
 const ADDRESS_COLUMNS: usize = 18;
 pub(super) const PANEL: Style = Style::new().fg(Color::Black).bg(Color::Gray);
 pub(super) const FOCUSED_ROW: Style = Style::new().fg(Color::White).bg(Color::Black);
-const ERROR_PANEL: Style = Style::new().fg(Color::LightYellow).bg(Color::Red);
-const ACTIVE_SEARCH_FIELD: Style = Style::new().fg(Color::White).bg(Color::Cyan);
+pub(super) const ERROR_PANEL: Style = Style::new().fg(Color::LightYellow).bg(Color::Red);
+pub(super) const ACTIVE_SEARCH_FIELD: Style = Style::new().fg(Color::White).bg(Color::Cyan);
 const ACTIVE: Style = Style::new().fg(Color::Black).bg(Color::Yellow);
 pub(super) const HEADER: Style = Style::new().fg(Color::Black).bg(Color::Cyan);
 
@@ -161,6 +161,7 @@ impl<S: ByteSource> Ui<S> {
             Some(Dialog::Help(help)) => Some(help),
             Some(Dialog::Search(search)) => search.help.as_mut(),
             Some(Dialog::Calculator) => self.calculator.help.as_mut(),
+            Some(Dialog::Assembly(input)) => input.help.as_mut(),
             _ => None,
         };
         if let Some(help) = help {
@@ -188,6 +189,9 @@ impl<S: ByteSource> Ui<S> {
         }
         match self.dialog.as_ref() {
             Some(Dialog::Input(input)) => render_prompt(frame, area, input),
+            Some(Dialog::Assembly(input)) => {
+                super::assembly::render_assembly(frame, area, input, self.assembly_select)
+            }
             Some(Dialog::Search(search)) => render_search(frame, area, search),
             Some(Dialog::SearchNotice(message)) => render_search_notice(frame, area, message),
             Some(Dialog::ReferenceMiss) => render_search_notice(frame, area, "Target not found"),
@@ -419,6 +423,10 @@ impl<S: ByteSource> Ui<S> {
             render_full_function_bar(frame, area, &labels, &[]);
             return;
         }
+        if let Some(Dialog::Assembly(input)) = self.dialog.as_ref() {
+            render_full_function_bar(frame, area, &input.function_labels(), &[]);
+            return;
+        }
         let labels = if self.editor.is_searching() {
             Some([""; 10])
         } else {
@@ -489,7 +497,17 @@ impl<S: ByteSource> Ui<S> {
                         "",
                         "",
                     ],
-                    &[2, 4, 5, 6, 7, 8, 10],
+                    if is_code
+                        && self.editor.decode_context().endian
+                            == hiewbie_core::formats::Endian::Little
+                        && self.editor.decode_context().mode.is_some_and(|mode| {
+                            mode.is_x86() || mode == hiewbie_core::instructions::DecodeMode::Aarch64
+                        })
+                    {
+                        &[4, 5, 6, 7, 8, 10]
+                    } else {
+                        &[2, 4, 5, 6, 7, 8, 10]
+                    },
                 )
             } else {
                 (
@@ -624,7 +642,7 @@ fn format_hex_byte(byte: u8, pending: Option<u8>) -> String {
     }
 }
 
-fn row(area: Rect, relative_y: u16) -> Rect {
+pub(super) fn row(area: Rect, relative_y: u16) -> Rect {
     Rect::new(area.x, area.y.saturating_add(relative_y), area.width, 1)
 }
 
@@ -679,8 +697,28 @@ pub(super) fn dialog_surface_with_tinted_shadow<'a>(
     )
 }
 
+pub(super) fn dialog_surface_with_bottom_title<'a>(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    width: u16,
+    height: u16,
+    title: impl Into<Line<'a>>,
+    style: Style,
+) -> Rect {
+    draw_dialog(
+        frame,
+        area,
+        width,
+        height,
+        title.into(),
+        style,
+        DialogFrame::BottomTitle,
+    )
+}
+
 enum DialogFrame {
     Default,
+    BottomTitle,
     WithoutClose,
     TintedShadow,
 }
@@ -735,8 +773,12 @@ fn draw_dialog(
     let border = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
-        .title(title)
         .style(style);
+    let border = if matches!(frame_style, DialogFrame::BottomTitle) {
+        border.title_bottom(title)
+    } else {
+        border.title(title)
+    };
     let content = border.inner(inset);
     frame.render_widget(border, inset);
     content

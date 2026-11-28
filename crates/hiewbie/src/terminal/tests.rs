@@ -2233,3 +2233,6 @@ fn aarch64_code_labels_backed_data_and_restores_code_after_hex() {
     assert_eq!(bytes(&mut ui), original);
     assert!(!ui.editor.document().is_dirty());
 }
+
+#[path = "assembly_tests.rs"]
+mod assembly_tests;

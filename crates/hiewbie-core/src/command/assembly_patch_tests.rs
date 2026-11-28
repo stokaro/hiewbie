@@ -241,28 +241,43 @@ fn encoding_selection_previews_each_candidate_before_commit() {
 fn selected_span_cannot_hide_an_overlapping_mapping() {
     use aarch64_images::{ARM64_BASE, ARM64_CODE_OFFSET, arm64_elf};
 
-    let mut original = arm64_elf(false);
-    original[56..58].copy_from_slice(&2_u16.to_le_bytes());
-    // A second PT_LOAD maps four interior bytes to another virtual address.
-    original[120..124].copy_from_slice(&1_u32.to_le_bytes());
-    for (at, word) in [
-        (128, ARM64_CODE_OFFSET + 8),
-        (136, ARM64_BASE + 0x1008),
-        (152, 4),
-        (160, 4),
-        (168, 4),
+    for (second_file, second_address) in [
+        (ARM64_CODE_OFFSET + 8, ARM64_BASE + 0x1008),
+        (ARM64_CODE_OFFSET + 0x30, ARM64_BASE + 8),
     ] {
-        original[at..at + 8].copy_from_slice(&word.to_le_bytes());
+        let mut original = arm64_elf(false);
+        original[56..58].copy_from_slice(&2_u16.to_le_bytes());
+        // Each image aliases interior bytes in one direction of translation.
+        original[120..124].copy_from_slice(&1_u32.to_le_bytes());
+        for (at, word) in [
+            (128, second_file),
+            (136, second_address),
+            (152, 4),
+            (160, 4),
+            (168, 4),
+        ] {
+            original[at..at + 8].copy_from_slice(&word.to_le_bytes());
+        }
+        let mut editor = Editor::new(Document::new(MemorySource::new(original.clone())), false);
+        editor.dispatch(Command::GotoEntry).unwrap();
+        editor.dispatch(Command::SetMode(ViewMode::Code)).unwrap();
+        editor.dispatch(Command::BeginEdit).unwrap();
+        assert!(
+            editor
+                .preview_assembly_patch(
+                    "nop",
+                    0,
+                    AssemblySpan::CurrentInstruction,
+                    AssemblyPadding::Preserve
+                )
+                .is_ok()
+        );
+        assert!(
+            editor
+                .preview_assembly_patch("nop", 0, AssemblySpan::Explicit(16), AssemblyPadding::Nop)
+                .is_err()
+        );
+        assert_eq!(logical(&mut editor), original);
+        assert!(!editor.document_mut().undo().unwrap());
     }
-    let mut editor = Editor::new(Document::new(MemorySource::new(original.clone())), false);
-    editor.dispatch(Command::GotoEntry).unwrap();
-    editor.dispatch(Command::SetMode(ViewMode::Code)).unwrap();
-    editor.dispatch(Command::BeginEdit).unwrap();
-    assert!(
-        editor
-            .preview_assembly_patch("nop", 0, AssemblySpan::Explicit(16), AssemblyPadding::Nop)
-            .is_err()
-    );
-    assert_eq!(logical(&mut editor), original);
-    assert!(!editor.document_mut().undo().unwrap());
 }

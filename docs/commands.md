@@ -15,6 +15,8 @@ from it. The public core exports `COMMANDS` and `Command::id()` from
 | `edit.begin` | None | Enter edit mode unless readonly |
 | `edit.discard` | None | Discard the active overlay/history and leave edit mode |
 | `edit.write-byte` | `u8` | Overwrite at the cursor and advance, clamped at EOF |
+| `edit.open-assembly` | None | Request an assembler dialog at a supported file-backed Code edit address |
+| `edit.nop-instruction` | None | Replace the selected instruction with aligned NOPs in Code edit with no block |
 | `edit.restore-byte` | None | Restore the source byte at the cursor, leaving the cursor in place |
 | `edit.restore-previous-byte` | None | Restore the preceding source byte and move there; no-op at offset zero |
 | `edit.undo` | None | Undo one pending command |
@@ -61,15 +63,42 @@ shared `parse_virtual_address` accepts full-width absolute addresses and rejects
 relative expressions. No macro/remote protocol compatibility is implied by this list.
 
 The [README key table](../README.md#current-controls) lists physical bindings.
-F9 browses in view and saves in edit mode. Edit F2 assembly and F10 truncate remain
-explicitly unavailable. F4 opens a chooser for Text, Hex and Code, while Enter
-cycles all three views. Code editing writes bytes through the same transaction
-as Hex and Text; it does not accept assembly text.
+F9 browses in view and saves in edit mode. F10 truncate remains pending.
+F4 opens a chooser for Text, Hex, and Code, and Enter cycles all three views
+while viewing.
 
 Edit F3 and Backspace use the shared source-byte restore commands. Backspace
 with an incomplete first hex digit only cancels that digit. Restores participate
 in undo/redo history without being aliases for undo. They use the transaction's
 source, rebased after each save.
+
+### Decode assembler
+
+In Decode, press F3 to enter edit mode, then F2 or Enter. The input is seeded
+from the current instruction. F4 toggles CommandSelect. With CommandSelect
+off, Enter accepts the default encoding if it fits. With CommandSelect on,
+Enter opens a list when multiple encodings are available. Move through the
+list to inspect each candidate and press Enter to accept it. After acceptance
+the editor advances by the bytes written and seeds the next instruction when
+one is available. Esc closes the active panel and restores the preceding state.
+
+Ctrl+P opens an explicit before-and-after preview from the input or the
+selected candidate. It shows the ISA, actual address, and file-backed byte span.
+W expands the span to the selected encoding length, and + and - adjust it
+in units of one x86 byte or one A64 word. P toggles NOP padding. Left and Right
+scroll the byte comparison when needed. Enter applies the reviewed bytes in
+one undoable overwrite. An encoding longer than the current instruction
+requires explicit widening. By default a shorter encoding preserves the
+remaining bytes. F9 saves after closing the input. Ctrl+Z/Y undo and redo the
+complete overwrite. Alt+F2 in Code edit fills the current instruction with NOPs
+when there is no block. F2 in view opens block export.
+
+The [x86 grammar](x86-text-assembly.md) and [AArch64 grammar](aarch64-text-assembly.md)
+list the supported ISA and instruction forms. The terminal and future adapters
+share `Editor::preview_assembly_patch` and `Editor::apply_assembly_patch`.
+The default Enter route retains immediate application for a fitting
+instruction. Explicit widening and the Ctrl+P preview are hiewbie controls.
+See the [terminal recording](evidence/native-assembly.cast).
 
 ### File browser
 

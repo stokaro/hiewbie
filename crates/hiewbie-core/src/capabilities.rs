@@ -263,7 +263,7 @@ const BUILT_INS: &[Capability<'static>] = &[
         byte_orders: &["little"],
         limitations: &[
             "One four-byte instruction with checked operands and actual address.",
-            "Coverage is limited to the documented instruction forms. Interactive assembly is pending.",
+            "Coverage is limited to the documented instruction forms and checked single-word patches.",
         ],
         evidence: &[
             "docs/aarch64-text-assembly.md",
@@ -370,7 +370,7 @@ const BUILT_INS: &[Capability<'static>] = &[
         modes: &["x86-16"],
         byte_orders: &["little"],
         limitations: &[
-            "Portable single-instruction encoding. Interactive preview and patch transactions are pending.",
+            "Portable single-instruction encoding with checked patch review and overwrite.",
             "The supported legacy forms are documented in the x86 assembly contract.",
         ],
         evidence: X86_ASSEMBLY_EVIDENCE,
@@ -383,7 +383,7 @@ const BUILT_INS: &[Capability<'static>] = &[
         modes: &["x86-32"],
         byte_orders: &["little"],
         limitations: &[
-            "Portable single-instruction encoding. Interactive preview and patch transactions are pending.",
+            "Portable single-instruction encoding with checked patch review and overwrite.",
             "The supported legacy forms and baseline AVX are documented in the x86 assembly contract.",
         ],
         evidence: X86_ASSEMBLY_EVIDENCE,
@@ -396,7 +396,7 @@ const BUILT_INS: &[Capability<'static>] = &[
         modes: &["x86-64"],
         byte_orders: &["little"],
         limitations: &[
-            "Portable single-instruction encoding. Interactive preview and patch transactions are pending.",
+            "Portable single-instruction encoding with checked patch review and overwrite.",
             "The supported legacy forms and baseline AVX are documented in the x86 assembly contract.",
         ],
         evidence: X86_ASSEMBLY_EVIDENCE,

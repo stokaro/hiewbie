@@ -56,6 +56,8 @@ pub enum Command {
     GotoBlockBoundary(BlockBoundary),
     ExportBlock,
     OpenCalculator,
+    OpenAssembly,
+    NopInstruction,
     Bookmark(BookmarkCommand),
     Move(i64),
     Goto(FileOffset),
@@ -114,6 +116,8 @@ impl Command {
             Self::GotoBlockBoundary(_) => "block.goto-boundary",
             Self::ExportBlock => "block.export",
             Self::OpenCalculator => "tools.calculator",
+            Self::OpenAssembly => "edit.open-assembly",
+            Self::NopInstruction => "edit.nop-instruction",
             Self::Bookmark(BookmarkCommand::Store(_)) => "bookmark.store",
             Self::Bookmark(BookmarkCommand::Recall) => "bookmark.recall",
             Self::Bookmark(BookmarkCommand::Select(_)) => "bookmark.select",
@@ -159,7 +163,7 @@ pub struct CommandInfo {
     pub description: &'static str,
 }
 
-/// Stable implemented command registry. Textual assembly is a separate capability.
+/// Stable implemented command registry.
 pub const COMMANDS: &[CommandInfo] = &[
     CommandInfo {
         id: "navigate.symbol",
@@ -180,6 +184,14 @@ pub const COMMANDS: &[CommandInfo] = &[
     CommandInfo {
         id: "edit.write-byte",
         description: "Overwrite the cursor byte and advance",
+    },
+    CommandInfo {
+        id: "edit.open-assembly",
+        description: "Open the assembler at the current Code edit address",
+    },
+    CommandInfo {
+        id: "edit.nop-instruction",
+        description: "Replace the current instruction with architecture-appropriate NOPs",
     },
     CommandInfo {
         id: "edit.restore-byte",
@@ -370,6 +382,7 @@ pub enum Effect {
     Save,
     ExportBlock(FileRange),
     OpenCalculator,
+    OpenAssembly,
 }
 
 /// Shared view, cursor, and edit-state semantics around a document.
@@ -744,6 +757,22 @@ impl<S: ByteSource> Editor<S> {
                     self.document.discard();
                     self.edit_session = None;
                 }
+            }
+            Command::OpenAssembly => {
+                self.assembly_site()?;
+                return Ok(Effect::OpenAssembly);
+            }
+            Command::NopInstruction => {
+                if self.block_selection().is_some() {
+                    return Err(Error::Block("NOP applies only without a marked block"));
+                }
+                let patch = self.preview_assembly_patch(
+                    "nop",
+                    0,
+                    AssemblySpan::CurrentInstruction,
+                    AssemblyPadding::Nop,
+                )?;
+                self.apply_assembly_patch(&patch)?;
             }
             Command::WriteByte(byte) => {
                 self.require_editing()?;
