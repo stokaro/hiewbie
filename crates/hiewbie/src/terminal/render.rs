@@ -336,9 +336,12 @@ impl<S: ByteSource> Ui<S> {
                         " 0..6 / Arrows select | Enter apply | L/B/E endian | R raw | V base | Esc ",
                     )
                 }
-                Some(Dialog::Analysis(_)) => Some(
-                    " F5 entry | F6 regions | F4 fields | S slices | Enter follow | Esc close ",
-                ),
+                Some(Dialog::Analysis(dialog)) if dialog.page.is_symbols() => {
+                    Some(" F7 imports | F9 exports | N symbols | Enter target | R record | Esc ")
+                }
+                Some(Dialog::Analysis(_)) => {
+                    Some(" F5 entry | F6 regions | F7 imports | F9 exports | N symbols | Esc ")
+                }
                 Some(Dialog::Input(input)) if input.kind == PromptKind::RawBase => {
                     Some(" Enter sets raw base | Ctrl+U clear | Esc cancel ")
                 }
@@ -412,7 +415,7 @@ fn render_help(frame: &mut Frame<'_>, area: Rect) {
         "Profile 0 Auto; 1..3 x86 16/32/64; 4 ARM; 5 Thumb; 6 AArch64",
         "      L/B/E little/big/automatic endian; R raw; V raw base",
         "      Big-endian decode unsupported; raw bytes remain available.",
-        "Headers F5 entry; F6 regions; F4 fields; S slices; Enter follows",
+        "Headers F5 entry; F6 regions; F7 imports; F9 exports; N symbols",
         "Edit  F9/Ctrl+S save; Esc discard; Tab hex/ASCII; Ctrl+Z/Y undo/redo",
         "      F3 restores current byte; Backspace restores previous byte.",
         "      Two digits commit one byte; Backspace cancels a digit first.",

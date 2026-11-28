@@ -3,6 +3,7 @@ use std::fmt;
 use crate::analysis::{Analysis, Location, analysis_error};
 use crate::formats::{Endian, Executable, VirtualAddress};
 use crate::instructions::DecodeMode;
+use crate::symbols::{SymbolTable, SymbolTarget};
 use crate::{ByteSource, Document, Error, FileOffset};
 use crate::{CodeRow, DecodeContext, MAX_CODE_ROWS, parse_goto, parse_virtual_address};
 
@@ -39,6 +40,8 @@ pub enum Command {
     GotoVirtual(VirtualAddress),
     GotoEntry,
     GotoRegion(usize),
+    GotoSymbol(usize),
+    GotoSymbolRecord(usize),
     SelectSlice(usize),
     SetDecodeMode(Option<DecodeMode>),
     SetEndian(Option<Endian>),
@@ -70,6 +73,8 @@ impl Command {
             Self::GotoVirtual(_) => "navigate.virtual",
             Self::GotoEntry => "navigate.entry",
             Self::GotoRegion(_) => "navigate.region",
+            Self::GotoSymbol(_) => "navigate.symbol",
+            Self::GotoSymbolRecord(_) => "navigate.symbol-record",
             Self::SelectSlice(_) => "analysis.select-slice",
             Self::SetDecodeMode(_) => "analysis.set-architecture",
             Self::SetEndian(_) => "analysis.set-endian",
@@ -94,6 +99,14 @@ pub struct CommandInfo {
 
 /// Stable implemented command registry. Textual assembly is a separate capability.
 pub const COMMANDS: &[CommandInfo] = &[
+    CommandInfo {
+        id: "navigate.symbol",
+        description: "Follow a file-backed symbol definition or import pointer slot",
+    },
+    CommandInfo {
+        id: "navigate.symbol-record",
+        description: "Follow the backing metadata record for a symbol",
+    },
     CommandInfo {
         id: "edit.begin",
         description: "Begin a pending overwrite transaction",
@@ -257,6 +270,27 @@ impl<S: ByteSource> Editor<S> {
         self.analysis.refresh(&mut self.document);
     }
 
+    /// Read bounded symbol tables only when requested, independently of Code.
+    pub fn refresh_symbols(&mut self) {
+        self.analysis.refresh_symbols(&mut self.document);
+    }
+
+    #[must_use]
+    pub fn symbols(&self) -> Option<&SymbolTable> {
+        self.analysis
+            .symbols
+            .as_ref()
+            .filter(|_| self.analysis.is_current(self.document.generation()))
+    }
+
+    #[must_use]
+    pub fn symbol_problem(&self) -> Option<&str> {
+        self.analysis
+            .symbol_problem
+            .as_deref()
+            .filter(|_| self.analysis.is_current(self.document.generation()))
+    }
+
     #[must_use]
     pub fn executable(&self) -> Option<&Executable> {
         self.analysis
@@ -350,18 +384,21 @@ impl<S: ByteSource> Editor<S> {
                 self.cursor = self.clamp(offset);
             }
             Command::Goto(offset) => {
+                self.analysis.symbol_mode = None;
                 self.analysis.walk.clear();
                 self.cursor = self.clamp(offset.get());
             }
             Command::GotoVirtual(address) => {
                 self.refresh_analysis();
                 let offset = self.analysis.virtual_offset(address, self.document.len())?;
+                self.analysis.symbol_mode = None;
                 self.analysis.walk.clear();
                 self.cursor = offset;
             }
             Command::GotoEntry => {
                 self.refresh_analysis();
                 let offset = self.analysis.entry_offset(self.document.len())?;
+                self.analysis.symbol_mode = None;
                 self.analysis.walk.clear();
                 self.cursor = offset;
             }
@@ -375,14 +412,60 @@ impl<S: ByteSource> Editor<S> {
                     return Err(Error::Analysis("this region is not file-backed".into()));
                 }
                 let offset = region.file.offset;
+                self.analysis.symbol_mode = None;
                 self.analysis.walk.clear();
                 self.cursor = offset;
             }
             Command::SelectSlice(index) => {
                 self.cursor = self.analysis.select_slice(&mut self.document, index)?;
             }
+            Command::GotoSymbol(index) | Command::GotoSymbolRecord(index) => {
+                self.refresh_symbols();
+                let table = self.symbols().ok_or_else(|| {
+                    analysis_error(
+                        self.symbol_problem()
+                            .unwrap_or("symbol tables are unavailable"),
+                    )
+                })?;
+                let symbol = table
+                    .entries
+                    .get(index)
+                    .ok_or_else(|| analysis_error("no such symbol record"))?;
+                let target = symbol.target;
+                let offset = if matches!(command, Command::GotoSymbolRecord(_)) {
+                    symbol.record.offset
+                } else {
+                    if target == SymbolTarget::Unavailable {
+                        return Err(analysis_error(
+                            "this symbol has no file-backed target; inspect its metadata record instead",
+                        ));
+                    }
+                    target
+                        .file_offset(
+                            self.executable().ok_or_else(|| {
+                                analysis_error("executable mapping is unavailable")
+                            })?,
+                        )
+                        .map_err(analysis_error)?
+                };
+                if offset.get() >= self.document.len() {
+                    return Err(analysis_error("symbol position is outside the document"));
+                }
+                self.analysis.symbol_mode = if matches!(command, Command::GotoSymbol(_)) {
+                    match target {
+                        SymbolTarget::Arm(_) => Some(DecodeMode::Arm),
+                        SymbolTarget::Thumb(_) => Some(DecodeMode::Thumb),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                self.analysis.walk.clear();
+                self.cursor = offset;
+            }
             Command::SetDecodeMode(mode) => {
                 self.analysis.interpretation.mode = mode;
+                self.analysis.symbol_mode = None;
                 self.analysis.walk.clear();
             }
             Command::SetEndian(endian) => {
@@ -466,9 +549,12 @@ impl<S: ByteSource> Editor<S> {
         self.analysis.remember(Location {
             offset: self.cursor,
             interpretation: self.analysis.interpretation,
+            symbol_mode: self.analysis.symbol_mode,
+            generation: self.document.generation(),
         });
         if self.decode_context().mode != Some(target_mode) {
             self.analysis.interpretation.mode = Some(target_mode);
+            self.analysis.symbol_mode = None;
         }
         self.analysis.walk.clear();
         self.cursor = offset;
@@ -490,6 +576,11 @@ impl<S: ByteSource> Editor<S> {
         self.analysis.interpretation = location.interpretation;
         self.analysis.invalidate();
         self.refresh_analysis();
+        if location.generation == self.document.generation()
+            && self.analysis.is_current(self.document.generation())
+        {
+            self.analysis.symbol_mode = location.symbol_mode;
+        }
         self.analysis.history.pop_back();
         self.cursor = location.offset;
         Ok(())

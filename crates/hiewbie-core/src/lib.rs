@@ -13,6 +13,7 @@ pub mod formats;
 pub mod instructions;
 mod offset;
 mod search;
+pub mod symbols;
 
 pub use analysis::{CodeRow, DecodeContext, MAX_CODE_ROWS, MAX_NAVIGATION_HISTORY};
 pub use command::{COMMANDS, Command, CommandInfo, Editor, Effect, ViewMode};
@@ -26,5 +27,10 @@ pub use search::{MAX_SEARCH_PATTERN_BYTES, Search, SearchProgress};
 
 #[cfg(test)]
 mod analysis_tests;
+#[cfg(test)]
+#[path = "../../../tests/fixtures/symbol_images.rs"]
+mod symbol_fixtures;
+#[cfg(test)]
+mod symbol_navigation_tests;
 #[cfg(test)]
 mod tests;

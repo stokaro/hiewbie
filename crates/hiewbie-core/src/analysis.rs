@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 
 use crate::formats::{self, Endian, Executable, Machine, VirtualAddress};
 use crate::instructions::{DecodeMode, DecodedInstruction, decode_one};
+use crate::symbols::{self, SymbolTable};
 use crate::{ByteSource, Document, Error, FileOffset};
 
 /// Maximum instructions requested in one viewport/navigation operation.
@@ -45,13 +46,20 @@ pub(crate) struct Interpretation {
 pub(crate) struct Location {
     pub offset: FileOffset,
     pub interpretation: Interpretation,
+    pub symbol_mode: Option<DecodeMode>,
+    pub generation: u64,
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct Analysis {
     pub interpretation: Interpretation,
+    /// A navigation hint from parsed symbols, below an explicit user override.
+    pub symbol_mode: Option<DecodeMode>,
     pub executable: Option<Executable>,
     pub problem: Option<String>,
+    pub symbols: Option<SymbolTable>,
+    pub symbol_problem: Option<String>,
+    symbols_loaded: bool,
     generation: Option<u64>,
     pub numbered_window: Option<usize>,
     pub history: VecDeque<Location>,
@@ -60,9 +68,11 @@ pub(crate) struct Analysis {
 
 impl Analysis {
     pub fn invalidate(&mut self) {
+        self.symbol_mode = None;
         self.generation = None;
         self.executable = None;
         self.problem = None;
+        self.clear_symbols();
         self.walk.clear();
     }
 
@@ -70,8 +80,10 @@ impl Analysis {
         if document.generation() != u64::MAX && self.generation == Some(document.generation()) {
             return;
         }
+        self.symbol_mode = None;
         self.executable = None;
         self.problem = None;
+        self.clear_symbols();
         self.walk.clear();
         if !self.interpretation.raw {
             match formats::inspect(document, self.interpretation.slice) {
@@ -80,6 +92,31 @@ impl Analysis {
             }
         }
         self.generation = Some(document.generation());
+    }
+
+    fn clear_symbols(&mut self) {
+        self.symbols = None;
+        self.symbol_problem = None;
+        self.symbols_loaded = false;
+    }
+
+    pub fn refresh_symbols<S: ByteSource>(&mut self, document: &mut Document<S>) {
+        self.refresh(document);
+        if self.symbols_loaded && self.is_current(document.generation()) {
+            return;
+        }
+        self.clear_symbols();
+        self.symbols_loaded = true;
+        let Some(image) = self.executable.as_ref() else {
+            self.symbol_problem = Some(self.problem.clone().unwrap_or_else(|| {
+                "no executable symbol tables are available in raw interpretation".into()
+            }));
+            return;
+        };
+        match symbols::inspect(document, image) {
+            Ok(symbols) => self.symbols = Some(symbols),
+            Err(error) => self.symbol_problem = Some(error.to_string()),
+        }
     }
 
     pub fn is_current(&self, generation: u64) -> bool {
@@ -113,7 +150,7 @@ impl Analysis {
             Machine::Other(_) => None,
         });
         DecodeContext {
-            mode: self.interpretation.mode.or(inferred),
+            mode: self.interpretation.mode.or(self.symbol_mode).or(inferred),
             endian: self
                 .interpretation
                 .endian
@@ -192,8 +229,10 @@ impl Analysis {
         self.interpretation.slice = Some(index);
         self.interpretation.raw = false;
         self.interpretation.base = None;
+        self.symbol_mode = None;
         self.executable = Some(image);
         self.problem = None;
+        self.clear_symbols();
         self.generation = Some(document.generation());
         self.walk.clear();
         Ok(offset)

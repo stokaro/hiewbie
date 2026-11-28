@@ -137,6 +137,16 @@ The `object` crate documents a trusted-input scope; using it does not remove the
 need to assess arbitrary-input behavior. See the source links in
 [references-and-reuse.md](references-and-reuse.md).
 
+Symbol inspection is a separate on-demand layer over the same `Document` and
+selected `Executable`. It owns its metadata, validates complete table/string
+spans, and has independent cumulative read, entry, name and retained-text limits.
+Its cache keys are document generation and selected image; decoder overrides do
+not reparse format tables. Failure retains raw bytes and usable header mappings.
+The model distinguishes virtual definitions, section-relative file targets,
+import pointer slots, unresolved names and exact source records. Frontends use
+shared target/record commands. The [symbol ADR](adr/0005-symbol-navigation.md)
+records current PE/ELF/Mach-O coverage and explicit loader-metadata gaps.
+
 ## 6. Frontend behavior
 
 Represent input as semantic events and dispatch through a versioned command
@@ -215,5 +225,7 @@ Implemented decisions: [bounded storage and saving](adr/0001-document-storage.md
 [build-target strategies](adr/0003-build-targets.md). The
 [analysis decision](adr/0004-analysis-backends.md) records selected readers and
 decoders, concrete experiments, limits and the remaining text-assembly gate.
+The [symbol decision](adr/0005-symbol-navigation.md) adds lazy bounded table
+interpretation and target/record navigation without a new dependency.
 M0, M1 and M2 remain partial until their full exit criteria and affected platform
 coverage are satisfied.

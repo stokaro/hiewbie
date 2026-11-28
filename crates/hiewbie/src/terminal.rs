@@ -2,6 +2,7 @@
 
 mod analysis;
 mod render;
+mod symbols;
 #[cfg(test)]
 mod tests;
 

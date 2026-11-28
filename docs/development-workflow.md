@@ -44,8 +44,13 @@ script uses Python's standard library and generated temporary fixtures. Its
 `--record PATH` option records the successful edit workflow as asciinema v2;
 `--record-analysis PATH` records the generated PE header/entry/Code/branch/return
 workflow followed by dotted-VA navigation and an exact one-byte save. The
+`--record-symbols PATH` option records generated PE import-slot, export-target
+and forwarded-export record navigation with exact byte-save assertions. All six
+PTY scenarios run in the existing native Unix CI jobs even without recording
+options. The symbol fixture contains no external executable bytes. The
 checked-in [editing](evidence/native-editor.cast) and
-[analysis](evidence/executable-analysis.cast) recordings are evidence of those
+[analysis](evidence/executable-analysis.cast) recordings, together with the
+[symbol navigation](evidence/symbol-navigation.cast) recording, are evidence of those
 scenarios; byte/state assertions and cleanup checks remain the regression gate.
 The PTY harness keeps a supervisor alive as the controlling session leader
 while the editor exits. It checks the editor's exact exit status, restored

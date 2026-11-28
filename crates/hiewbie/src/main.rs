@@ -1,5 +1,6 @@
 //! Native command-line entry point. File bytes and commands live in the shared core.
 
+mod symbol_output;
 mod terminal;
 
 use std::env;
@@ -11,6 +12,7 @@ use std::process::ExitCode;
 use hiewbie::file::FileSource;
 use hiewbie_core::formats::{Endian, VirtualAddress};
 use hiewbie_core::instructions::DecodeMode;
+use hiewbie_core::symbols::SymbolKind;
 use hiewbie_core::{ByteSource, Command, Document, Editor, FileOffset, parse_virtual_address};
 
 const HELP: &str = "hiewbie - a HIEW-inspired terminal hex editor and binary inspector
@@ -22,6 +24,9 @@ Options:
       --dump          Print at most 16 hex rows without requiring a terminal
       --headers       Print bounded executable fields, load mappings, and slices
       --disassemble   Print at most 32 code rows without requiring a terminal
+      --symbols       Print at most 64 parsed symbols, imports, and exports
+      --imports       Print at most 64 parsed imports
+      --exports       Print at most 64 parsed exports
       --offset VALUE  Start at a file offset, or an absolute VA prefixed by .
       --entry         Start at the parsed entry point; conflicts with --offset
       --arch MODE     auto, x86-16, x86-32, x86-64, arm, thumb, or aarch64
@@ -33,7 +38,7 @@ Options:
   -V, --version        Print the version
       --              Treat remaining arguments as filenames
 
-The dump/headers/disassemble output modes are mutually exclusive.
+The dump/headers/disassemble/symbols/imports/exports modes are mutually exclusive.
 Raw/base interpretation cannot be combined with --slice.
 
 Examples:
@@ -42,6 +47,8 @@ Examples:
   hiewbie --dump --offset 0x100 program.bin
   hiewbie --dump --offset 256t program.bin
   hiewbie --headers program.exe
+  hiewbie --imports program.exe
+  hiewbie --symbols --slice 1 universal-macho
   hiewbie --disassemble --entry program.exe
   hiewbie --disassemble --raw --arch x86-64 --base 0x400000 code.bin
   hiewbie --disassemble --slice 1 --entry universal-macho
@@ -52,16 +59,19 @@ View: Enter cycles Hex/Text/Code; F4 selects a mode; F3/Ctrl+E begins editing;
 Code: F8/Ctrl+O shows headers; Shift+F1/Ctrl+A opens the analysis profile.
       Ctrl+F1/Ctrl+B cycles x86 bitness; / resynchronizes; Backspace returns.
       The profile selects architecture, instruction byte order, and raw base.
-      Headers then S selects a Mach-O slice. Branch numbers follow, never execute.
+      Headers: S selects a slice; F7 imports; F9 exports; N all parsed symbols.
+      Symbol tables: Enter follows target bytes; R follows the metadata record.
+      Branch numbers follow, never execute.
 Edit: F9/Ctrl+S saves; Esc discards; Tab switches hex/ASCII entry;
       F3 restores the original current byte; Backspace restores the previous;
       Ctrl+Z/Ctrl+Y undo/redo. A hex byte is applied after both digits.
       Backspace cancels an incomplete hex digit first.
 F1 opens help. Esc exits from view mode. Bracketed paste is rejected.
 
-PE/ELF/Mach-O inspection currently covers headers and load mappings.
-Symbol/import/relocation browsing, textual assembly, blocks, and multiple
-files remain planned. Big-endian instruction decoding is explicitly unsupported.
+PE/ELF/Mach-O inspection covers headers, load mappings, and selected symbol tables.
+Symbols are loaded on request; coverage notes identify unparsed loader metadata.
+Relocations, textual assembly, blocks, and multiple files remain planned.
+Big-endian instruction decoding is explicitly unsupported.
 ";
 
 const MAX_HEADER_ITEMS: usize = 64;
@@ -73,6 +83,9 @@ enum OutputMode {
     Dump,
     Headers,
     Disassemble,
+    Symbols,
+    Imports,
+    Exports,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -123,15 +136,21 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
                     read_only = true;
                     continue;
                 }
-                Some("--dump" | "--headers" | "--disassemble") => {
+                Some(
+                    "--dump" | "--headers" | "--disassemble" | "--symbols" | "--imports"
+                    | "--exports",
+                ) => {
                     let mode = match arg.to_str() {
                         Some("--dump") => OutputMode::Dump,
                         Some("--headers") => OutputMode::Headers,
+                        Some("--symbols") => OutputMode::Symbols,
+                        Some("--imports") => OutputMode::Imports,
+                        Some("--exports") => OutputMode::Exports,
                         _ => OutputMode::Disassemble,
                     };
                     if output.replace(mode).is_some() {
                         return Err(
-                            "--dump, --headers, and --disassemble are mutually exclusive".into(),
+                            "--dump, --headers, --disassemble, --symbols, --imports, and --exports are mutually exclusive".into(),
                         );
                     }
                     continue;
@@ -298,6 +317,13 @@ fn run(options: Options) -> Result<(), String> {
             OutputMode::Dump => write_dump(editor.document_mut(), offset, &mut output),
             OutputMode::Headers => write_headers(&mut editor, &mut output),
             OutputMode::Disassemble => write_disassembly(&mut editor, &mut output),
+            OutputMode::Symbols => symbol_output::write(&mut editor, None, &mut output),
+            OutputMode::Imports => {
+                symbol_output::write(&mut editor, Some(SymbolKind::Import), &mut output)
+            }
+            OutputMode::Exports => {
+                symbol_output::write(&mut editor, Some(SymbolKind::Export), &mut output)
+            }
             OutputMode::Interactive => unreachable!(),
         };
         return match result {
@@ -307,7 +333,7 @@ fn run(options: Options) -> Result<(), String> {
         };
     }
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
-        return Err("interactive editing requires terminal input and output; use --dump, --headers, or --disassemble for noninteractive inspection".into());
+        return Err("interactive editing requires terminal input and output; use --dump, --headers, --disassemble, --symbols, --imports, or --exports for noninteractive inspection".into());
     }
     terminal::run(editor).map_err(|error| format!("terminal error: {error}"))
 }
@@ -397,7 +423,7 @@ fn write_headers<S: ByteSource>(editor: &mut Editor<S>, output: &mut impl Write)
     }
     writeln!(
         output,
-        "Scope: image headers and load mappings; symbols/imports/relocations are not interpreted."
+        "Scope: image headers and load mappings; use --symbols, --imports, or --exports for on-demand tables and their coverage notes. Relocations are not interpreted."
     )
 }
 
@@ -610,6 +636,28 @@ mod tests {
             &["--base=+100", "file"],
         ] {
             assert!(args(invalid).is_err(), "accepted {invalid:?}");
+        }
+        for first in [
+            "--dump",
+            "--headers",
+            "--disassemble",
+            "--symbols",
+            "--imports",
+            "--exports",
+        ] {
+            for second in [
+                "--dump",
+                "--headers",
+                "--disassemble",
+                "--symbols",
+                "--imports",
+                "--exports",
+            ] {
+                assert!(
+                    args(&[first, second, "file"]).is_err(),
+                    "accepted {first} with {second}"
+                );
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 # References and source reuse
 
-Baseline research snapshot: 2026-11-27; analysis selection updated 2026-11-28.
+Baseline research snapshot: 2026-11-27; analysis and symbol readers updated
+2026-11-28.
 These sources describe upstream behavior or inform
 implementation choices; they are not evidence that hiewbie already implements it.
 
@@ -67,6 +68,9 @@ wrapper's license does not replace the native engine's license. The selected
 portable decoders and bounded format readers are documented in
 [ADR 0004](adr/0004-analysis-backends.md), including primary PE/ELF/Mach-O
 specifications, exact source commits, feature choices, and known limitations.
+The independently written, on-demand symbol readers and their separate resource
+budgets are documented in [ADR 0005](adr/0005-symbol-navigation.md). They add no
+parser dependency or bundled upstream implementation.
 
 - [Ratatui](https://github.com/ratatui/ratatui) and [Crossterm](https://github.com/crossterm-rs/crossterm): selected terminal components.
 - [iced-x86](https://github.com/icedland/iced) and its [CodeAssembler API](https://docs.rs/iced-x86/latest/iced_x86/code_asm/index.html): selected x86 decoder; the assembler API is disabled and does not itself parse user-entered assembly text.
@@ -77,6 +81,31 @@ specifications, exact source commits, feature choices, and known limitations.
 - [Keystone](https://github.com/keystone-engine/keystone) and its [FOSS exception](https://github.com/keystone-engine/keystone/blob/master/EXCEPTIONS-CLIENT): GPLv2 plus exception, not MIT; MIT is listed in the exception, but all applicable conditions and distribution requirements need evaluation.
 - [LLVM MC](https://llvm.org/docs/CommandGuide/llvm-mc.html) and [LLVM licensing policy](https://llvm.org/docs/DeveloperPolicy.html): text assembly candidate; evaluate deployment size and all required targets.
 - [Kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/): optional richer key-event negotiation, with legacy fallback.
+
+## Symbol-table format references and fixture provenance
+
+The symbol-reader work uses published layout facts from these primary sources:
+
+| Source | Inspected scope |
+| --- | --- |
+| Microsoft [PE/COFF specification](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format) | Ordinary import descriptors, lookup/IAT metadata, name/ordinal imports, export aliases, and bounded forwarders |
+| System V gABI 4.2 [sections](https://gabi.xinuos.com/v42/elf/03-sheader.html), [string tables](https://gabi.xinuos.com/v42/elf/04-strtab.html), and [symbol tables](https://gabi.xinuos.com/v42/elf/05-symtab.html) | ELF32/64 section-backed symbol records, links, bindings, visibility, values, and string boundaries |
+| Arm [ELF32 symbol values](https://github.com/ARM-software/abi-aa/blob/main/aaelf32/aaelf32.rst#553symbol-values), consulted 2026-11-28 | ARM/Thumb instruction-state encoding in function symbol values |
+| Apple XNU [loader.h](https://github.com/apple-oss-distributions/xnu/blob/43a90889846e00bfb5cf1d255cdc0a701a1e05a4/EXTERNAL_HEADERS/mach-o/loader.h) and [nlist.h](https://github.com/apple-oss-distributions/xnu/blob/43a90889846e00bfb5cf1d255cdc0a701a1e05a4/EXTERNAL_HEADERS/mach-o/nlist.h) at `43a90889846e00bfb5cf1d255cdc0a701a1e05a4` | Mach-O section/nlist layouts, symbol flags, dylib dependency ordinals, and explicit dyld-metadata gaps |
+
+The [readers](../crates/hiewbie-core/src/symbols.rs), their per-format tests, and
+the shared [fixture generators](../tests/fixtures/symbol_images.rs) are original
+hiewbie code. Tests construct byte arrays or sparse byte sources from documented
+integer fields; no upstream header text, binary samples, proprietary HIEW code,
+or manual text is copied. This work introduces no new dependency or third-party
+source distribution. The existing MIT licensing of hiewbie's original code
+continues to apply.
+
+Fixture coverage establishes the implemented table subset and failure handling.
+It does not establish a complete PE loader inventory, sectionless ELF dynamic
+symbol resolution, dyld export/binding reconstruction, native-platform execution,
+or original-HIEW runtime parity. Those limitations and the distinction between
+metadata records and navigable targets are explicit in ADR 0005.
 
 ## Provenance policy
 
