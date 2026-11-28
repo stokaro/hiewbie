@@ -89,6 +89,9 @@ impl<S: ByteSource> Ui<S> {
             Some(BinaryFormat::Pe64) => "PE+",
             Some(BinaryFormat::Elf32 | BinaryFormat::Elf64) => "ELF",
             Some(BinaryFormat::MachO32 | BinaryFormat::MachO64) => "M-O",
+            Some(BinaryFormat::Te32) => "TE",
+            Some(BinaryFormat::Te64) => "TE64",
+            Some(BinaryFormat::TeUnknown) => "TE?",
             None => "",
         };
         let detail = format!("     {mode:>3}{address:>18}");

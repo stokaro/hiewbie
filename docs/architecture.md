@@ -150,7 +150,7 @@ Selected terminal stack and remaining dependency candidates:
 | Terminal | Ratatui 0.30.2 / Crossterm 0.29.0 selected | [Input ADR](adr/0002-terminal-input.md); enhanced keys and ConPTY remain gaps |
 | x86 | iced-x86 1.22.0 selected | Bounded 16/32/64 decoder; text assembly and exhaustive extension coverage remain separate |
 | ARM families | yaxpeax-arm 0.5.0 / yaxpeax-arch 0.3.3 selected | Strict ARM/Thumb/AArch64 decoding; revision, extension, endian and IT-state gaps remain explicit |
-| Executable parsing | Focused bounded readers selected | PE/ELF/Mach-O headers and mappings; full symbols/sections/legacy interpretation remains incomplete |
+| Executable parsing | Focused bounded readers selected | PE/ELF/Mach-O/TE headers and mappings; bounded Mach-O/TE structure records; remaining directories, loader metadata and legacy families stay explicit |
 | Text assembly | In-tree bounded parsers, iced-x86 1.22.0 x86 encoder, and in-tree AArch64 word encoder | [ADR 0006](adr/0006-text-assembler-selection.md), [x86 core](x86-text-assembly.md), and [AArch64 core](aarch64-text-assembly.md). Editing integration remains in #78 |
 
 The portable [capability registry](capabilities.md) reports the compiled backend
@@ -175,6 +175,21 @@ The model distinguishes virtual definitions, section-relative file targets,
 import pointer slots, unresolved names and exact source records. Frontends use
 shared target/record commands. The [symbol ADR](adr/0005-symbol-navigation.md)
 records current PE/ELF/Mach-O coverage and explicit loader-metadata gaps.
+
+The [format-record model](format-records.md) adds bounded source and target spans
+for Mach-O load commands, sections and relocations, and TE sections, relocations
+and debug directories. Each record has an interpreted/unsupported status and a
+precise detail. A complete target span must be validated before it is exposed;
+unsupported semantics preserve raw record navigation. The two shared navigation
+commands validate the originating logical generation and selected slice before
+moving the cursor. Terminal and paged headless output consume the same owned
+records. This does not implement structural rebuilding, relocation application
+or a complete generic structure editor.
+
+ARM thread-state metadata retains the original PC and a separate CPSR-derived
+execution state. A malformed misaligned thread PC is rejected during navigation.
+ELF/PE/TE pointer-style entry metadata can carry a Thumb state bit; only that
+pointer representation is normalized for file navigation.
 
 The x86 reference scan runs on demand against the same logical bytes, selected
 image, and decoder profile. It checks one contiguous address span per step and

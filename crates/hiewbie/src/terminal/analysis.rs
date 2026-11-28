@@ -30,6 +30,7 @@ pub(super) enum AnalysisPage {
     Overview,
     Regions,
     Fields,
+    Structures,
     Slices,
     Profiles,
     Symbols,
@@ -54,6 +55,7 @@ impl AnalysisPage {
 pub(super) struct AnalysisDialog {
     pub page: AnalysisPage,
     pub selected: usize,
+    pub detail_scroll: usize,
 }
 
 impl<S: ByteSource> Ui<S> {
@@ -63,7 +65,11 @@ impl<S: ByteSource> Ui<S> {
         if page.is_symbols() {
             self.editor.refresh_symbols();
         }
-        self.dialog = Some(Dialog::Analysis(AnalysisDialog { page, selected: 0 }));
+        self.dialog = Some(Dialog::Analysis(AnalysisDialog {
+            page,
+            selected: 0,
+            detail_scroll: 0,
+        }));
     }
 
     pub(super) fn cycle_bitness(&mut self) -> UiAction {
@@ -102,6 +108,7 @@ impl<S: ByteSource> Ui<S> {
             AnalysisPage::Overview | AnalysisPage::Profiles => 0,
             AnalysisPage::Regions => executable.regions.len(),
             AnalysisPage::Fields => executable.fields.len(),
+            AnalysisPage::Structures => executable.records.len(),
             AnalysisPage::Slices => executable.slices.len(),
             AnalysisPage::Symbols | AnalysisPage::Imports | AnalysisPage::Exports => 0,
         })
@@ -139,6 +146,7 @@ impl<S: ByteSource> Ui<S> {
         }
         let count = self.analysis_count(dialog.page);
         dialog.selected = dialog.selected.min(count.saturating_sub(1));
+        let previous = (dialog.page, dialog.selected);
         let mut close = false;
         match key.code {
             KeyCode::Up => dialog.selected = dialog.selected.saturating_sub(1),
@@ -157,6 +165,20 @@ impl<S: ByteSource> Ui<S> {
             }
             KeyCode::Home => dialog.selected = 0,
             KeyCode::End => dialog.selected = count.saturating_sub(1),
+            KeyCode::Left if dialog.page == AnalysisPage::Structures => {
+                dialog.detail_scroll = dialog.detail_scroll.saturating_sub(48);
+            }
+            KeyCode::Right if dialog.page == AnalysisPage::Structures => {
+                let length = self
+                    .editor
+                    .executable()
+                    .and_then(|image| image.records.get(dialog.selected))
+                    .map_or(0, |record| escaped_text(&record.detail).chars().count());
+                dialog.detail_scroll = dialog
+                    .detail_scroll
+                    .saturating_add(48)
+                    .min(length.saturating_sub(1));
+            }
             KeyCode::Char(number @ '0'..='6') if dialog.page == AnalysisPage::Profiles => {
                 dialog.selected = (number as u8 - b'0') as usize;
             }
@@ -221,6 +243,22 @@ impl<S: ByteSource> Ui<S> {
                 dialog.page = AnalysisPage::Symbols;
                 dialog.selected = 0;
             }
+            KeyCode::Char('t' | 'T') if dialog.page != AnalysisPage::Profiles => {
+                dialog.page = AnalysisPage::Structures;
+                dialog.selected = 0;
+            }
+            KeyCode::Char('r' | 'R') if dialog.page == AnalysisPage::Structures => {
+                if let Some(selection) = self
+                    .editor
+                    .executable()
+                    .and_then(|image| image.structure_ref(dialog.selected))
+                {
+                    close = self.analysis_dispatch(
+                        Command::GotoStructureRecord(selection),
+                        "Moved to exact structure record bytes; no repair is performed",
+                    );
+                }
+            }
             KeyCode::Char('r' | 'R') if dialog.page.is_symbols() => {
                 if let Some(index) = self.symbol_index(dialog.page, dialog.selected) {
                     close = self.analysis_dispatch(
@@ -249,6 +287,18 @@ impl<S: ByteSource> Ui<S> {
                         "Moved to the selected region's file bytes",
                     );
                 }
+                AnalysisPage::Structures if count > 0 => {
+                    if let Some(selection) = self
+                        .editor
+                        .executable()
+                        .and_then(|image| image.structure_ref(dialog.selected))
+                    {
+                        close = self.analysis_dispatch(
+                            Command::GotoStructure(selection),
+                            "Moved to the structure's checked target bytes",
+                        );
+                    }
+                }
                 AnalysisPage::Fields if count > 0 => {
                     if let Some(offset) = self
                         .editor
@@ -276,6 +326,9 @@ impl<S: ByteSource> Ui<S> {
             _ => {}
         }
         if !close {
+            if previous != (dialog.page, dialog.selected) {
+                dialog.detail_scroll = 0;
+            }
             if dialog.page.is_symbols() {
                 self.editor.refresh_symbols();
             }
@@ -293,13 +346,20 @@ impl<S: ByteSource> Ui<S> {
             self.render_symbol_dialog(frame, area, dialog);
             return;
         }
+        if dialog.page == AnalysisPage::Structures {
+            self.render_structure_dialog(frame, area, dialog);
+            return;
+        }
         let title = match dialog.page {
             AnalysisPage::Overview => " Executable headers ",
             AnalysisPage::Regions => " Sections / load regions ",
             AnalysisPage::Fields => " Header fields and backing bytes ",
             AnalysisPage::Slices => " Universal Mach-O slices ",
             AnalysisPage::Profiles => " Decoder and raw addressing ",
-            AnalysisPage::Symbols | AnalysisPage::Imports | AnalysisPage::Exports => unreachable!(),
+            AnalysisPage::Structures
+            | AnalysisPage::Symbols
+            | AnalysisPage::Imports
+            | AnalysisPage::Exports => unreachable!(),
         };
         let content = dialog_surface(frame, area, 96, 23, title, PANEL);
         let available = content.height.saturating_sub(5) as usize;
@@ -353,7 +413,7 @@ impl<S: ByteSource> Ui<S> {
                 "F5 entry / F6 regions / F4 fields / S slices / F8 overview",
             ));
             lines.push(Line::raw(
-                "F7 imports / F9 exports / N symbols; Enter follows; Esc closes",
+                "F7 imports / F9 exports / N symbols / T structures; Esc closes",
             ));
             match self.editor.executable() {
                 Some(executable) => {
@@ -368,7 +428,11 @@ impl<S: ByteSource> Ui<S> {
                                     "Format {} | machine {} | {} bit | {} endian",
                                     executable.format,
                                     executable.machine,
-                                    executable.bitness,
+                                    if executable.bitness == 0 {
+                                        "unknown".to_owned()
+                                    } else {
+                                        executable.bitness.to_string()
+                                    },
                                     executable.endian
                                 ),
                                 format!("Entry VA {entry}"),
@@ -385,9 +449,10 @@ impl<S: ByteSource> Ui<S> {
                                     executable.slice.len
                                 ),
                                 format!(
-                                    "Regions {} | fields {} | container slices {}",
+                                    "Regions {} | fields {} | structures {} | slices {}",
                                     executable.regions.len(),
                                     executable.fields.len(),
+                                    executable.records.len(),
                                     executable.slices.len()
                                 ),
                                 format!(
@@ -402,6 +467,12 @@ impl<S: ByteSource> Ui<S> {
                                     .to_owned(),
                                 "Byte edits do not rebuild headers, checksums, or signatures."
                                     .to_owned(),
+                                executable.notes.first().map_or_else(String::new, |note| {
+                                    format!(
+                                        "Coverage: {} (--structures lists all notes)",
+                                        escaped_text(note)
+                                    )
+                                }),
                             ];
                             lines.extend(summary.into_iter().take(available).map(Line::raw));
                         }

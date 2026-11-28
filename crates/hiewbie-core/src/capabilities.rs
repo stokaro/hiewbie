@@ -672,9 +672,57 @@ const BUILT_INS: &[Capability<'static>] = &[
         modes: &["macho32", "macho64"],
         byte_orders: &["little", "big"],
         limitations: &[
-            "Thin headers and segment mappings; complete load-command and relocation navigation remain open.",
+            "Every load command has a bounded raw record; sections, SG_HIGHVM, supported LC_UNIXTHREAD states and section relocations are inspectable. Unknown commands/types and dyld metadata remain explicit.",
         ],
-        evidence: &["crates/hiewbie-core/src/formats/tests.rs"],
+        evidence: &[
+            "crates/hiewbie-core/src/formats/macho_tests.rs",
+            "docs/format-records.md",
+        ],
+    },
+    Capability {
+        id: "format.macho.core",
+        category: Category::Format,
+        status: Status::Limited,
+        backend: Some(CORE),
+        modes: &["macho32", "macho64", "MH_CORE"],
+        byte_orders: &["little", "big"],
+        limitations: &[
+            "Core segment mappings include SG_HIGHVM and zero-fill; LC_THREAD is retained as state metadata, not invented as an executable entry. No process restoration or execution.",
+        ],
+        evidence: &[
+            "crates/hiewbie-core/src/formats/macho_tests.rs",
+            "docs/format-records.md",
+        ],
+    },
+    Capability {
+        id: "format.macho.executable",
+        category: Category::Format,
+        status: Status::Limited,
+        backend: Some(CORE),
+        modes: &["macho32", "macho64", "MH_EXECUTE", "MH_DYLIB", "MH_BUNDLE"],
+        byte_orders: &["little", "big"],
+        limitations: &[
+            "Checked LC_MAIN and supported LC_UNIXTHREAD entry metadata; raw loader commands remain visible. No dyld binding, chained-fixup resolution or relocation application.",
+        ],
+        evidence: &[
+            "crates/hiewbie-core/src/formats/macho_tests.rs",
+            "docs/format-records.md",
+        ],
+    },
+    Capability {
+        id: "format.macho.object",
+        category: Category::Format,
+        status: Status::Limited,
+        backend: Some(CORE),
+        modes: &["macho32", "macho64", "MH_OBJECT"],
+        byte_orders: &["little", "big"],
+        limitations: &[
+            "Section-relative relocation records, stored values, supported pairs and symbol/section references; unresolved and unsupported types remain visible. Objects are not linked and relocations are never applied.",
+        ],
+        evidence: &[
+            "crates/hiewbie-core/src/formats/macho_tests.rs",
+            "docs/format-records.md",
+        ],
     },
     Capability {
         id: "format.mz",
@@ -737,14 +785,19 @@ const BUILT_INS: &[Capability<'static>] = &[
     Capability {
         id: "format.te",
         category: Category::Format,
-        status: Status::Unavailable,
-        backend: None,
-        modes: &[],
-        byte_orders: &[],
+        status: Status::Limited,
+        backend: Some(CORE),
+        modes: &["te32", "te64", "unknown-machine-metadata"],
+        byte_orders: &["little"],
         limitations: &[
-            "Mandatory legacy format interpretation remains unimplemented; raw byte access is available.",
+            "One 40-byte TE header; IA32, x64, ARM, mixed ARM/Thumb, ARMNT and AArch64 mapping. Unknown machines retain metadata without choosing a decoder.",
+            "Base relocation/debug records and checked target spans; unknown types are explicit. No PE reconstruction, relocation application, PDB loading, or symbol/import/export tables.",
         ],
-        evidence: &["docs/compatibility-status.md"],
+        evidence: &[
+            "crates/hiewbie-core/src/formats/te_tests.rs",
+            "crates/hiewbie/tests/structures_cli.rs",
+            "docs/format-records.md",
+        ],
     },
     Capability {
         id: "format.wasm",

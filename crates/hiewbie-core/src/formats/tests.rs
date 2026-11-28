@@ -440,16 +440,34 @@ fn macho_command_bounds_counts_and_segment_ranges_are_checked() {
 }
 
 #[test]
-fn macho_unavailable_high_vm_is_explicit_and_old_thread_entry_is_not_invented() {
+fn macho_high_vm_suffix_maps_and_unknown_thread_state_remains_explicit() {
     let mut bytes = macho_fixture(64, Endian::Little, 0x0100_000c);
     put32(&mut bytes, 32 + 68, 1, Endian::Little);
-    assert!(matches!(
-        analyze(bytes),
-        Err(FormatError::Unsupported("Mach-O high-VM core segments"))
-    ));
+    let image = analyze(bytes).unwrap().unwrap();
+    assert_eq!(
+        image.file_to_va(FileOffset::new(0)),
+        Ok(VirtualAddress::new(0x1_0000_0e00))
+    );
+    assert_eq!(
+        image.va_to_file(VirtualAddress::new(0x1_0000_0100)),
+        Err(AddressError::ZeroFill)
+    );
+    assert_eq!(image.entry, Some(VirtualAddress::new(0x1_0000_0f00)));
+    assert_eq!(
+        image.va_to_file(image.entry.unwrap()),
+        Ok(FileOffset::new(0x100))
+    );
     let mut bytes = macho_fixture(64, Endian::Little, 0x0100_000c);
     put32(&mut bytes, 104, 5, Endian::Little);
-    assert_eq!(analyze(bytes).unwrap().unwrap().entry, None);
+    let image = analyze(bytes).unwrap().unwrap();
+    assert_eq!(image.entry, None);
+    assert!(
+        image
+            .records
+            .iter()
+            .any(|record| record.kind == StructureKind::LoadCommand
+                && record.status == StructureStatus::Unsupported)
+    );
 }
 
 #[test]

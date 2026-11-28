@@ -11,7 +11,12 @@ use crate::{ByteSource, Document, Error, FileOffset};
 mod elf;
 mod macho;
 mod pe;
+mod te;
 
+#[cfg(test)]
+mod macho_tests;
+#[cfg(test)]
+mod te_tests;
 #[cfg(test)]
 mod tests;
 
@@ -23,6 +28,12 @@ pub const MAX_FORMAT_ENTRIES: usize = 4096;
 pub const MAX_FAT_SLICES: usize = 64;
 /// Maximum interpreted numeric fields retained by one inspection.
 pub const MAX_FORMAT_FIELDS: usize = 32768;
+/// Maximum metadata records retained across all tables in one image.
+pub const MAX_FORMAT_RECORDS: usize = 4096;
+/// Maximum explanatory notes retained by one inspection.
+pub const MAX_FORMAT_NOTES: usize = 256;
+/// Maximum bytes in each retained record name, detail, or inspection note.
+pub const MAX_FORMAT_TEXT_BYTES: usize = 1024;
 
 /// Byte order declared by the inspected image, independent of the host.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -129,6 +140,10 @@ pub enum BinaryFormat {
     Elf64,
     MachO32,
     MachO64,
+    Te32,
+    Te64,
+    /// The common TE header with a machine whose instruction width is unknown.
+    TeUnknown,
 }
 
 impl fmt::Display for BinaryFormat {
@@ -140,6 +155,9 @@ impl fmt::Display for BinaryFormat {
             Self::Elf64 => "ELF64",
             Self::MachO32 => "Mach-O32",
             Self::MachO64 => "Mach-O64",
+            Self::Te32 => "TE",
+            Self::Te64 => "TE64",
+            Self::TeUnknown => "TE (unknown machine width)",
         })
     }
 }
@@ -165,6 +183,72 @@ pub struct HeaderField {
     pub range: FileRange,
 }
 
+/// ARM execution state explicitly supplied by entry-point metadata.
+/// It does not change the format's declared machine or select a host backend.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EntryMode {
+    Arm,
+    Thumb,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StructureKind {
+    LoadCommand,
+    Section,
+    Relocation,
+    DebugDirectory,
+    DebugData,
+}
+
+impl fmt::Display for StructureKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::LoadCommand => "load command",
+            Self::Section => "section",
+            Self::Relocation => "relocation",
+            Self::DebugDirectory => "debug directory",
+            Self::DebugData => "debug data",
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum StructureStatus {
+    Interpreted,
+    Unsupported,
+}
+
+impl fmt::Display for StructureStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Interpreted => "interpreted",
+            Self::Unsupported => "unsupported",
+        })
+    }
+}
+
+/// A bounded metadata record with separate source and checked destination spans.
+/// An unsupported interpretation never prevents following its raw record.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StructureRecord {
+    pub name: String,
+    pub kind: StructureKind,
+    pub record: FileRange,
+    pub target: Option<FileRange>,
+    pub status: StructureStatus,
+    pub detail: String,
+}
+
+/// A selection is valid only for the logical generation and container member
+/// that supplied its index. Frontends must not reuse it after edits or switching.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StructureRef {
+    pub generation: u64,
+    pub slice: FileRange,
+    pub selected_slice: Option<usize>,
+    pub index: usize,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FatSlice {
     pub index: usize,
@@ -184,11 +268,14 @@ pub struct Executable {
     pub bitness: u8,
     pub image_base: Option<VirtualAddress>,
     pub entry: Option<VirtualAddress>,
+    pub entry_mode: Option<EntryMode>,
     pub slice: FileRange,
     pub selected_slice: Option<usize>,
     pub slices: Vec<FatSlice>,
     pub regions: Vec<Region>,
     pub fields: Vec<HeaderField>,
+    pub records: Vec<StructureRecord>,
+    pub notes: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -215,6 +302,17 @@ impl fmt::Display for AddressError {
 impl error::Error for AddressError {}
 
 impl Executable {
+    #[must_use]
+    pub fn structure_ref(&self, index: usize) -> Option<StructureRef> {
+        self.records.get(index)?;
+        Some(StructureRef {
+            generation: self.generation,
+            slice: self.slice,
+            selected_slice: self.selected_slice,
+            index,
+        })
+    }
+
     pub fn file_to_va(&self, offset: FileOffset) -> Result<VirtualAddress, AddressError> {
         let mut result = None;
         for region in &self.regions {
@@ -393,6 +491,8 @@ fn parse_image<S: ByteSource>(
 ) -> Result<Option<Executable>, FormatError> {
     if magic.starts_with(b"MZ") {
         pe::parse(reader, generation).map(Some)
+    } else if magic.starts_with(b"VZ") {
+        te::parse(reader, generation).map(Some)
     } else if magic == *b"\x7fELF" {
         elf::parse(reader, generation).map(Some)
     } else if macho::is_thin(magic) {
@@ -505,6 +605,12 @@ impl<S: ByteSource> Reader<'_, S> {
     }
 
     fn region(&self, image: &mut Executable, region: Region) -> Result<(), FormatError> {
+        if image.regions.len() >= MAX_FORMAT_ENTRIES {
+            return Err(FormatError::Limit {
+                resource: "load regions",
+                limit: MAX_FORMAT_ENTRIES,
+            });
+        }
         region
             .address
             .get()
@@ -520,6 +626,51 @@ impl<S: ByteSource> Reader<'_, S> {
                 )
             })?;
         image.regions.push(region);
+        Ok(())
+    }
+
+    fn record(&self, image: &mut Executable, record: StructureRecord) -> Result<(), FormatError> {
+        if image.records.len() >= MAX_FORMAT_RECORDS {
+            return Err(FormatError::Limit {
+                resource: "structure records",
+                limit: MAX_FORMAT_RECORDS,
+            });
+        }
+        for text in [&record.name, &record.detail] {
+            self.check_text(text)?;
+        }
+        for range in [Some(record.record), record.target].into_iter().flatten() {
+            let offset = range
+                .offset
+                .get()
+                .checked_sub(self.slice.offset.get())
+                .ok_or_else(|| self.invalid("structure span precedes selected image", 0))?;
+            self.range(offset, range.len)?;
+        }
+        image.records.push(record);
+        Ok(())
+    }
+
+    fn check_text(&self, text: &str) -> Result<(), FormatError> {
+        if text.len() > MAX_FORMAT_TEXT_BYTES {
+            return Err(FormatError::Limit {
+                resource: "structure text bytes",
+                limit: MAX_FORMAT_TEXT_BYTES,
+            });
+        }
+        Ok(())
+    }
+
+    fn note(&self, image: &mut Executable, note: impl Into<String>) -> Result<(), FormatError> {
+        if image.notes.len() >= MAX_FORMAT_NOTES {
+            return Err(FormatError::Limit {
+                resource: "inspection notes",
+                limit: MAX_FORMAT_NOTES,
+            });
+        }
+        let note = note.into();
+        self.check_text(&note)?;
+        image.notes.push(note);
         Ok(())
     }
 }
@@ -540,11 +691,14 @@ fn image<S: ByteSource>(
         bitness,
         image_base: None,
         entry: None,
+        entry_mode: None,
         slice: reader.slice,
         selected_slice: None,
         slices: Vec::new(),
         regions: Vec::new(),
         fields: Vec::new(),
+        records: Vec::new(),
+        notes: Vec::new(),
     }
 }
 

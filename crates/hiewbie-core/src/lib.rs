@@ -39,9 +39,18 @@ pub use search::{
 #[cfg(test)]
 mod analysis_tests;
 #[cfg(test)]
+mod structure_navigation_tests;
+#[cfg(test)]
 #[path = "../../../tests/fixtures/symbol_images.rs"]
 mod symbol_fixtures;
+
+#[cfg(test)]
+#[path = "../../../tests/fixtures/macho_images.rs"]
+mod macho_fixtures;
 #[cfg(test)]
 mod symbol_navigation_tests;
+#[cfg(test)]
+#[path = "../../../tests/fixtures/te_images.rs"]
+mod te_fixtures;
 #[cfg(test)]
 mod tests;

@@ -123,6 +123,9 @@ pub fn inspect<S: ByteSource>(
         BinaryFormat::Pe32 | BinaryFormat::Pe64 => pe::parse(&mut reader, image),
         BinaryFormat::Elf32 | BinaryFormat::Elf64 => elf::parse(&mut reader, image),
         BinaryFormat::MachO32 | BinaryFormat::MachO64 => macho::parse(&mut reader, image),
+        BinaryFormat::Te32 | BinaryFormat::Te64 | BinaryFormat::TeUnknown => {
+            Err(FormatError::Unsupported("TE symbol/import/export tables"))
+        }
     }
 }
 

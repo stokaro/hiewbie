@@ -83,6 +83,9 @@ script uses Python's standard library and generated temporary fixtures. Its
 workflow followed by dotted-VA navigation and an exact one-byte save. The
 `--record-symbols PATH` option records generated PE import-slot, export-target
 and forwarded-export record navigation with exact byte-save assertions.
+`--record-structures PATH` records TE entry, section target, exact metadata and
+unsupported-relocation record navigation with byte-save assertions. The same
+scenario also checks file-global record navigation in a second fat Mach-O member.
 `--record-search PATH` records the two-field dialog and backward repeat after
 independent cursor movement, followed by an exact one-byte save.
 `--record-block PATH` records reverse block marking, scoped search, an exact
@@ -103,11 +106,12 @@ fixtures and preserves the original terminal output.
 bookmarks in a synthetic fixture and verifies that the file remains unchanged.
 `--record-decode PATH` records automatic raw x86, lettered branch follow and
 return, and bitness switching.
-All thirteen PTY scenarios run in the existing native Unix CI jobs even without
+All fourteen PTY scenarios run in the existing native Unix CI jobs even without
 recording options. The fixtures are generated. The terminal recordings cover
 [editing](evidence/native-editor.cast),
 [analysis](evidence/executable-analysis.cast),
 [symbol navigation](evidence/symbol-navigation.cast),
+[format structures](evidence/format-structures.cast),
 [search repeat](evidence/search-repeat.cast),
 [block workflow](evidence/block-workflow.cast),
 [native cursor](evidence/native-cursor.cast),

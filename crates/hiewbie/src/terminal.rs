@@ -8,6 +8,7 @@ mod help;
 mod hex_view;
 mod render;
 mod search;
+mod structures;
 mod symbols;
 #[cfg(test)]
 mod tests;

@@ -13,6 +13,8 @@ use hiewbie_core::{MAX_SEARCH_PATTERN_BYTES, SearchRequest};
 #[path = "../../../../tests/fixtures/aarch64_images.rs"]
 mod aarch64_images;
 
+#[path = "structure_tests.rs"]
+mod structures;
 #[path = "symbol_tests.rs"]
 mod symbols;
 

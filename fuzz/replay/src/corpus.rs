@@ -1,8 +1,13 @@
 //! Original MIT-licensed generated fixtures. No executable samples are imported.
 //! The PE fixture is shared with the existing frontend symbol tests.
 
+#[path = "../../../tests/fixtures/macho_images.rs"]
+#[allow(dead_code)]
+mod macho_fixture;
 #[path = "../../../tests/fixtures/symbol_images.rs"]
 mod symbol_fixture;
+#[path = "../../../tests/fixtures/te_images.rs"]
+mod te_fixture;
 
 use crate::Target;
 
@@ -70,6 +75,7 @@ fn macho() -> Vec<u8> {
     let mut bytes = vec![0; 0x400];
     put32(&mut bytes, 0, 0xfeed_facf);
     put32(&mut bytes, 4, 0x0100_0007);
+    put32(&mut bytes, 8, 3);
     put32(&mut bytes, 12, 2);
     put32(&mut bytes, 16, 2);
     put32(&mut bytes, 20, 176);
@@ -119,6 +125,32 @@ fn fat_macho() -> Vec<u8> {
     bytes
 }
 
+// Keep complete TE metadata within the 4096-byte fuzz-input budget. The
+// original TE fixture has alignment padding; a larger stripped prefix and
+// earlier data section retain real entries, relocations and debug payloads.
+fn compact_te(original: Vec<u8>) -> Vec<u8> {
+    let mut bytes = vec![0; 0xb00];
+    bytes[..120].copy_from_slice(&original[..120]);
+    bytes[0x100..0x200]
+        .copy_from_slice(&original[0x1000 - te_fixture::BIAS..0x1100 - te_fixture::BIAS]);
+    bytes[0x900..0xb00]
+        .copy_from_slice(&original[0x2000 - te_fixture::BIAS..0x2200 - te_fixture::BIAS]);
+    put16(&mut bytes, 6, 0xf28);
+    for (at, value) in [
+        (24, 0x1800),
+        (32, 0x1840),
+        (92, 0x1800),
+        (100, 0x1800),
+        (0x940 + 20, 0x18c0),
+        (0x940 + 24, 0x18c0),
+        (0x95c + 20, 0x1900),
+        (0x95c + 24, 0x1900),
+    ] {
+        put32(&mut bytes, at, value);
+    }
+    bytes
+}
+
 /// Named, reproducible initial corpora. Retain future minimized regressions
 /// here with a comment linking their defect and input provenance.
 pub fn seeds() -> Vec<Seed> {
@@ -140,9 +172,50 @@ pub fn seeds() -> Vec<Seed> {
         ("elf64-symbols", elf()),
         ("macho64-symbols", macho()),
         ("fat-macho", fat_macho()),
+        ("te32-relocations-debug", compact_te(te_fixture::te32())),
+        ("te64-relocations-debug", compact_te(te_fixture::te64())),
+        ("te-arm", compact_te(te_fixture::te(0x1c0))),
+        ("te-thumb", compact_te(te_fixture::te(0x1c4))),
+        ("te-mixed-arm", compact_te(te_fixture::te(0x1c2))),
+        ("te-mixed-thumb", compact_te(te_fixture::te_mixed_thumb())),
+        ("te-aarch64", compact_te(te_fixture::te(0xaa64))),
+        ("te-unknown-machine", compact_te(te_fixture::te(0xffff))),
     ] {
         add(Target::FormatsSymbols, name, bytes);
     }
+    for cpu in [7, 0x0100_0007, 12, 0x0100_000c] {
+        for big in [false, true] {
+            add(
+                Target::FormatsSymbols,
+                &format!("macho-thread-{cpu:x}-big-{big}"),
+                macho_fixture::unix_thread(cpu, big, false),
+            );
+        }
+        add(
+            Target::FormatsSymbols,
+            &format!("macho-object-reloc-{cpu:x}"),
+            macho_fixture::object(cpu, false, &[[4, 0x0400_0002]]),
+        );
+    }
+    add(
+        Target::FormatsSymbols,
+        "macho-thread-thumb",
+        macho_fixture::unix_thread(12, false, true),
+    );
+    add(
+        Target::FormatsSymbols,
+        "macho-main",
+        macho_fixture::main_entry(0x0100_000c, false),
+    );
+    let mut high_vm = macho();
+    put32(&mut high_vm, 100, 1);
+    put64(&mut high_vm, 64, 0x800);
+    put64(&mut high_vm, 136, 0x1_0000_0600);
+    put64(&mut high_vm, 0x308, 0x1_0000_0600);
+    add(Target::FormatsSymbols, "macho-high-vm", high_vm);
+    let mut invalid_te = compact_te(te_fixture::te32());
+    put16(&mut invalid_te, 6, 39);
+    add(Target::FormatsSymbols, "te-stripped-underflow", invalid_te);
     let mut huge = symbol_fixture::pe64();
     huge[0x86..0x88].fill(0xff);
     huge[0x3c..0x40].fill(0xff);
@@ -210,6 +283,37 @@ pub fn seeds() -> Vec<Seed> {
 #[cfg(test)]
 mod tests {
     use hiewbie_core::{Document, MemorySource, formats, symbols};
+
+    #[test]
+    fn compact_te_seeds_reach_real_relocation_and_debug_records() {
+        for seed in super::seeds().into_iter().filter(|seed| {
+            seed.name.starts_with("te-")
+                || seed.name.starts_with("te32-")
+                || seed.name.starts_with("te64-")
+        }) {
+            if seed.name == "te-stripped-underflow" {
+                continue;
+            }
+            assert!(seed.bytes.len() <= crate::MAX_INPUT_BYTES);
+            let mut document = Document::new(MemorySource::new(seed.bytes));
+            let image = formats::inspect(&mut document, None).unwrap().unwrap();
+            assert!(
+                image
+                    .records
+                    .iter()
+                    .any(|record| record.kind == formats::StructureKind::Relocation
+                        && record.target.is_some())
+            );
+            assert!(
+                image
+                    .records
+                    .iter()
+                    .any(|record| record.kind == formats::StructureKind::DebugData)
+            );
+            let entry = formats::VirtualAddress::new(image.entry.unwrap().get() & !1);
+            assert_eq!(image.va_to_file(entry).unwrap().get(), 0x110);
+        }
+    }
 
     #[test]
     fn generated_parser_seeds_reach_each_symbol_backend() {
