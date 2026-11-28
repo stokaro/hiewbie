@@ -6,7 +6,8 @@ means the stated initial behavior exists with the linked regression evidence;
 **Partial** means only the recorded subset exists; **Planned** means no application
 implementation is claimed. Actual platform results belong to the identified
 commit's CI runs. No row is promoted to cross-platform **Verified** by configuration
-alone, and no exact HIEW-version comparison has yet been recorded.
+alone. A [versioned Hiew 8.63 documentation comparison][Reference] is recorded;
+the original failed to start, so no original-program runtime parity is claimed.
 
 Current fixtures are generated in the linked tests (byte vectors, temporary files,
 Unicode paths, sparse files, and PTY input). The native Linux run and source-level
@@ -18,7 +19,7 @@ M0/M1 remain partial; M2-M6 and the parent epic remain open.
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
 | UI-001 | Partial | [T], [C]: shared Hex/Text; Code remains planned. |
-| UI-002 | Partial | [T], [P]: contextual function bar and initial HIEW keys; full keymap parity unverified. |
+| UI-002 | Partial | [T], [P], [Reference]: separate F4 choice/Enter cycle, edit restores and Shift+F7; full keymap and original runtime parity unverified. |
 | UI-003 | Partial | [T]: file offset, mode, edit/readonly/dirty state; bitness/architecture await analysis. |
 | UI-004 | Partial | [T], [C]: shared cursor survives Hex/Text changes; other views/history pending. |
 | UI-005 | Partial | [T]: view/edit/dialog/search/recovery contexts; selections pending. |
@@ -27,7 +28,7 @@ M0/M1 remain partial; M2-M6 and the parent epic remain open.
 | UI-008 | Partial | [T], [P]: 80-column cells, dynamic rows, resize; full reference comparison pending. |
 | UI-009 | Partial | [T]: blue/cyan default; accessible configurable themes pending. |
 | UI-010 | Partial | [T]: Ctrl alternatives; command menu and all intercepted-key cases pending. |
-| UI-011 | Partial | [Input]: unavailable F9/Open and edit commands are explicit; reference observations pending. |
+| UI-011 | Partial | [Input], [Reference]: unavailable commands and documented deviations are explicit; original runtime observations pending. |
 | UI-012 | Partial | [T], [Commands]: help and core command inventory; key diagnostics/menu pending. |
 | UI-013 | Implemented | [C], [T], [N]: bounded initial viewport; no eager whole-file scan. |
 | UI-014 | Implemented | [CLI], [P]: ordinary editing has no network/service dependency. |
@@ -41,8 +42,8 @@ M0/M1 remain partial; M2-M6 and the parent epic remain open.
 | KEY-002 | Partial | [C], [T]: terminal and headless tests share dispatch; macros/menu/browser pending. |
 | KEY-003 | Partial | [C], [T]: hex, decimal t, relative syntax; dotted VAs explicitly unavailable. |
 | KEY-004 | Partial | [T]: cursor preserved across two views; reference navigation/bookmarks pending. |
-| KEY-005 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| KEY-006 | Partial | [T], [P]: F3/F9 collisions covered; F2/assembly and other contexts pending. |
+| KEY-005 | Partial | [C], [T], [P], [Reference]: F3/current and Backspace/previous source-byte restores; exact original nibble/buffer/cursor behavior, F2/assembly, F10/truncation and timestamps remain open. |
+| KEY-006 | Partial | [C], [T], [P]: F3/F9 collisions, F4 view selection and Shift+F7 context covered; other contextual commands remain pending. |
 | KEY-007 | Implemented | [T], [P]: Esc cancels search/dialog, discards edits, then exits view. |
 | KEY-008 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 
@@ -54,7 +55,7 @@ M0/M1 remain partial; M2-M6 and the parent epic remain open.
 | EDIT-002 | Implemented | [C], [N], [P]: pending changes do not write until explicit save. |
 | EDIT-003 | Implemented | [C], [N], [P]: discard restores original bytes and does not rewrite mtime. |
 | EDIT-004 | Implemented | [C], [N], [T]: successful save rebases and clears transaction/history. |
-| EDIT-005 | Partial | [C], [T]: bounded byte-command undo/redo; blocks/assembly pending. |
+| EDIT-005 | Partial | [C], [T]: bounded overwrite/restore command undo/redo, distinct from source-byte restoration; blocks/assembly pending. |
 | EDIT-006 | Partial | [C], [T]: overwrite implemented; insert/delete/copy/move/fill/import/export pending. |
 | EDIT-007 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | EDIT-008 | Partial | [C], [N]: ranges and limits validated before mutation; later operations pending. |
@@ -158,8 +159,8 @@ M0/M1 remain partial; M2-M6 and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| SEARCH-001 | Partial | [C], [T]: literal hex bytes and explicit UTF-8 text; wildcard/instruction search pending. |
-| SEARCH-002 | Partial | [C], [T]: forward, repeat and cancel; backward/selection/wrap options pending. |
+| SEARCH-001 | Partial | [C], [T], [Reference]: case-sensitive literal bytes/UTF-8; original character-field case policy, encoding mappings and wildcard/instruction search remain open. |
+| SEARCH-002 | Partial | [C], [T], [P], [Reference]: forward/repeat/cancel plus Shift+F7; cursor+1 repeat still differs from documented independent last-match state; backward/scope/boundary policies pending. |
 | SEARCH-003 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | SEARCH-004 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 
@@ -239,7 +240,7 @@ M0/M1 remain partial; M2-M6 and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| TEST-001 | Partial | [P]: open/mode/goto/edit/save subset; branch/return await analysis. |
+| TEST-001 | Partial | [P]: open/mode-choice/goto/edit/restore/save subset; branch/return await analysis; original runtime comparison blocked. |
 | TEST-002 | Implemented | [N], [P]: discard checks expected bytes and mtime on generated ordinary files. |
 | TEST-003 | Implemented | [N], [P]: exact persisted byte changes; reopen via file reads. |
 | TEST-004 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
@@ -267,6 +268,7 @@ M0/M1 remain partial; M2-M6 and the parent epic remain open.
 [Analysis]: adr/0004-analysis-backends.md
 [Commands]: commands.md
 [README]: ../README.md
+[Reference]: reference/hiew-8.63.md
 
 - [Core unit/command/search tests][C]
 - [Native persistence and sparse-file tests][N] and [adapter fault tests](../crates/hiewbie/src/file.rs)
@@ -274,3 +276,4 @@ M0/M1 remain partial; M2-M6 and the parent epic remain open.
 - [Real Unix PTY scenarios][P] and [recording](evidence/native-editor.cast)
 - [Storage guarantees and limits][Storage], [input behavior][Input], [build strategies][Build]
 - [Analysis selection remains open][Analysis]
+- [Versioned original-documentation audit and open differential scenarios][Reference]

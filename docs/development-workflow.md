@@ -99,6 +99,11 @@ upstream primary sources for unresolved API, capability, or license decisions.
 Distinguish observed HIEW behavior, upstream capability, planned requirements,
 implementation, and verification. HIEW comparisons need the reference version,
 terminal, fixture, and date.
+The [Hiew 8.63 scenario inventory](reference/hiew-8.63.md) identifies documented
+expectations and original-side observations still needed. Cite its scenario ID
+for affected commands; passing hiewbie tests does not promote a documented
+expectation into observed reference behavior. Do not retry an environment-blocked
+reference launch as part of routine code checks.
 
 Record reused material's repository, path, exact commit, license, retained notice,
 destination, and changes. Record fixture provenance. GridCraft's MIT option does

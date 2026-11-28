@@ -5,7 +5,9 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use super::{Dialog, EntryColumn, InputDialog, PromptKind, Ui, escaped_text, printable};
+use super::{
+    Dialog, EntryColumn, InputDialog, ModeChoice, PromptKind, Ui, escaped_text, printable,
+};
 
 const BASE: Style = Style::new().fg(Color::Gray).bg(Color::Blue);
 const ADDRESS: Style = Style::new().fg(Color::Cyan).bg(Color::Blue);
@@ -79,6 +81,7 @@ impl<S: ByteSource> Ui<S> {
         match self.dialog.as_ref() {
             Some(Dialog::Help) => render_help(frame, area),
             Some(Dialog::Input(input)) => render_prompt(frame, area, input),
+            Some(Dialog::Mode(selected)) => render_mode_picker(frame, area, *selected),
             None => {}
         }
     }
@@ -206,6 +209,7 @@ impl<S: ByteSource> Ui<S> {
                     Some(" Enter search | Tab hex/text | Ctrl+U clear | Esc cancel ")
                 }
                 Some(Dialog::Input(_)) => Some(" Enter goto | Ctrl+U clear | Esc cancel "),
+                Some(Dialog::Mode(_)) => Some(" Up/Down choose | Enter select | Esc cancel "),
                 None => None,
             }
         };
@@ -215,7 +219,7 @@ impl<S: ByteSource> Ui<S> {
         }
         let labels = if self.editor.is_editing() {
             [
-                "Help", "Asm-", "Rest-", "--", "--", "--", "--", "--", "Save", "Trunc-",
+                "Help", "Asm-", "Rest", "--", "--", "--", "--", "--", "Save", "Trunc-",
             ]
         } else {
             [
@@ -256,17 +260,18 @@ fn popup(area: Rect, width: u16, height: u16) -> Rect {
 }
 
 fn render_help(frame: &mut Frame<'_>, area: Rect) {
-    let popup = popup(area, 78, 23);
+    let popup = popup(area, 78, 24);
     let lines = [
         "Raw-byte Hex and fixed-width ASCII Text views share one cursor.",
         "",
-        "View  Enter/F4 Hex/Text   F3/Ctrl+E edit   Esc quit",
-        "      F5/Ctrl+G goto     F7/Ctrl+F literal search",
-        "      Ctrl+Enter/Ctrl+R repeat search (forward, no wrap)",
+        "View  Enter cycle      F4 select mode    F3/Ctrl+E edit",
+        "      Esc quit         F5/Ctrl+G goto     F7/Ctrl+F search",
+        "      Shift+F7 / Ctrl+Enter / Ctrl+R repeat (forward, no wrap)",
         "",
         "Edit  F9/Ctrl+S save     Esc discard the transaction",
         "      Tab hex/ASCII     Ctrl+Z undo      Ctrl+Y redo",
-        "      Two digits commit one hex byte; Backspace cancels a digit",
+        "      F3 restore current byte; Backspace restore previous byte",
+        "      Backspace cancels an incomplete hex digit first",
         "",
         "Move  Arrows bytes/rows  PgUp/PgDn pages",
         "      Home/End row edges  Ctrl+Home/End file edges",
@@ -291,6 +296,34 @@ fn render_help(frame: &mut Frame<'_>, area: Rect) {
                 .title(" hiewbie help ")
                 .style(HEADER),
         ),
+        popup,
+    );
+}
+
+fn render_mode_picker(frame: &mut Frame<'_>, area: Rect, selected: ModeChoice) {
+    let popup = popup(area, 34, 7);
+    let mut lines = [
+        (ModeChoice::Text, "Text"),
+        (ModeChoice::Hex, "Hex"),
+        (ModeChoice::Code, "Code (unavailable)"),
+    ]
+    .into_iter()
+    .map(|(choice, label)| {
+        let (marker, style) = if choice == selected {
+            (">", ACTIVE)
+        } else {
+            (" ", HEADER)
+        };
+        Line::styled(format!("{marker} {label}"), style)
+    })
+    .collect::<Vec<_>>();
+    lines.push(Line::raw(""));
+    lines.push(Line::raw("Enter selects; Esc cancels"));
+    frame.render_widget(Clear, popup);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .style(HEADER)
+            .block(Block::default().borders(Borders::ALL).title(" View mode ")),
         popup,
     );
 }

@@ -87,6 +87,81 @@ fn restoring_source_values_removes_dirty_bytes_and_remains_undoable() {
 }
 
 #[test]
+fn byte_restore_uses_the_source_value_and_has_independent_undo_history() {
+    let mut editor = Editor::new(memory(&[0x11, 0x22, 0x33]), false);
+    editor.dispatch(Command::BeginEdit).unwrap();
+    editor.dispatch(Command::WriteByte(0xAA)).unwrap();
+    editor.dispatch(Command::Goto(offset(0))).unwrap();
+    editor.dispatch(Command::WriteByte(0xBB)).unwrap();
+    editor.dispatch(Command::WriteByte(0xCC)).unwrap();
+    editor.dispatch(Command::Goto(offset(0))).unwrap();
+    editor.dispatch(Command::RestoreByte).unwrap();
+    assert_eq!(logical(editor.document_mut()), [0x11, 0xCC, 0x33]);
+    assert_eq!(editor.cursor(), offset(0));
+    assert!(editor.is_editing());
+    assert!(editor.document().is_dirty());
+    editor.dispatch(Command::Undo).unwrap();
+    assert_eq!(logical(editor.document_mut()), [0xBB, 0xCC, 0x33]);
+    editor.dispatch(Command::Redo).unwrap();
+    assert_eq!(logical(editor.document_mut()), [0x11, 0xCC, 0x33]);
+
+    editor.dispatch(Command::Goto(offset(2))).unwrap();
+    editor.dispatch(Command::RestorePreviousByte).unwrap();
+    assert_eq!(logical(editor.document_mut()), [0x11, 0x22, 0x33]);
+    assert_eq!(editor.cursor(), offset(1));
+    assert!(!editor.document().is_dirty());
+    editor.dispatch(Command::Undo).unwrap();
+    assert_eq!(logical(editor.document_mut()), [0x11, 0xCC, 0x33]);
+    editor.dispatch(Command::Redo).unwrap();
+    assert_eq!(logical(editor.document_mut()), [0x11, 0x22, 0x33]);
+
+    editor.dispatch(Command::Goto(offset(0))).unwrap();
+    let generation = editor.document().generation();
+    editor.dispatch(Command::RestorePreviousByte).unwrap();
+    assert_eq!(editor.cursor(), offset(0));
+    assert_eq!(editor.document().generation(), generation);
+    editor.dispatch(Command::Undo).unwrap();
+    assert_eq!(logical(editor.document_mut()), [0x11, 0xCC, 0x33]);
+}
+
+#[test]
+fn restore_no_op_and_invalid_ranges_preserve_redo_and_generation() {
+    let mut document = memory(b"abc");
+    document.overwrite(offset(1), b"X").unwrap();
+    document.undo().unwrap();
+    let generation = document.generation();
+    document.restore_byte(offset(1)).unwrap();
+    for position in [3, u64::MAX] {
+        assert!(matches!(
+            document.restore_byte(offset(position)),
+            Err(Error::OutOfBounds { .. })
+        ));
+    }
+    assert_eq!(document.generation(), generation);
+    assert_eq!(logical(&mut document), b"abc");
+    assert!(!document.is_dirty());
+    assert!(document.redo().unwrap());
+    assert_eq!(logical(&mut document), b"aXc");
+
+    document.rebase(MemorySource::new(b"aXc".to_vec()));
+    document.overwrite(offset(1), b"Y").unwrap();
+    document.restore_byte(offset(1)).unwrap();
+    assert_eq!(logical(&mut document), b"aXc");
+    assert!(!document.is_dirty());
+
+    let mut empty = Editor::new(memory(b""), false);
+    empty.dispatch(Command::BeginEdit).unwrap();
+    assert!(matches!(
+        empty.dispatch(Command::RestoreByte),
+        Err(Error::OutOfBounds { .. })
+    ));
+    empty.dispatch(Command::RestorePreviousByte).unwrap();
+    assert_eq!(empty.cursor(), offset(0));
+    assert_eq!(empty.document().generation(), 0);
+    assert!(!empty.document().is_dirty());
+}
+
+#[test]
 fn no_op_preserves_generation_and_redo_but_real_edit_replaces_redo() {
     let mut document = memory(b"abc");
     document.overwrite(offset(1), b"X").unwrap();
@@ -213,6 +288,41 @@ fn source_failure_after_short_read_does_not_change_overlay_or_redo() {
     // Undo/redo rely on stored deltas and cannot fail because the source fails.
     assert!(document.undo().unwrap());
     assert!(document.redo().unwrap());
+}
+
+#[test]
+fn failed_restore_keeps_cursor_bytes_generation_and_redo() {
+    let successful_reads_left = Rc::new(Cell::new(None));
+    let source = FlakySource {
+        bytes: MemorySource::new(b"abc".to_vec()),
+        successful_reads_left: Rc::clone(&successful_reads_left),
+        chunk: 1,
+    };
+    let mut editor = Editor::new(Document::new(source), false);
+    editor.dispatch(Command::BeginEdit).unwrap();
+    editor.dispatch(Command::WriteByte(b'X')).unwrap();
+    editor.dispatch(Command::WriteByte(b'Y')).unwrap();
+    editor.dispatch(Command::Undo).unwrap();
+    editor.dispatch(Command::Goto(offset(1))).unwrap();
+    let generation = editor.document().generation();
+    successful_reads_left.set(Some(0));
+    assert!(matches!(
+        editor.dispatch(Command::RestorePreviousByte),
+        Err(Error::Io(_))
+    ));
+    assert_eq!(editor.cursor(), offset(1));
+    editor.dispatch(Command::Goto(offset(0))).unwrap();
+    assert!(matches!(
+        editor.dispatch(Command::RestoreByte),
+        Err(Error::Io(_))
+    ));
+    assert_eq!(editor.cursor(), offset(0));
+    assert_eq!(editor.document().generation(), generation);
+    assert!(editor.document().is_dirty());
+    successful_reads_left.set(None);
+    assert_eq!(logical(editor.document_mut()), b"Xbc");
+    editor.dispatch(Command::Redo).unwrap();
+    assert_eq!(logical(editor.document_mut()), b"XYc");
 }
 
 #[derive(Debug)]
@@ -344,6 +454,14 @@ fn history_record_limit_does_not_destroy_undo_or_redo() {
         })
     ));
     assert_eq!(document.generation(), generation);
+    assert!(matches!(
+        document.restore_byte(offset(0)),
+        Err(Error::LimitExceeded {
+            resource: "undo/redo command count",
+            ..
+        })
+    ));
+    assert_eq!(document.generation(), generation);
     assert!(document.undo().unwrap());
     assert!(document.redo().unwrap());
     assert_eq!(logical(&mut document), [2]);
@@ -431,6 +549,10 @@ fn offsets_near_u64_max_are_checked_before_source_access() {
     );
     assert_eq!(byte, [0]);
     assert_eq!(document.read_at(offset(u64::MAX), &mut byte).unwrap(), 0);
+    document.restore_byte(offset(u64::MAX - 1)).unwrap();
+    document.read_at(offset(u64::MAX - 1), &mut byte).unwrap();
+    assert_eq!(byte, [0xFE]);
+    assert!(!document.is_dirty());
 }
 
 #[test]
@@ -444,6 +566,9 @@ fn shared_commands_enforce_edit_state_read_only_and_cursor_rules() {
         editor.dispatch(Command::Save),
         Err(Error::NotEditing)
     ));
+    for command in [Command::RestoreByte, Command::RestorePreviousByte] {
+        assert!(matches!(editor.dispatch(command), Err(Error::NotEditing)));
+    }
     editor.dispatch(Command::Move(i64::MAX)).unwrap();
     assert_eq!(editor.cursor(), offset(2));
     editor.dispatch(Command::Move(i64::MIN)).unwrap();
@@ -475,6 +600,8 @@ fn shared_commands_enforce_edit_state_read_only_and_cursor_rules() {
     for command in [
         Command::BeginEdit,
         Command::WriteByte(0),
+        Command::RestoreByte,
+        Command::RestorePreviousByte,
         Command::Undo,
         Command::Redo,
         Command::Save,
@@ -491,6 +618,8 @@ fn command_registry_contains_every_stable_command_once() {
         Command::BeginEdit,
         Command::DiscardEdit,
         Command::WriteByte(0),
+        Command::RestoreByte,
+        Command::RestorePreviousByte,
         Command::Undo,
         Command::Redo,
         Command::Move(1),

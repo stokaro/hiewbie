@@ -46,12 +46,14 @@ beyond 4 GiB, without loading the complete file into memory.
 
 | Context | Keys | Behavior |
 | --- | --- | --- |
-| View | Enter / F4 | Switch Hex / Text, keeping the file offset |
+| View | Enter | Cycle Hex / Text, keeping the file offset |
+| View | F4 | Choose a mode; arrows select, Enter applies, Esc cancels |
 | View | F3 / Ctrl+E | Begin a pending overwrite transaction |
 | View | F5 / Ctrl+G | Goto: hex, decimal `t`, or relative `+` / `-` |
 | View | F7 / Ctrl+F | Literal hex-byte or UTF-8 text search; Tab selects input type |
-| View | Ctrl+Enter / Ctrl+R | Repeat search forward, without wrapping |
+| View | Shift+F7 / Ctrl+Enter / Ctrl+R | Repeat search forward, without wrapping |
 | Edit | Two hex digits / Tab | Write a byte / select printable ASCII entry |
+| Edit | F3 / Backspace | Restore the original current / previous byte |
 | Edit | Ctrl+Z / Ctrl+Y | Undo / redo pending byte changes |
 | Edit | F9 / Ctrl+S | Save and complete the transaction |
 | Edit | Esc | Discard the transaction without writing |
@@ -65,6 +67,14 @@ Unicode document. A single pending hex digit never changes a byte. Bracketed
 paste is recognized and rejected. macOS function keys may require Fn; the Ctrl
 alternatives avoid changing system keyboard settings. Detailed behavior and
 terminal gaps are in [the input decision](docs/adr/0002-terminal-input.md).
+
+F3 restores the selected byte from the current transaction's source; it is
+different from undoing the most recent command. Backspace first cancels an
+incomplete hex digit, otherwise restores and moves to the previous byte.
+Ctrl+Z/Y additionally undo/redo commands, including restores. The
+[Hiew 8.63 comparison](docs/reference/hiew-8.63.md) records documentation-derived
+expectations, remaining search/text/navigation differences, and the blocked
+attempt to run the original. These are not claims of observed HIEW parity.
 
 Saving streams the logical document into a sibling temporary file before
 replacement. Conflict checks refuse an externally changed source; ordinary
@@ -87,6 +97,7 @@ PTY test, not a comparison recording of proprietary HIEW.
 - [Contributor and agent instructions](AGENTS.md)
 - [Development workflow and verification](docs/development-workflow.md)
 - [Implemented command inventory](docs/commands.md)
+- [Hiew 8.63 reference comparison and 25 scenarios](docs/reference/hiew-8.63.md)
 
 ## Product goals
 

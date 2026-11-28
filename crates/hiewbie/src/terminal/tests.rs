@@ -69,7 +69,7 @@ fn hex_view_has_stable_dense_cells_at_eighty_columns() {
         format!("{:<59}Z", "0000000000000010  5A"),
         String::new(),
         String::new(),
-        "F1 help | Enter/F4 Hex/Text | Esc quit | Code mode planned".into(),
+        "F1 help | Enter cycle | F4 select mode | Esc quit | Code planned".into(),
         " 1Help   2--     3Edit   4Mode   5Goto   6Refs-  7Search 8Hdr-   9Open- 10--".into(),
     ]
     .join("\n");
@@ -94,7 +94,7 @@ fn hex_digits_are_atomic_and_motion_cancels_a_partial_byte() {
     assert!(ui.editor.document().is_dirty());
     key(&mut ui, KeyCode::F(3));
     assert_eq!(bytes(&mut ui), [0x11, 0x42, 0x33]);
-    assert!(ui.message.contains("byte restore is not implemented"));
+    assert!(ui.editor.is_editing());
     assert_eq!(key(&mut ui, KeyCode::Esc), UiAction::Continue);
     assert!(!ui.editor.is_editing());
     assert_eq!(bytes(&mut ui), [0x11, 0x22, 0x33]);
@@ -160,6 +160,9 @@ fn modes_share_cursor_and_read_only_cannot_begin_editing() {
     assert_eq!(ui.editor.mode(), ViewMode::Text);
     assert_eq!(ui.editor.cursor(), FileOffset::new(1));
     key(&mut ui, KeyCode::F(4));
+    assert_eq!(ui.editor.mode(), ViewMode::Text);
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::Enter);
     assert_eq!(ui.editor.mode(), ViewMode::Hex);
     assert_eq!(ui.editor.cursor(), FileOffset::new(1));
     let editor = Editor::new(Document::new(MemorySource::new(b"ABC".to_vec())), true);
@@ -169,6 +172,114 @@ fn modes_share_cursor_and_read_only_cannot_begin_editing() {
     assert!(!read_only.editor.is_editing());
     assert_eq!(bytes(&mut read_only), b"ABC");
     assert!(screen(&mut read_only, 80, 25).contains("VIEW RO CLEAN"));
+}
+
+#[test]
+fn byte_restore_keys_preserve_other_edits_and_support_undo_redo() {
+    let mut ui = ui(&[0x11, 0x22, 0x33]);
+    key(&mut ui, KeyCode::F(3));
+    type_text(&mut ui, "AA");
+    key(&mut ui, KeyCode::Left);
+    type_text(&mut ui, "BBCC");
+    key(&mut ui, KeyCode::Home);
+    key(&mut ui, KeyCode::Char('f'));
+    key(&mut ui, KeyCode::F(3));
+    assert_eq!(ui.pending_nibble, None);
+    assert_eq!(bytes(&mut ui), [0x11, 0xCC, 0x33]);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(0));
+    assert!(ui.editor.document().is_dirty());
+    control(&mut ui, KeyCode::Char('z'));
+    assert_eq!(bytes(&mut ui), [0xBB, 0xCC, 0x33]);
+    control(&mut ui, KeyCode::Char('y'));
+    assert_eq!(bytes(&mut ui), [0x11, 0xCC, 0x33]);
+
+    key(&mut ui, KeyCode::Right);
+    key(&mut ui, KeyCode::Right);
+    key(&mut ui, KeyCode::Char('a'));
+    key(&mut ui, KeyCode::Backspace);
+    assert_eq!(ui.pending_nibble, None);
+    assert_eq!(bytes(&mut ui), [0x11, 0xCC, 0x33]);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(2));
+    key(&mut ui, KeyCode::Backspace);
+    assert_eq!(bytes(&mut ui), [0x11, 0x22, 0x33]);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(1));
+    assert!(!ui.editor.document().is_dirty());
+    assert!(ui.editor.is_editing());
+    control(&mut ui, KeyCode::Char('z'));
+    assert_eq!(bytes(&mut ui), [0x11, 0xCC, 0x33]);
+    control(&mut ui, KeyCode::Char('y'));
+    assert_eq!(bytes(&mut ui), [0x11, 0x22, 0x33]);
+    key(&mut ui, KeyCode::Home);
+    key(&mut ui, KeyCode::Backspace);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(0));
+    assert_eq!(bytes(&mut ui), [0x11, 0x22, 0x33]);
+}
+
+#[test]
+fn mode_picker_cancels_selects_and_keeps_unavailable_code_explicit() {
+    let mut ui = ui(b"0123456789");
+    key(&mut ui, KeyCode::Right);
+    key(&mut ui, KeyCode::F(4));
+    assert!(matches!(ui.dialog, Some(Dialog::Mode(_))));
+    assert_eq!(ui.editor.mode(), ViewMode::Hex);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(1));
+    let output = screen(&mut ui, 80, 25);
+    let popup = output
+        .lines()
+        .skip(9)
+        .take(7)
+        .map(|line| line.chars().skip(23).take(34).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(
+        popup,
+        [
+            format!("┌ View mode {}┐", "─".repeat(21)),
+            format!("│{:<32}│", "  Text"),
+            format!("│{:<32}│", "> Hex"),
+            format!("│{:<32}│", "  Code (unavailable)"),
+            format!("│{:<32}│", ""),
+            format!("│{:<32}│", "Enter selects; Esc cancels"),
+            format!("└{}┘", "─".repeat(32)),
+        ]
+        .join("\n")
+    );
+    assert_eq!(key(&mut ui, KeyCode::Esc), UiAction::Continue);
+    assert!(ui.dialog.is_none());
+    assert_eq!(ui.editor.mode(), ViewMode::Hex);
+
+    key(&mut ui, KeyCode::F(4));
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::Enter);
+    assert!(matches!(ui.dialog, Some(Dialog::Mode(_))));
+    assert_eq!(ui.editor.mode(), ViewMode::Hex);
+    assert!(ui.message.contains("Code mode is not implemented"));
+    key(&mut ui, KeyCode::Up);
+    key(&mut ui, KeyCode::Up);
+    key(&mut ui, KeyCode::Enter);
+    assert!(ui.dialog.is_none());
+    assert_eq!(ui.editor.mode(), ViewMode::Text);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(1));
+    key(&mut ui, KeyCode::Enter);
+    assert_eq!(ui.editor.mode(), ViewMode::Hex);
+
+    key(&mut ui, KeyCode::F(4));
+    for (width, height) in [(23, 5), (40, 10), (80, 25)] {
+        let output = screen(&mut ui, width, height);
+        assert!(output.contains("View mode"));
+        assert!(output.contains("Code (unavailable)"));
+    }
+    key(&mut ui, KeyCode::Enter);
+    assert!(ui.dialog.is_none());
+    assert_eq!(ui.editor.mode(), ViewMode::Hex);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(1));
+    assert_eq!(bytes(&mut ui), b"0123456789");
+    assert!(!ui.editor.document().is_dirty());
+    key(&mut ui, KeyCode::F(3));
+    key(&mut ui, KeyCode::F(4));
+    assert!(ui.dialog.is_none());
+    assert!(ui.editor.is_editing());
+    assert_eq!(ui.editor.mode(), ViewMode::Hex);
 }
 
 #[test]
@@ -240,6 +351,39 @@ fn literal_search_repeats_and_long_scan_can_be_cancelled() {
     assert!(long.search.is_none());
     assert_eq!(long.editor.cursor(), FileOffset::new(0));
     assert!(long.message.contains("cancelled"));
+}
+
+#[test]
+fn shift_f7_repeats_search_only_from_view_without_modifier_collisions() {
+    let mut ui = ui(b"a--a--a");
+    let repeat = KeyEvent::new(KeyCode::F(7), KeyModifiers::SHIFT);
+    ui.key(repeat);
+    assert!(ui.message.contains("No previous search"));
+    assert!(ui.dialog.is_none());
+    key(&mut ui, KeyCode::F(7));
+    type_text(&mut ui, "61");
+    ui.key(repeat);
+    assert!(matches!(ui.dialog, Some(Dialog::Input(_))));
+    assert!(ui.search.is_none());
+    key(&mut ui, KeyCode::Enter);
+    ui.advance_search();
+    assert_eq!(ui.editor.cursor(), FileOffset::new(0));
+    ui.key(repeat);
+    ui.advance_search();
+    assert_eq!(ui.editor.cursor(), FileOffset::new(3));
+    ui.key(KeyEvent::new(
+        KeyCode::F(7),
+        KeyModifiers::SHIFT | KeyModifiers::ALT,
+    ));
+    assert!(ui.search.is_none());
+    assert_eq!(ui.editor.cursor(), FileOffset::new(3));
+    key(&mut ui, KeyCode::F(3));
+    ui.key(repeat);
+    assert!(ui.search.is_none());
+    assert!(ui.editor.is_editing());
+    assert_eq!(ui.editor.cursor(), FileOffset::new(3));
+    assert_eq!(bytes(&mut ui), b"a--a--a");
+    assert!(!ui.editor.document().is_dirty());
 }
 
 #[test]

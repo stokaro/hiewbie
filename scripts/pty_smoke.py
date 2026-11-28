@@ -49,7 +49,13 @@ ESC = b"\x1b"
 F3 = b"\x1bOR"
 F4 = b"\x1bOS"
 F5 = b"\x1b[15~"
+F7 = b"\x1b[18~"
 F9 = b"\x1b[20~"
+SHIFT_F7 = b"\x1b[18;2~"
+UP = b"\x1b[A"
+LEFT = b"\x1b[D"
+RIGHT = b"\x1b[C"
+BACKSPACE = b"\x7f"
 CTRL_E = b"\x05"
 CTRL_G = b"\x07"
 CTRL_S = b"\x13"
@@ -472,12 +478,20 @@ def fixture(directory: Path) -> tuple[Path, int]:
 def edit_save(binary: Path, directory: Path, *, record: bool) -> list[list]:
     path, mtime_ns = fixture(directory)
     with PtySession(binary, path, "edit/save and paste rejection", record=record) as session:
-        session.send(F4, "F4: switch to Text")
+        session.send(F4, "F4: choose view without switching immediately")
+        session.send(UP, "select Text in the mode menu")
+        session.send(b"\r", "Enter: confirm Text view")
         session.send(b"\r", "Enter: return to Hex")
         session.send(F5, "F5: goto dialog")
         session.send(b"10\r", "goto hexadecimal offset 10")
         session.send(F3, "F3: begin hex editing")
         session.send(b"7F", "overwrite one byte with 7F")
+        session.send(b"AA", "overwrite a second byte for Backspace restoration")
+        session.send(BACKSPACE, "Backspace: restore the previous original byte")
+        session.send(RIGHT, "move to a third byte")
+        session.send(b"BB", "overwrite a third byte for F3 restoration")
+        session.send(LEFT, "return to that third byte")
+        session.send(F3, "F3: restore the original current byte")
         session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
         session.send(PASTE, "reject bracketed paste containing save and Escape keys")
         session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
@@ -499,6 +513,24 @@ def edit_save(binary: Path, directory: Path, *, record: bool) -> list[list]:
         session.finish()
         session.expect_file(bytes(expected))
         return sanitized_events(session.events, str(path.parent.resolve()))
+
+
+def search_repeat(binary: Path, directory: Path) -> None:
+    path, mtime_ns = fixture(directory)
+    with PtySession(binary, path, "Shift+F7 search repeat") as session:
+        session.send(F7, "F7: open hex search")
+        session.send(b"00\r", "find the first zero byte")
+        session.send(SHIFT_F7, "Shift+F7: repeat at the next zero byte")
+        session.send(F3, "F3: edit the repeated search result")
+        session.send(b"9D", "replace only the match at offset 256")
+        session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
+        session.send(F9, "F9: save the repeated-search edit")
+        expected = bytearray(FIXTURE_BYTES)
+        expected[256] = 0x9D
+        session.expect_file(bytes(expected))
+        session.send(ESC, "Escape: exit from view", allow_exit=True)
+        session.finish()
+        session.expect_file(bytes(expected))
 
 
 def discard_resize(binary: Path, directory: Path) -> None:
@@ -611,7 +643,9 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="hiewbie-pty-", dir="/tmp") as temporary:
             root = Path(temporary)
             events = edit_save(binary, root / "save", record=options.record is not None)
-            print("PASS: F3/F9 edit/save, Ctrl fallbacks, goto, Unicode path, paste rejection")
+            print("PASS: F4 mode menu, F3/Backspace restore, F9 save, Ctrl fallbacks, paste rejection")
+            search_repeat(binary, root / "search")
+            print("PASS: Shift+F7 repeat selects and saves only the next literal match")
             discard_resize(binary, root / "discard")
             print("PASS: narrow resize, 80x25 restoration, discard preserves bytes and mtime")
             read_only(binary, root / "readonly")

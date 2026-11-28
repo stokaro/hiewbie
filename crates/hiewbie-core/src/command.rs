@@ -24,6 +24,8 @@ pub enum Command {
     BeginEdit,
     DiscardEdit,
     WriteByte(u8),
+    RestoreByte,
+    RestorePreviousByte,
     Undo,
     Redo,
     Move(i64),
@@ -41,6 +43,8 @@ impl Command {
             Self::BeginEdit => "edit.begin",
             Self::DiscardEdit => "edit.discard",
             Self::WriteByte(_) => "edit.write-byte",
+            Self::RestoreByte => "edit.restore-byte",
+            Self::RestorePreviousByte => "edit.restore-previous-byte",
             Self::Undo => "edit.undo",
             Self::Redo => "edit.redo",
             Self::Move(_) => "navigate.move",
@@ -74,12 +78,20 @@ pub const COMMANDS: &[CommandInfo] = &[
         description: "Overwrite the cursor byte and advance",
     },
     CommandInfo {
+        id: "edit.restore-byte",
+        description: "Restore the source byte under the cursor without moving",
+    },
+    CommandInfo {
+        id: "edit.restore-previous-byte",
+        description: "Restore the previous source byte and move back to it",
+    },
+    CommandInfo {
         id: "edit.undo",
-        description: "Undo one pending overwrite command",
+        description: "Undo one pending byte edit",
     },
     CommandInfo {
         id: "edit.redo",
-        description: "Redo one pending overwrite command",
+        description: "Redo one pending byte edit",
     },
     CommandInfo {
         id: "navigate.move",
@@ -182,6 +194,18 @@ impl<S: ByteSource> Editor<S> {
                 self.require_editing()?;
                 self.document.overwrite(self.cursor, &[byte])?;
                 self.cursor = self.clamp(self.cursor.get().saturating_add(1));
+            }
+            Command::RestoreByte => {
+                self.require_editing()?;
+                self.document.restore_byte(self.cursor)?;
+            }
+            Command::RestorePreviousByte => {
+                self.require_editing()?;
+                if let Some(previous) = self.cursor.get().checked_sub(1) {
+                    let offset = FileOffset::new(previous);
+                    self.document.restore_byte(offset)?;
+                    self.cursor = offset;
+                }
             }
             Command::Undo => {
                 self.require_editing()?;

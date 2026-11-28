@@ -29,10 +29,13 @@ Examples:
   hiewbie --dump --offset 0x100 program.bin
   hiewbie --dump --offset 256t program.bin
 
-View: Enter/F4 switches Hex/Text; F3/Ctrl+E begins editing;
-      F5/Ctrl+G goes to an offset; F7/Ctrl+F searches; Ctrl+Enter repeats.
+View: Enter cycles Hex/Text; F4 selects a mode; F3/Ctrl+E begins editing;
+      F5/Ctrl+G goes to an offset; F7/Ctrl+F searches;
+      Shift+F7, Ctrl+Enter, or Ctrl+R repeats the search.
 Edit: F9/Ctrl+S saves; Esc discards; Tab switches hex/ASCII entry;
+      F3 restores the original current byte; Backspace restores the previous;
       Ctrl+Z/Ctrl+Y undo/redo. A hex byte is applied after both digits.
+      Backspace cancels an incomplete hex digit first.
 F1 opens help. Esc exits from view mode. Bracketed paste is rejected.
 
 This initial editor supports raw-byte overwrite transactions. Code mode,
