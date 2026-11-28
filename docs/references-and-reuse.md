@@ -79,7 +79,7 @@ parser dependency or bundled upstream implementation.
 - [Goblin](https://github.com/m4b/goblin): executable format parsing candidate.
 - [object security scope](https://github.com/gimli-rs/object#security): review its documented trusted-input assumptions before selecting it for arbitrary binary files.
 - [Keystone](https://github.com/keystone-engine/keystone) and its [FOSS exception](https://github.com/keystone-engine/keystone/blob/master/EXCEPTIONS-CLIENT): GPLv2 plus exception, not MIT; MIT is listed in the exception, but all applicable conditions and distribution requirements need evaluation.
-- [LLVM MC](https://llvm.org/docs/CommandGuide/llvm-mc.html) and [LLVM licensing policy](https://llvm.org/docs/DeveloperPolicy.html): text assembly candidate; evaluate deployment size and all required targets.
+- [LLVM MC](https://llvm.org/docs/CommandGuide/llvm-mc.html) and [LLVM licensing policy](https://llvm.org/docs/DeveloperPolicy.html): independent encoding oracle in the [text assembler decision](adr/0006-text-assembler-selection.md).
 - [Kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/): optional richer key-event negotiation, with legacy fallback.
 
 ## Symbol-table format references and fixture provenance
