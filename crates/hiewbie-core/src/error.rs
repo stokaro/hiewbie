@@ -1,5 +1,7 @@
 use std::{fmt, io};
 
+use crate::assembly::AssemblyError;
+
 /// A checked core operation failed without changing the logical document.
 #[derive(Debug)]
 pub enum Error {
@@ -22,6 +24,8 @@ pub enum Error {
     UnsupportedAddress,
     /// An interpretation or navigation operation is unavailable or invalid.
     Analysis(String),
+    /// A textual instruction could not be assembled.
+    Assembly(AssemblyError),
     /// A block command is unavailable in the current state.
     Block(&'static str),
     /// Read-only sessions cannot edit or request persistence.
@@ -62,6 +66,7 @@ impl fmt::Display for Error {
                 "dotted virtual addresses require an address-mapping backend"
             ),
             Self::Analysis(reason) => formatter.write_str(reason),
+            Self::Assembly(error) => error.fmt(formatter),
             Self::Block(reason) => formatter.write_str(reason),
             Self::ReadOnly => formatter.write_str("the document is open read-only"),
             Self::EditingInProgress => formatter.write_str("finish editing before opening a file"),
@@ -80,6 +85,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Io(error) => Some(error),
+            Self::Assembly(error) => Some(error),
             _ => None,
         }
     }

@@ -189,3 +189,27 @@ fn symbol_inspection_is_lazy_and_cached_for_one_document_generation() {
             .any(|symbol| symbol.name == "Entry_symbol")
     );
 }
+
+#[test]
+fn textual_assembly_resolves_symbols_from_the_current_logical_generation() {
+    let mut editor = editor(fixtures::pe64());
+    editor.dispatch(Command::GotoEntry).unwrap();
+    assert!(editor.symbols().is_none());
+    assert_eq!(
+        editor.assemble_at_cursor("jmp @entry_symbol").unwrap(),
+        [vec![0xE9, 0xFB, 0xFF, 0xFF, 0xFF]],
+    );
+    assert!(editor.symbols().is_some());
+    editor.dispatch(Command::BeginEdit).unwrap();
+    editor
+        .document_mut()
+        .overwrite(FileOffset::new(0x440), &0x1006_u32.to_le_bytes())
+        .unwrap();
+    assert!(editor.symbols().is_none());
+    assert_eq!(
+        editor.assemble_at_cursor("jmps entry_symbol").unwrap(),
+        [vec![0xEB, 0x04]],
+    );
+    assert!(editor.document().is_dirty());
+    assert_eq!(editor.cursor(), FileOffset::new(0x200));
+}

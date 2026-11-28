@@ -100,7 +100,7 @@ The proposed path leaves Keystone out.
 ## Build and runtime routes
 
 The [target manifest](../../build/targets.json) drives the Rust workflow and
-its probe steps. The compatibility ledger keeps assembly Planned.
+its probe steps. The [x86 production core](../x86-text-assembly.md) now reports its implemented subset. The ledger retains the remaining AArch64 and interactive work.
 
 | Required targets | Evidence route and remaining qualification |
 | --- | --- |
