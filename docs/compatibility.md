@@ -83,6 +83,7 @@ bindings stay planned. Validate contextual details before declaring HIEW parity.
 | Code view | F6 / Ctrl+F6 | References / next reference |
 | Text view | F6 / Ctrl+F6 | Select line endings / toggle tab expansion |
 | View | F7 / Ctrl+Enter / Shift+F7 | Search / repeat / repeat |
+| Search | F2 / F4 / F5 / F6 / F7 | Direction / block scope / last hit / Unicode alignment / instruction input |
 | Hex / Code view | F8 | Executable headers |
 | Text view | F8 | Select translation table |
 | PE header | F5 / F6 / F7 / F9 | Entry / sections / imports / exports |
@@ -90,7 +91,8 @@ bindings stay planned. Validate contextual details before declaring HIEW parity.
 | View | Backspace | Return after goto/find/reference navigation |
 | Code | Ctrl+F1 / Shift+F1 | Bitness / architecture |
 | Code | / | Resynchronize decoding |
-| View | * / [ / ] | Select / block boundaries |
+| Hex / Code view | * / [ / ] | Start, finish, or clear a block / go to its first or last byte |
+| Hex / Code view | Ctrl+* / Alt+* | Select the whole file / resize the block |
 | Blocks | Insert | Insert/overwrite |
 | Blocks | F2 / Ctrl+F2 | Export/import |
 | Blocks | Alt+F2 | Pattern fill |
@@ -134,7 +136,9 @@ All requirements in this section are proposed engineering contracts.
 - **EDIT-012**: Save preserves untouched bytes exactly, including unknown fields and overlays.
 - **EDIT-013**: Do not silently recalculate headers, relocations, or checksums during byte edits.
 - **EDIT-014**: Expose deliberate format-aware repairs separately with a preview of changed bytes.
-- **EDIT-015**: Read-only mode forbids persistence through every command and extension path.
+- **EDIT-015**: Read-only mode forbids persistence to the opened source through
+  every command and extension path. Explicit exports use a separate destination
+  subject to its own write capabilities.
 - **EDIT-016**: Detect replacement/truncation of the backing file and avoid stale writes.
 - **EDIT-017**: Failed saves retain recovery information and report the error plus any written/uncertain ranges; reconcile partial persistence before retrying.
 - **EDIT-018**: Save semantics must cover permissions, symlinks, metadata, and partial I/O.
@@ -233,6 +237,8 @@ each capability requires independent fixtures and acceptance evidence.
   exact policy, with an explicit encoding/case mapping; retain the full query
   for repeat. Arbitrary Unicode folding is a separate capability [S12].
 - **SEARCH-002**: Support forward/backward, whole-file/selection, repeat, and cancellation.
+  The block scope includes both selected endpoint bytes and accepts matches
+  that fit entirely inside the range.
   The 8.63 Russian manual records continuation from the last hit despite ordinary
   cursor movement, with resets on Ctrl+Home/End, F5 and F7. Record direction,
   reset, no-hit and boundary behavior rather than assuming cursor+1 [S12].

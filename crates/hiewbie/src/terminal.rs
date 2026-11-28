@@ -1,7 +1,9 @@
 //! Thin native terminal adapter over the portable document and command model.
 
 mod analysis;
+mod block;
 mod render;
+mod search;
 mod symbols;
 #[cfg(test)]
 mod tests;
@@ -9,12 +11,9 @@ mod tests;
 use std::io::{self, Stdout};
 use std::time::Duration;
 
-use hiewbie::file::{FileSource, SaveError, save_document};
+use hiewbie::file::{BlockExport, ExportProgress, FileSource, SaveError, save_document};
 use hiewbie_core::formats::VirtualAddress;
-use hiewbie_core::{
-    ByteSource, Command, Editor, Effect, FileOffset, MAX_SEARCH_PATTERN_BYTES, Search,
-    SearchProgress, ViewMode,
-};
+use hiewbie_core::{BlockBoundary, ByteSource, Command, Editor, Effect, FileOffset, ViewMode};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::{
@@ -28,8 +27,9 @@ use ratatui::crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 
-const SEARCH_STEP_BYTES: usize = 64 * 1024;
 use analysis::{AnalysisDialog, AnalysisPage};
+use block::{BlockExportRequest, BlockWrite};
+use search::SearchDialog;
 
 pub(crate) fn printable(byte: u8) -> char {
     if (b' '..=b'~').contains(&byte) {
@@ -111,13 +111,14 @@ pub(crate) fn run(editor: Editor<FileSource>) -> io::Result<()> {
     let mut terminal: Terminal<CrosstermBackend<Stdout>> = Terminal::new(backend)?;
     terminal.clear()?;
     let mut redraw = true;
+    let mut export: Option<BlockExport> = None;
 
     loop {
         if redraw {
             terminal.draw(|frame| ui.render(frame))?;
         }
         redraw = false;
-        let timeout = if ui.search.is_some() {
+        let timeout = if ui.editor.is_searching() || export.is_some() {
             Duration::from_millis(16)
         } else {
             Duration::from_millis(100)
@@ -143,10 +144,49 @@ pub(crate) fn run(editor: Editor<FileSource>) -> io::Result<()> {
                     }
                     Err(error) => ui.save_failed(error),
                 },
+                UiAction::ExportBlock(request) => match BlockExport::begin(
+                    ui.editor.document(),
+                    request.range,
+                    &request.path,
+                    request.offset,
+                    request.replace_existing,
+                ) {
+                    Ok(Some(operation)) => {
+                        export = Some(operation);
+                        ui.export_in_progress = true;
+                        ui.notice("Staging block export | Esc cancels");
+                    }
+                    Ok(None) => ui.confirm_block_output(),
+                    Err(error) => ui.report_export_failure(error.to_string()),
+                },
+                UiAction::CancelBlockExport => {
+                    export = None;
+                    ui.report_export_failure("Block export canceled");
+                }
                 UiAction::Continue => {}
             }
         }
-        if ui.search.is_some() {
+        if let Some(operation) = &mut export {
+            redraw = true;
+            match operation.step(ui.editor.document_mut()) {
+                Ok(ExportProgress::Staging { done, total }) => {
+                    ui.notice(format!(
+                        "Staging block output {done}/{total} bytes | Esc cancels"
+                    ));
+                }
+                Ok(ExportProgress::Complete { block_bytes }) => {
+                    export = None;
+                    ui.export_in_progress = false;
+                    ui.dialog = None;
+                    ui.notice(format!("Exported {block_bytes} block bytes"));
+                }
+                Err(error) => {
+                    export = None;
+                    ui.report_export_failure(error.to_string());
+                }
+            }
+        }
+        if ui.editor.is_searching() {
             ui.advance_search();
             redraw = true;
         }
@@ -154,10 +194,12 @@ pub(crate) fn run(editor: Editor<FileSource>) -> io::Result<()> {
     Ok(())
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 enum UiAction {
     Continue,
     Save,
+    ExportBlock(BlockExportRequest),
+    CancelBlockExport,
     Exit,
 }
 
@@ -171,8 +213,6 @@ enum EntryColumn {
 enum PromptKind {
     Goto,
     RawBase,
-    SearchHex,
-    SearchText,
 }
 
 struct InputDialog {
@@ -190,6 +230,8 @@ enum ModeChoice {
 
 enum Dialog {
     Input(InputDialog),
+    Search(SearchDialog),
+    BlockWrite(BlockWrite),
     Help,
     Mode(ModeChoice),
     Analysis(AnalysisDialog),
@@ -205,9 +247,8 @@ struct Ui<S: ByteSource> {
     pending_nibble: Option<u8>,
     message: String,
     dialog: Option<Dialog>,
-    search: Option<Search>,
-    last_pattern: Option<Vec<u8>>,
     reopen_required: bool,
+    export_in_progress: bool,
 }
 
 impl<S: ByteSource> Ui<S> {
@@ -223,9 +264,8 @@ impl<S: ByteSource> Ui<S> {
             pending_nibble: None,
             message: "F1 help | Enter cycle | F4 select mode | F8 headers | Esc quit".into(),
             dialog: None,
-            search: None,
-            last_pattern: None,
             reopen_required: false,
+            export_in_progress: false,
         }
     }
 
@@ -240,6 +280,10 @@ impl<S: ByteSource> Ui<S> {
         match self.editor.dispatch(command) {
             Ok(Effect::None) => UiAction::Continue,
             Ok(Effect::Save) => UiAction::Save,
+            Ok(Effect::ExportBlock(range)) => {
+                self.dialog = Some(Dialog::BlockWrite(BlockWrite::new(range)));
+                UiAction::Continue
+            }
             Err(error) => {
                 self.notice(error.to_string());
                 UiAction::Continue
@@ -281,16 +325,22 @@ impl<S: ByteSource> Ui<S> {
                 UiAction::Continue
             };
         }
-        if self.search.is_some() {
+        if self.editor.is_searching() {
             if key.code == KeyCode::Esc || is_control_char(key, 'c') {
-                self.search = None;
-                self.notice("Search cancelled; cursor unchanged");
+                self.editor.cancel_search();
+                self.notice("Search canceled; cursor unchanged");
             }
             return UiAction::Continue;
         }
+        if self.export_in_progress {
+            return if key.code == KeyCode::Esc || is_control_char(key, 'c') {
+                UiAction::CancelBlockExport
+            } else {
+                UiAction::Continue
+            };
+        }
         if self.dialog.is_some() {
-            self.dialog_key(key);
-            return UiAction::Continue;
+            return self.dialog_key(key);
         }
         if key.code == KeyCode::F(1)
             && key.modifiers == KeyModifiers::SHIFT
@@ -298,6 +348,44 @@ impl<S: ByteSource> Ui<S> {
         {
             self.open_analysis(AnalysisPage::Profiles);
             return UiAction::Continue;
+        }
+        if !self.editor.is_editing() && self.editor.mode() != ViewMode::Text {
+            let block_command = match (key.code, key.modifiers) {
+                (KeyCode::Char('*'), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
+                    // Enhanced keyboard protocols can report auto-repeat separately.
+                    if key.kind == KeyEventKind::Repeat {
+                        return UiAction::Continue;
+                    }
+                    Some(Command::ToggleBlock)
+                }
+                (KeyCode::Char('['), KeyModifiers::NONE) => {
+                    Some(Command::GotoBlockBoundary(BlockBoundary::First))
+                }
+                (KeyCode::Char(']'), KeyModifiers::NONE) => {
+                    Some(Command::GotoBlockBoundary(BlockBoundary::Last))
+                }
+                (KeyCode::Char('*'), mods) if mods - KeyModifiers::SHIFT == KeyModifiers::ALT => {
+                    Some(Command::ResizeBlock)
+                }
+                (KeyCode::Char('*' | 'k' | 'K'), mods)
+                    if mods - KeyModifiers::SHIFT == KeyModifiers::CONTROL =>
+                {
+                    Some(Command::SelectWholeBlock)
+                }
+                _ => None,
+            };
+            if let Some(command) = block_command {
+                let previous = self.editor.block_selection();
+                let action = self.dispatch(command);
+                if self.editor.block_selection() != previous {
+                    self.notice(match self.editor.block_selection() {
+                        Some(block) if block.is_marking => "Marking block | * finish | Esc cancel",
+                        Some(_) => "Block marked | [ first | ] last | * clear",
+                        None => "Block cleared",
+                    });
+                }
+                return action;
+            }
         }
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             return self.control_key(key);
@@ -373,6 +461,14 @@ impl<S: ByteSource> Ui<S> {
             let action = self.dispatch(Command::DiscardEdit);
             self.notice("Pending edits discarded; viewing original bytes. Esc quits");
             action
+        } else if self
+            .editor
+            .block_selection()
+            .is_some_and(|block| block.is_marking)
+        {
+            let action = self.dispatch(Command::ClearBlock);
+            self.notice("Block marking canceled");
+            action
         } else if self.editor.document().is_dirty() {
             // No frontend path should create this state. Retain a defensive
             // barrier if a future command leaves an overlay outside edit mode.
@@ -406,6 +502,9 @@ impl<S: ByteSource> Ui<S> {
 
     fn view_key(&mut self, code: KeyCode) -> UiAction {
         match code {
+            KeyCode::F(2) if self.editor.mode() != ViewMode::Text => {
+                self.dispatch(Command::ExportBlock)
+            }
             KeyCode::Enter => {
                 self.notice("Mode changed; Shift+F1/Ctrl+A selects the Code architecture");
                 self.dispatch(Command::CycleMode)
@@ -558,10 +657,16 @@ impl<S: ByteSource> Ui<S> {
                 self.open_analysis(AnalysisPage::Overview);
                 UiAction::Continue
             }
-            KeyCode::Home => self.dispatch(Command::Goto(FileOffset::new(0))),
-            KeyCode::End => self.dispatch(Command::Goto(FileOffset::new(
-                self.editor.document().len().saturating_sub(1),
-            ))),
+            KeyCode::Home | KeyCode::End => {
+                let offset = if key.code == KeyCode::Home {
+                    0
+                } else {
+                    self.editor.document().len().saturating_sub(1)
+                };
+                let action = self.dispatch(Command::Goto(FileOffset::new(offset)));
+                self.editor.reset_search_origin();
+                action
+            }
             KeyCode::Char('e' | 'E') => self.begin_edit(),
             KeyCode::Char('s' | 'S') => self.save(),
             KeyCode::Char('z' | 'Z') => self.dispatch(Command::Undo),
@@ -598,26 +703,24 @@ impl<S: ByteSource> Ui<S> {
         }));
     }
 
-    fn open_search_prompt(&mut self) {
-        self.open_prompt(match self.editor.mode() {
-            ViewMode::Hex | ViewMode::Code => PromptKind::SearchHex,
-            ViewMode::Text => PromptKind::SearchText,
-        });
-    }
-
-    fn dialog_key(&mut self, key: KeyEvent) {
+    fn dialog_key(&mut self, key: KeyEvent) -> UiAction {
         let Some(dialog) = self.dialog.take() else {
-            return;
+            return UiAction::Continue;
         };
-        if key.code == KeyCode::Esc || is_control_char(key, 'c') {
-            self.notice("Dialog cancelled");
-            return;
-        }
         let mut input = match dialog {
+            Dialog::BlockWrite(dialog) => return self.block_write_key(dialog, key),
+            Dialog::Search(search) => {
+                self.search_key(search, key);
+                return UiAction::Continue;
+            }
+            _ if key.code == KeyCode::Esc || is_control_char(key, 'c') => {
+                self.notice("Dialog canceled");
+                return UiAction::Continue;
+            }
             Dialog::Input(input) => input,
             Dialog::Analysis(dialog) => {
                 self.analysis_key(dialog, key);
-                return;
+                return UiAction::Continue;
             }
             Dialog::Help => {
                 if !matches!(key.code, KeyCode::F(1) | KeyCode::Enter) {
@@ -627,7 +730,7 @@ impl<S: ByteSource> Ui<S> {
                         "Help closed; Esc cancels or discards editing, and quits from view",
                     );
                 }
-                return;
+                return UiAction::Continue;
             }
             Dialog::Mode(mut selected) => {
                 if key.modifiers.is_empty() {
@@ -646,28 +749,20 @@ impl<S: ByteSource> Ui<S> {
                         };
                         self.dispatch(Command::SetMode(mode));
                         self.notice(format!("{mode} view selected; cursor unchanged"));
-                        return;
+                        return UiAction::Continue;
                     }
                 }
                 self.dialog = Some(Dialog::Mode(selected));
-                return;
+                return UiAction::Continue;
             }
         };
         match key.code {
             KeyCode::Enter => match self.apply_prompt(&input) {
-                Ok(()) => return,
+                Ok(()) => return UiAction::Continue,
                 Err(error) => input.error = Some(escaped_text(&error)),
             },
             KeyCode::Backspace => {
                 input.input.pop();
-                input.error = None;
-            }
-            KeyCode::Tab => {
-                input.kind = match input.kind {
-                    PromptKind::SearchHex => PromptKind::SearchText,
-                    PromptKind::SearchText => PromptKind::SearchHex,
-                    PromptKind::Goto | PromptKind::RawBase => input.kind,
-                };
                 input.error = None;
             }
             _ if is_control_char(key, 'u') => {
@@ -680,12 +775,7 @@ impl<S: ByteSource> Ui<S> {
                         .modifiers
                         .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
             {
-                let limit = if matches!(input.kind, PromptKind::Goto | PromptKind::RawBase) {
-                    64
-                } else {
-                    MAX_SEARCH_PATTERN_BYTES * 3
-                };
-                if input.input.len() + character.len_utf8() <= limit {
+                if input.input.len() + character.len_utf8() <= 64 {
                     input.input.push(character);
                     input.error = None;
                 } else {
@@ -695,6 +785,7 @@ impl<S: ByteSource> Ui<S> {
             _ => {}
         }
         self.dialog = Some(Dialog::Input(input));
+        UiAction::Continue
     }
 
     fn apply_prompt(&mut self, prompt: &InputDialog) -> Result<(), String> {
@@ -716,72 +807,6 @@ impl<S: ByteSource> Ui<S> {
                 ));
                 Ok(())
             }
-            PromptKind::SearchHex | PromptKind::SearchText => {
-                let pattern = if prompt.kind == PromptKind::SearchHex {
-                    parse_hex_pattern(&prompt.input)?
-                } else {
-                    let pattern = prompt.input.as_bytes();
-                    if pattern.is_empty() || pattern.len() > MAX_SEARCH_PATTERN_BYTES {
-                        return Err(format!(
-                            "Text search requires 1..={MAX_SEARCH_PATTERN_BYTES} UTF-8 bytes"
-                        ));
-                    }
-                    pattern.to_vec()
-                };
-                self.start_search(pattern, self.editor.cursor())
-            }
-        }
-    }
-
-    fn start_search(&mut self, pattern: Vec<u8>, start: FileOffset) -> Result<(), String> {
-        let search = Search::new(pattern.clone(), start, self.editor.document().generation())
-            .map_err(|error| error.to_string())?;
-        self.last_pattern = Some(pattern);
-        self.search = Some(search);
-        self.notice(format!("Searching from {:016X}; Esc cancels", start.get()));
-        Ok(())
-    }
-
-    fn repeat_search(&mut self) {
-        let Some(pattern) = self.last_pattern.clone() else {
-            self.notice("No previous search; F7/Ctrl+F opens search");
-            return;
-        };
-        let Some(next) = self
-            .editor
-            .cursor()
-            .get()
-            .checked_add(1)
-            .filter(|next| *next < self.editor.document().len())
-        else {
-            self.notice("No further match before end of file; search does not wrap");
-            return;
-        };
-        if let Err(error) = self.start_search(pattern, FileOffset::new(next)) {
-            self.notice(error);
-        }
-    }
-
-    fn advance_search(&mut self) {
-        let Some(mut search) = self.search.take() else {
-            return;
-        };
-        match search.step(self.editor.document_mut(), SEARCH_STEP_BYTES) {
-            Ok(SearchProgress::Pending { next }) => {
-                self.notice(format!("Searching {:016X}; Esc cancels", next.get()));
-                self.search = Some(search);
-            }
-            Ok(SearchProgress::Found(offset)) => {
-                self.dispatch(Command::Goto(offset));
-                self.notice(format!(
-                    "Found at {:016X}; Shift+F7/Ctrl+R repeats",
-                    offset.get()
-                ));
-            }
-            Ok(SearchProgress::NotFound) => {
-                self.notice("No match before end of file; search does not wrap")
-            }
-            Err(error) => self.notice(format!("Search stopped: {error}")),
         }
     }
 }
@@ -790,34 +815,4 @@ fn is_control_char(key: KeyEvent, expected: char) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL)
         && !key.modifiers.contains(KeyModifiers::ALT)
         && matches!(key.code, KeyCode::Char(character) if character.eq_ignore_ascii_case(&expected))
-}
-
-fn parse_hex_pattern(input: &str) -> Result<Vec<u8>, String> {
-    let mut bytes = Vec::new();
-    let mut high = None;
-    for character in input.chars() {
-        if character.is_ascii_whitespace() {
-            continue;
-        }
-        let Some(digit) = character.to_digit(16).filter(|_| character.is_ascii()) else {
-            return Err("Use pairs of hexadecimal digits, optionally separated by spaces".into());
-        };
-        if let Some(first) = high.take() {
-            if bytes.len() == MAX_SEARCH_PATTERN_BYTES {
-                return Err(format!(
-                    "Search pattern exceeds {MAX_SEARCH_PATTERN_BYTES} bytes"
-                ));
-            }
-            bytes.push((first << 4) | digit as u8);
-        } else {
-            high = Some(digit as u8);
-        }
-    }
-    if high.is_some() {
-        return Err("A hex search requires two digits for every byte".into());
-    }
-    if bytes.is_empty() {
-        return Err("Search pattern must not be empty".into());
-    }
-    Ok(bytes)
 }

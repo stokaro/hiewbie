@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "observation_date": "2026-11-28",
+  "reference_version": "8.63",
+  "environment": {
+    "os": "Windows 11 22H2, x86-64",
+    "runtime": "isolated Windows Server Core LTSC 2022 container",
+    "terminal_cells": "80x25",
+    "console_transport": "interactive console"
+  },
+  "fixtures": [
+    {"provenance": "generated", "bytes": "four repetitions of 00 through FF"},
+    {"provenance": "generated", "ascii": "A--A--A--A---ABABA"}
+  ],
+  "observations": [
+    {"scenario": "H12", "action": "Mark at 5, move backward to 3, finish, then jump to both boundaries.", "result": "The live lengths were 1, 2, and 3. The finished block retained highlight and its inclusive endpoints were 3 and 5."},
+    {"scenario": "H13", "action": "Write bytes 0–1 at output offset 0, then append the reversed mark spanning offsets 3–5.", "result_hex": "00 01 03 04 05"},
+    {"scenario": "H08", "action": "Mark offsets 2–9 in the ASCII fixture. Search forward for byte 41 from offset 2 after selecting Block.", "result_offset": 3}
+  ],
+  "open": [
+    "Modified F7 was delivered as an unmodified key by the console transport.",
+    "Repeat, search boundaries, select all, and modifier-dependent resizing need controlled keyboard events.",
+    "Translated export, the file chooser, and multi-file block reuse are outside these observations."
+  ],
+  "distribution_and_raw_capture_in_repository": false
+}

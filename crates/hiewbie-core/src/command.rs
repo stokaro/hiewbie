@@ -1,10 +1,12 @@
 use std::fmt;
 
 use crate::analysis::{Analysis, Location, analysis_error};
-use crate::formats::{Endian, Executable, VirtualAddress};
+use crate::block::{BlockBoundary, BlockMark, BlockSelection};
+use crate::formats::{Endian, Executable, FileRange, VirtualAddress};
 use crate::instructions::DecodeMode;
+use crate::search::SearchSession;
 use crate::symbols::{SymbolTable, SymbolTarget};
-use crate::{ByteSource, Document, Error, FileOffset};
+use crate::{ByteSource, Document, Error, FileOffset, SearchProgress, SearchRepeat, SearchRequest};
 use crate::{CodeRow, DecodeContext, MAX_CODE_ROWS, parse_goto, parse_virtual_address};
 
 /// Views sharing one logical document and file cursor.
@@ -35,6 +37,12 @@ pub enum Command {
     RestorePreviousByte,
     Undo,
     Redo,
+    ToggleBlock,
+    ClearBlock,
+    SelectWholeBlock,
+    ResizeBlock,
+    GotoBlockBoundary(BlockBoundary),
+    ExportBlock,
     Move(i64),
     Goto(FileOffset),
     GotoVirtual(VirtualAddress),
@@ -68,6 +76,12 @@ impl Command {
             Self::RestorePreviousByte => "edit.restore-previous-byte",
             Self::Undo => "edit.undo",
             Self::Redo => "edit.redo",
+            Self::ToggleBlock => "block.toggle",
+            Self::ClearBlock => "block.clear",
+            Self::SelectWholeBlock => "block.select-all",
+            Self::ResizeBlock => "block.resize",
+            Self::GotoBlockBoundary(_) => "block.goto-boundary",
+            Self::ExportBlock => "block.export",
             Self::Move(_) => "navigate.move",
             Self::Goto(_) => "navigate.goto",
             Self::GotoVirtual(_) => "navigate.virtual",
@@ -134,6 +148,30 @@ pub const COMMANDS: &[CommandInfo] = &[
     CommandInfo {
         id: "edit.redo",
         description: "Redo one pending byte edit",
+    },
+    CommandInfo {
+        id: "block.toggle",
+        description: "Start, finish, or clear a block mark at the file cursor",
+    },
+    CommandInfo {
+        id: "block.clear",
+        description: "Clear the current block mark",
+    },
+    CommandInfo {
+        id: "block.select-all",
+        description: "Mark the entire nonempty file",
+    },
+    CommandInfo {
+        id: "block.resize",
+        description: "Set the active endpoint of the current block to the cursor",
+    },
+    CommandInfo {
+        id: "block.goto-boundary",
+        description: "Go to the first or last selected byte",
+    },
+    CommandInfo {
+        id: "block.export",
+        description: "Request platform export of the fixed file range",
     },
     CommandInfo {
         id: "navigate.move",
@@ -210,6 +248,7 @@ pub const COMMANDS: &[CommandInfo] = &[
 pub enum Effect {
     None,
     Save,
+    ExportBlock(FileRange),
 }
 
 /// Shared view, cursor, and edit-state semantics around a document.
@@ -221,6 +260,8 @@ pub struct Editor<S: ByteSource> {
     editing: bool,
     read_only: bool,
     analysis: Analysis,
+    search: SearchSession,
+    block: Option<BlockMark>,
 }
 
 impl<S: ByteSource> Editor<S> {
@@ -233,6 +274,8 @@ impl<S: ByteSource> Editor<S> {
             editing: false,
             read_only,
             analysis: Analysis::default(),
+            search: SearchSession::default(),
+            block: None,
         }
     }
 
@@ -263,6 +306,11 @@ impl<S: ByteSource> Editor<S> {
     #[must_use]
     pub const fn is_read_only(&self) -> bool {
         self.read_only
+    }
+
+    #[must_use]
+    pub fn block_selection(&self) -> Option<BlockSelection> {
+        self.block?.selection(self.cursor, self.document.len())
     }
 
     /// Inspect the current logical generation; parser failures preserve raw access.
@@ -329,7 +377,45 @@ impl<S: ByteSource> Editor<S> {
                 self.cursor,
                 self.document.len(),
             )?))
+        }?;
+        self.reset_search_origin();
+        Ok(Effect::None)
+    }
+
+    #[must_use]
+    pub fn last_search_hit(&self) -> Option<FileOffset> {
+        self.search.last_hit(self.document.generation())
+    }
+
+    pub fn start_search(&mut self, request: SearchRequest) {
+        self.search
+            .start(request, self.cursor, self.document.generation());
+    }
+
+    pub fn repeat_search(&mut self) -> SearchRepeat {
+        self.search
+            .repeat(self.cursor, self.document.generation(), self.document.len())
+    }
+
+    pub fn reset_search_origin(&mut self) {
+        self.search.reset(self.cursor, self.document.generation());
+    }
+
+    pub fn cancel_search(&mut self) {
+        self.search.cancel();
+    }
+
+    #[must_use]
+    pub fn is_searching(&self) -> bool {
+        self.search.is_pending()
+    }
+
+    pub fn step_search(&mut self, budget: usize) -> Result<Option<SearchProgress>, Error> {
+        let progress = self.search.step(&mut self.document, budget)?;
+        if let Some(SearchProgress::Found(offset)) = progress {
+            self.dispatch(Command::Goto(offset))?;
         }
+        Ok(progress)
     }
 
     pub fn dispatch(&mut self, command: Command) -> Result<Effect, Error> {
@@ -340,6 +426,7 @@ impl<S: ByteSource> Editor<S> {
                 }
                 if !self.editing {
                     self.document.discard();
+                    self.finish_block();
                     self.editing = true;
                 }
             }
@@ -373,6 +460,51 @@ impl<S: ByteSource> Editor<S> {
             Command::Redo => {
                 self.require_editing()?;
                 self.document.redo()?;
+            }
+            Command::ToggleBlock => {
+                self.require_block_view()?;
+                self.block = match self.block {
+                    None => Some(BlockMark::Tracking(self.cursor)),
+                    Some(mark @ BlockMark::Tracking(_)) => Some(mark.finish(self.cursor)),
+                    Some(BlockMark::Fixed { .. }) => None,
+                };
+            }
+            Command::ClearBlock => self.block = None,
+            Command::SelectWholeBlock => {
+                self.require_block_view()?;
+                self.block = Some(BlockMark::Fixed {
+                    anchor: FileOffset::new(0),
+                    edge: FileOffset::new(self.document.len() - 1),
+                });
+            }
+            Command::ResizeBlock => {
+                self.require_block_view()?;
+                let block = self
+                    .block
+                    .ok_or(Error::Block("Mark a block with * first"))?;
+                self.block = Some(block.resize(self.cursor));
+            }
+            Command::GotoBlockBoundary(boundary) => {
+                self.require_block_view()?;
+                let range = self
+                    .block_selection()
+                    .ok_or(Error::Block("Mark a block with * first"))?
+                    .range;
+                let offset = match boundary {
+                    BlockBoundary::First => range.offset,
+                    BlockBoundary::Last => FileOffset::new(range.offset.get() + range.len - 1),
+                };
+                return self.dispatch(Command::Goto(offset));
+            }
+            Command::ExportBlock => {
+                self.require_block_view()?;
+                let block = self
+                    .block_selection()
+                    .filter(|selection| !selection.is_marking)
+                    .ok_or(Error::Block(
+                        "Finish marking a block with * before exporting",
+                    ))?;
+                return Ok(Effect::ExportBlock(block.range));
             }
             Command::Move(delta) => {
                 self.analysis.walk.clear();
@@ -491,14 +623,12 @@ impl<S: ByteSource> Editor<S> {
                 self.analysis.walk.clear();
                 self.mode = ViewMode::Code;
             }
-            Command::SetMode(mode) => self.mode = mode,
-            Command::CycleMode => {
-                self.mode = match self.mode {
-                    ViewMode::Hex => ViewMode::Text,
-                    ViewMode::Text => ViewMode::Code,
-                    ViewMode::Code => ViewMode::Hex,
-                };
-            }
+            Command::SetMode(mode) => self.set_mode(mode),
+            Command::CycleMode => self.set_mode(match self.mode {
+                ViewMode::Hex => ViewMode::Text,
+                ViewMode::Text => ViewMode::Code,
+                ViewMode::Code => ViewMode::Hex,
+            }),
             Command::Save => {
                 self.require_editing()?;
                 return Ok(Effect::Save);
@@ -509,10 +639,36 @@ impl<S: ByteSource> Editor<S> {
 
     /// End editing only after the platform adapter has completed a save.
     pub fn complete_save(&mut self, source: S) {
+        if self.document.len() != source.len() {
+            self.block = None;
+        }
         self.document.rebase(source);
         self.analysis.invalidate();
         self.editing = false;
         self.cursor = self.clamp(self.cursor.get());
+    }
+
+    fn set_mode(&mut self, mode: ViewMode) {
+        if mode == ViewMode::Text {
+            self.finish_block();
+        }
+        self.mode = mode;
+    }
+
+    fn finish_block(&mut self) {
+        self.block = self.block.map(|mark| mark.finish(self.cursor));
+    }
+
+    fn require_block_view(&self) -> Result<(), Error> {
+        if self.editing || self.mode == ViewMode::Text {
+            return Err(Error::Block(
+                "Block marking is available in Hex and Code view",
+            ));
+        }
+        if self.document.is_empty() {
+            return Err(Error::Block("An empty file has no bytes to mark"));
+        }
+        Ok(())
     }
 
     fn require_editing(&self) -> Result<(), Error> {

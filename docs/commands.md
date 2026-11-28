@@ -14,6 +14,12 @@ from it. The public core exports `COMMANDS` and `Command::id()` from
 | `edit.restore-previous-byte` | None | Restore the preceding source byte and move there; no-op at offset zero |
 | `edit.undo` | None | Undo one pending command |
 | `edit.redo` | None | Reapply one undone command |
+| `block.toggle` | None | Start a mark, fix the tracked range, or clear the fixed block |
+| `block.clear` | None | Cancel or remove the block mark |
+| `block.select-all` | None | Fix a block over a nonempty file |
+| `block.resize` | None | Set the tracked endpoint to the cursor and fix the block |
+| `block.goto-boundary` | First or last | Navigate to an inclusive block endpoint |
+| `block.export` | None | Request export of the completed block using a platform effect |
 | `navigate.move` | Signed `i64` delta | Clamp byte movement to the existing file range |
 | `navigate.goto` | `FileOffset` | Move to a raw offset, clamped to the existing range |
 | `navigate.virtual` | `VirtualAddress` | Map an absolute VA to a file-backed byte; reject missing, ambiguous, or zero-fill mappings |
@@ -35,8 +41,8 @@ from it. The public core exports `COMMANDS` and `Command::id()` from
 | `file.save` | None | Return a native-save effect; require edit mode and write capability |
 
 The native frontend owns help and input dialogs, key translation, current input
-column, an incomplete hex digit, and cancellable search progress. Search itself
-uses the core `Search` API over the same logical document and generation. Goto
+column, an incomplete hex digit, and display of search progress. Search requests,
+continuation, cancellation, and hit navigation use the shared `Editor` API. Goto
 uses `Editor::goto_expression`: hexadecimal default, optional `0x`, decimal suffix
 `t`, and relative `+`/`-` apply to file positions. An absolute dotted address,
 such as `.401000`, uses the checked executable or explicit raw mapping. The
@@ -54,10 +60,47 @@ with an incomplete first hex digit only cancels that digit. Restores participate
 in undo/redo history without being aliases for undo. They use the transaction's
 source, rebased after each save.
 
-Search literals are bounded, case-sensitive, forward, and do not wrap. Shift+F7,
-Ctrl+Enter and Ctrl+R share the existing repeat path. Repeating from cursor+1
-and literal text matching still differ from the original documentation; see the
-[reference comparison](reference/hiew-8.63.md#next-development-priorities).
+### Search
+
+F7/Ctrl+F opens the search dialog. UTF-8 input folds ASCII A–Z and a–z.
+Other UTF-8 bytes and Hex input compare exactly.
+Tab or Up/Down converts the query to the other representation when possible.
+F2 switches between forward and backward scans. F5 in the dialog jumps to the
+most recent hit in the current document generation. F1 describes the active
+bindings.
+
+A new query scans from the cursor inclusive. Shift+F7, Ctrl+Enter, and Ctrl+R
+resume one byte beyond the last hit in the original scan direction, allowing
+overlapping matches. Cursor movement preserves that point. Ctrl+Home/End and
+a successful view Goto reset the resume point to the destination. Cancellation
+preserves the previous completed query and resume point. Searches stop at the
+boundary without wrapping, and a completed miss stays exhausted until reset.
+Following an edit, repeat keeps the request and starts from the current cursor.
+
+F4 switches between the file and a completed block. A match must fit entirely
+inside the selected range. Repeat uses the range captured at confirmation even
+if the visible mark later changes. An even-offset constraint exists in the
+engine. Unicode alignment controls, legacy case mappings, wildcards, and
+instruction search remain tracked in the
+[reference comparison](reference/hiew-8.63.md#search-fields-direction-and-continuation).
+
+### Blocks
+
+In Hex and Code view, `*` starts a mark at the cursor. Movement tracks the
+other endpoint in either direction. The counter shows the live length in
+hexadecimal and decimal. A second `*` fixes the inclusive range. A third
+clears it. Esc cancels an active mark. `[` and `]` jump to the first and last
+byte. Alt+`*` moves the endpoint opposite the original anchor to the cursor
+and fixes the range. Ctrl+`*` or Ctrl+K marks the whole nonempty file.
+Switching to Text or entering edit mode fixes a live mark.
+
+F2 opens raw block export. Enter accepts the path, output offset, and raw
+format in sequence. Tab and Shift+Tab move between fields. A blank offset is
+zero, a number is an absolute file position, and `*` appends. An existing
+destination requires explicit confirmation. Existing bytes outside the
+destination span are preserved. An output offset past EOF creates a zero-filled
+gap. Esc during staging cancels the export before commit. Export is available
+for a read-only source and requires a distinct regular output file.
 
 ## Analysis contexts
 
