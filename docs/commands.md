@@ -299,6 +299,12 @@ Incomplete and unrecognized encodings preserve the current byte for
 inspection. See the [x86 Decode capability table](x86-decode-coverage.md)
 for tested encodings and HIEW 8.63 observations.
 
+Interactive 16-bit Decode uses HIEW's legacy LES, LDS, and BOUND boundaries.
+A register-only form displays `#UD(mod)` or `#UD(lock)` and decoding resumes
+at the ModR/M byte. Instruction movement and aligned F6 searches share these
+boundaries. Headless `--disassemble` uses the portable decoder's instruction
+interpretation.
+
 In Code view outside edit mode, 1–9 and A–Z follow destinations labeled in the
 displayed window. Direct branches keep Code open. In a mapped x86 image,
 fixed-address and PC-relative memory operands and address-like MOV literals

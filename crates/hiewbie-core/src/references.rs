@@ -1,6 +1,6 @@
 use crate::analysis::{Analysis, Interpretation};
 use crate::formats::{Endian, Executable, VirtualAddress};
-use crate::instructions::{DecodeMode, MAX_INSTRUCTION_BYTES, scan_references};
+use crate::instructions::{InstructionProfile, MAX_INSTRUCTION_BYTES, scan_references};
 use crate::{ByteSource, Document, Error, FileOffset, MAX_READ_BYTES, SearchProgress};
 
 const LOOKAHEAD_BYTES: usize = MAX_INSTRUCTION_BYTES - 1;
@@ -18,7 +18,7 @@ pub(crate) struct ReferenceSearch {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ReferenceScan {
     target: VirtualAddress,
-    mode: DecodeMode,
+    profile: InstructionProfile,
     interpretation: Interpretation,
     generation: u64,
     next: FileOffset,
@@ -70,7 +70,7 @@ impl ReferenceScan {
         };
         Ok(Self {
             target,
-            mode,
+            profile: analysis.instruction_profile(mode),
             interpretation: analysis.interpretation,
             generation,
             next,
@@ -82,7 +82,10 @@ impl ReferenceScan {
     pub(crate) fn is_current(&self, analysis: &Analysis, generation: u64) -> bool {
         self.generation == generation
             && self.interpretation == analysis.interpretation
-            && analysis.context().mode == Some(self.mode)
+            && analysis
+                .context()
+                .mode
+                .is_some_and(|mode| analysis.instruction_profile(mode) == self.profile)
     }
 
     pub(crate) const fn position(&self) -> FileOffset {
@@ -118,7 +121,7 @@ impl ReferenceScan {
                 &buffer[..count],
                 limit.min(count),
                 address,
-                self.mode,
+                self.profile,
                 self.target,
                 analysis.executable.is_some(),
                 self.bytewise,

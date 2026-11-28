@@ -411,7 +411,8 @@ enum FileAccess {
 }
 
 impl<S: ByteSource> Ui<S> {
-    fn new(mut editor: Editor<S>, label: String) -> Self {
+    fn new(editor: Editor<S>, label: String) -> Self {
+        let mut editor = editor.with_hiew_x86_decode();
         editor.refresh_analysis();
         let short_label = Path::new(&label)
             .file_name()

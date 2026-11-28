@@ -1299,6 +1299,86 @@ fn code_operands_match_observed_x86_extension_rows() {
 }
 
 #[test]
+fn code_matches_the_observed_16_bit_instruction_rows() {
+    for row in include_str!("../../../../tests/fixtures/x86-16-hiew-8.63.tsv").lines() {
+        if row.starts_with('#') {
+            continue;
+        }
+        let fields: Vec<_> = row.split('\t').collect();
+        let [_, _, _, hex, _, _, opcodes, expected] = fields.as_slice() else {
+            panic!("malformed fixture row: {row}");
+        };
+        let bytes: Vec<_> = (0..hex.len())
+            .step_by(2)
+            .map(|index| u8::from_str_radix(&hex[index..index + 2], 16).unwrap())
+            .collect();
+        let mut ui = ui(&bytes);
+        ui.editor
+            .dispatch(Command::SetDecodeMode(Some(DecodeMode::X86_16)))
+            .unwrap();
+        key(&mut ui, KeyCode::Enter);
+        let output = screen(&mut ui, 120, 25);
+        let instruction = output.lines().nth(1).unwrap();
+        let opcode_cells: String = instruction.chars().skip(12).take(30).collect();
+        let operand_cells: String = instruction.chars().skip(43).collect();
+        assert_eq!(opcode_cells.trim_end(), *opcodes, "{row}");
+        assert_eq!(operand_cells.trim_end(), *expected, "{row}");
+    }
+}
+
+#[test]
+fn code_uses_encoded_x86_displacements_and_hides_implicit_fld_destination() {
+    for (mode, bytes, expected) in [
+        (DecodeMode::X86_16, &[0xd9, 0xc0][..], "fld          st(0)"),
+        (
+            DecodeMode::X86_16,
+            &[0x8b, 0x40, 0x0a],
+            "mov          ax,[bx][si][00A]",
+        ),
+        (
+            DecodeMode::X86_16,
+            &[0x8b, 0x80, 0x0a, 0],
+            "mov          ax,[bx][si][0000A]",
+        ),
+        (
+            DecodeMode::X86_16,
+            &[0xc5, 0xb8, 0x89, 0xff],
+            "lds          di,[bx][si][-00077]",
+        ),
+        (
+            DecodeMode::X86_16,
+            &[0x8b, 0x80, 0, 0],
+            "mov          ax,[bx][si][0]",
+        ),
+        (DecodeMode::X86_16, &[0x8b, 6, 4, 0], "mov          ax,[4]"),
+        (
+            DecodeMode::X86_16,
+            &[0x67, 0x8b, 5, 0x34, 0x12, 0, 0],
+            "mov          ax,[000001234]",
+        ),
+        (
+            DecodeMode::X86_16,
+            &[0x67, 0x8b, 0x80, 0x0a, 0, 0, 0],
+            "mov          ax,[eax][00000000A]",
+        ),
+        (
+            DecodeMode::X86_32,
+            &[0x67, 0x8b, 6, 0x34, 0x12],
+            "mov          eax,[01234]",
+        ),
+    ] {
+        let mut ui = ui(bytes);
+        ui.editor
+            .dispatch(Command::SetDecodeMode(Some(mode)))
+            .unwrap();
+        key(&mut ui, KeyCode::Enter);
+        let output = screen(&mut ui, 120, 25);
+        let displayed: String = output.lines().nth(1).unwrap().chars().skip(43).collect();
+        assert_eq!(displayed.trim_end(), expected, "{bytes:02X?}");
+    }
+}
+
+#[test]
 fn code_pe64_absolute_memory_uses_split_addresses_only_when_wide() {
     let mut image = pe_fixture();
     let instructions = [

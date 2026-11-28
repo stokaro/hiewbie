@@ -110,6 +110,41 @@ fn complete_reference_search(editor: &mut Editor<MemorySource>, budget: usize) -
 }
 
 #[test]
+fn hiew_16_branch_navigation_and_aligned_search_share_instruction_boundaries() {
+    // HIEW sees C5, F8, then JA at byte 2. The portable decoder reads
+    // C5F877 as one VEX instruction and skips the overlapping branch.
+    let data = vec![0xc5, 0xf8, 0x77, 1, 0x90, 0xc3];
+    let target = FileOffset::new(5);
+    let mut portable = raw(data.clone(), DecodeMode::X86_16);
+    portable.dispatch(Command::Goto(target)).unwrap();
+    portable.dispatch(Command::FindReferences).unwrap();
+    assert_eq!(
+        complete_reference_search(&mut portable, 1),
+        SearchProgress::NotFound
+    );
+
+    let mut hiew = raw(data, DecodeMode::X86_16).with_hiew_x86_decode();
+    hiew.dispatch(Command::SetMode(ViewMode::Code)).unwrap();
+    let rows = hiew.code_viewport(FileOffset::new(0), 5).unwrap();
+    assert_eq!(rows[0].instruction.bytes(), &[0xc5]);
+    assert_eq!(rows[0].instruction.status, DecodeStatus::InvalidEncoding);
+    assert_eq!(rows[2].offset, FileOffset::new(2));
+    assert_eq!(rows[2].branch_number, Some(1));
+    hiew.dispatch(Command::MoveCode(1)).unwrap();
+    assert_eq!(hiew.cursor(), FileOffset::new(1));
+    hiew.dispatch(Command::MoveCode(1)).unwrap();
+    assert_eq!(hiew.cursor(), FileOffset::new(2));
+    hiew.dispatch(Command::FollowBranch(1)).unwrap();
+    assert_eq!(hiew.cursor(), target);
+    hiew.dispatch(Command::FindReferences).unwrap();
+    assert_eq!(
+        complete_reference_search(&mut hiew, 1),
+        SearchProgress::Found(FileOffset::new(2))
+    );
+    assert!(!hiew.document().is_dirty());
+}
+
+#[test]
 fn raw_reference_search_follows_instructions_and_preserves_return_history() {
     let mut bytes = vec![0xcc; 0x80];
     bytes[..2].copy_from_slice(&[0xeb, 0x3e]);

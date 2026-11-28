@@ -105,6 +105,90 @@ fn x86_direct_targets_use_actual_instruction_addresses() {
 }
 
 #[test]
+fn x86_16_inventory_matches_portable_and_compatibility_boundaries() {
+    let profile = InstructionProfile {
+        mode: DecodeMode::X86_16,
+        hiew_x86: true,
+    };
+    for row in include_str!("../../../../tests/fixtures/x86-16-hiew-8.63.tsv").lines() {
+        if row.starts_with('#') {
+            continue;
+        }
+        let fields: Vec<_> = row.split('\t').collect();
+        let [_, offset, _, encoded, _, portable, shown, original] = fields.as_slice() else {
+            panic!("malformed fixture row: {row}");
+        };
+        let bytes: Vec<_> = (0..encoded.len())
+            .step_by(2)
+            .map(|index| u8::from_str_radix(&encoded[index..index + 2], 16).unwrap())
+            .collect();
+        let address = u64::from_str_radix(offset, 16).unwrap();
+        let decoded = decode(&bytes, profile.mode, address);
+        assert_eq!(decoded.status, DecodeStatus::Decoded, "{row}");
+        assert_eq!(decoded.bytes(), bytes, "{row}");
+        assert_eq!(decoded.text, *portable, "{row}");
+        assert_eq!(decoded.direct_branch, None, "{row}");
+        if bytes.len() > 1 {
+            let tail = decode(&bytes[..bytes.len() - 1], profile.mode, address);
+            assert_eq!(tail.status, DecodeStatus::Truncated, "{row}");
+            assert_eq!(tail.bytes(), &bytes[..1], "{row}");
+        }
+
+        let compatible = decode_in_profile(
+            &bytes,
+            VirtualAddress::new(address),
+            profile,
+            Endian::Little,
+        )
+        .unwrap();
+        assert_eq!(compatible.bytes(), &bytes[..shown.len() / 2], "{row}");
+        assert_eq!(compatible.direct_branch, None, "{row}");
+        if original.starts_with("#UD") {
+            assert_eq!(compatible.status, DecodeStatus::InvalidEncoding, "{row}");
+            assert_eq!(compatible.text, *original, "{row}");
+        } else {
+            assert_eq!(compatible, decoded, "{row}");
+        }
+    }
+}
+
+#[test]
+fn hiew_16_modrm_rejection_keeps_prefixes_and_requires_the_modrm_byte() {
+    let profile = InstructionProfile {
+        mode: DecodeMode::X86_16,
+        hiew_x86: true,
+    };
+    let decode = |bytes: &[u8]| {
+        decode_in_profile(bytes, VirtualAddress::new(0), profile, Endian::Little).unwrap()
+    };
+    for (bytes, length, expected) in [
+        (&[0xc4, 0xc0, 0][..], 1, "#UD(mod)"),
+        (&[0xc5, 0xc0, 0xff][..], 1, "#UD(mod)"),
+        (&[0x62, 0xc0][..], 1, "#UD(mod)"),
+        (&[0x66, 0xc5, 0xf8, 0x77][..], 2, "#UD(mod)"),
+        (&[0x67, 0xc5, 0xf8, 0x77][..], 2, "#UD(mod)"),
+        (&[0xf3, 0xc5, 0xf8, 0x77][..], 2, "#UD(mod)"),
+        (&[0x64, 0xc4, 0xe2, 0x6d, 0x98, 0xcb][..], 2, "#UD(mod)"),
+        (&[0xf0, 0xc4, 0xe2, 0x6d, 0x98, 0xcb][..], 2, "#UD(lock)"),
+    ] {
+        let row = decode(bytes);
+        assert_eq!(row.status, DecodeStatus::InvalidEncoding);
+        assert_eq!(row.bytes(), &bytes[..length]);
+        assert_eq!(row.text, expected);
+        assert_eq!(row.address_operand, None);
+        assert_eq!(row.direct_branch, None);
+    }
+    for bytes in [[0xc4, 0], [0xc5, 0], [0x62, 0]] {
+        let row = decode(&bytes);
+        assert_eq!(row.status, DecodeStatus::Decoded);
+        assert_eq!(row.bytes(), bytes);
+    }
+    let short = decode(&[0xc5]);
+    assert_eq!(short.status, DecodeStatus::Truncated);
+    assert_eq!(short.bytes(), &[0xc5]);
+}
+
+#[test]
 fn x86_decoder_crosses_four_gib_without_underflow() {
     // iced-x86 1.22.0 fixes an upstream debug/overflow-check decoder panic here.
     branch(
