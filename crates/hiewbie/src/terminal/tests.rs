@@ -68,14 +68,18 @@ fn hex_view_has_stable_dense_cells_at_eighty_columns() {
     let mut ui = ui(b"Hello\0world!\n\xffXYZ");
     let output = screen(&mut ui, 80, 8);
     let expected = [
-        format!(" hiewbie {} | fixture.bin", env!("CARGO_PKG_VERSION")),
-        "0000000000000000 / 0000000000000011  HEX VIEW RW CLEAN".into(),
-        "0000000000000000  4865 6C6C 6F00 776F 726C 6421 0AFF 5859  Hello.world!..XY".into(),
-        format!("{:<59}Z", "0000000000000010  5A"),
-        String::new(),
-        String::new(),
-        "F1 help | Enter cycle | F4 select mode | F8 headers | Esc quit".into(),
-        " 1Help   2--     3Edit   4Mode   5Goto   6Refs-  7Search 8Header 9Open- 10--".into(),
+        format!(
+            "▲    fixture.bin      ↓FRO --------                  00000000│hiewbie {}",
+            env!("CARGO_PKG_VERSION")
+        ),
+        "↑ 00000000:  48 65 6C 6C-6F 00 77 6F-72 6C 64 21-0A FF 58 59  Hello world!◙\u{a0}XY"
+            .into(),
+        "▓ 00000010:  5A         -           -           -             Z".into(),
+        "▓".into(),
+        "▓".into(),
+        "↓".into(),
+        "▼".into(),
+        " 1Help   2PutBlk 3Edit   4Mode   5Goto   6DatRef 7Search 8Header 9Files 10Quit".into(),
     ]
     .join("\n");
     assert_eq!(output, expected);
@@ -173,10 +177,12 @@ fn modes_share_cursor_and_read_only_cannot_begin_editing() {
     let editor = Editor::new(Document::new(MemorySource::new(b"ABC".to_vec())), true);
     let mut read_only = Ui::new(editor, "read-only".into());
     key(&mut read_only, KeyCode::F(3));
+    let view = screen(&mut read_only, 80, 25);
+    assert!(view.contains("↓FRO --------"));
+    assert!(view.contains("the document is open read-only"));
     type_text(&mut read_only, "ff");
     assert!(!read_only.editor.is_editing());
     assert_eq!(bytes(&mut read_only), b"ABC");
-    assert!(screen(&mut read_only, 80, 25).contains("VIEW RO CLEAN"));
 }
 
 #[test]
@@ -458,7 +464,7 @@ fn resize_empty_files_and_unicode_labels_render_without_panics() {
     }
     let output = screen(&mut ui, 80, 25);
     assert!(output.contains("<empty file"));
-    assert!(output.contains("\\u{1b}[31m\\n\\u{202e}file"));
+    assert!(screen(&mut ui, 132, 50).contains("\\u{1b}[31m\\n\\u{202e}file"));
     key(&mut ui, KeyCode::F(3));
     type_text(&mut ui, "ff");
     assert!(!ui.editor.document().is_dirty());
@@ -498,8 +504,8 @@ fn large_offsets_and_large_windows_only_read_a_bounded_viewport() {
     );
     ui.dispatch(Command::Goto(FileOffset::new(0x1_0000_0010)));
     let output = screen(&mut ui, 80, 25);
-    assert!(output.contains("0000000100000010"));
-    assert!(largest.get() <= 16 * 21);
+    assert!(output.contains("00000001`00000010"));
+    assert!(largest.get() <= 16 * 23);
     ui.dispatch(Command::SetMode(ViewMode::Text));
     screen(&mut ui, 300, 300);
     assert!(largest.get() <= hiewbie_core::MAX_READ_BYTES);
@@ -534,6 +540,115 @@ fn pe_fixture() -> Vec<u8> {
     bytes[section + 36..section + 40].copy_from_slice(&0x6000_0020_u32.to_le_bytes());
     bytes[0x200..0x208].copy_from_slice(&[0xeb, 0x04, 0x90, 0x90, 0x90, 0x90, 0xc3, 0x90]);
     bytes
+}
+
+#[test]
+fn hex_pe_uses_the_full_title_address_and_raw_offsets_during_edit() {
+    let mut ui = ui(&pe_fixture());
+    let compact = screen(&mut ui, 80, 25);
+    assert!(
+        compact
+            .lines()
+            .next()
+            .unwrap()
+            .contains("PE+.00000001`40000000│")
+    );
+    assert!(
+        compact
+            .lines()
+            .nth(1)
+            .unwrap()
+            .starts_with("↑.40000000:  4D 5A")
+    );
+    let last_compact = screen(&mut ui, 88, 25);
+    assert!(
+        last_compact
+            .lines()
+            .nth(1)
+            .unwrap()
+            .starts_with("↑.40000000:")
+    );
+    assert!(last_compact.lines().last().unwrap().ends_with("11Hem"));
+    let first_wide = screen(&mut ui, 89, 25);
+    assert!(
+        first_wide
+            .lines()
+            .nth(1)
+            .unwrap()
+            .starts_with("↑.00000001`40000000:")
+    );
+    assert!(first_wide.lines().last().unwrap().ends_with("11Hem   ▒"));
+
+    let wide = screen(&mut ui, 100, 32);
+    assert!(
+        wide.lines()
+            .nth(1)
+            .unwrap()
+            .starts_with("↑.00000001`40000000:  4D 5A")
+    );
+    assert_eq!(ui.bytes_per_row, 16);
+
+    key(&mut ui, KeyCode::F(3));
+    type_text(&mut ui, "12");
+    let edit = screen(&mut ui, 100, 32);
+    assert!(
+        edit.lines()
+            .next()
+            .unwrap()
+            .contains("FWO EDITMODE     PE+ 00000000`00000001│")
+    );
+    assert!(
+        edit.lines()
+            .nth(1)
+            .unwrap()
+            .starts_with("↑ 00000000`00000000:  12 5A")
+    );
+    key(&mut ui, KeyCode::Esc);
+    assert_eq!(bytes(&mut ui), pe_fixture());
+    assert!(
+        screen(&mut ui, 80, 25)
+            .lines()
+            .nth(1)
+            .unwrap()
+            .starts_with("↑.40000000:  4D 5A")
+    );
+}
+
+#[test]
+fn hex_marks_only_the_selected_and_changed_cells_in_the_reference_columns() {
+    use ratatui::style::Color;
+
+    let mut ui = ui(&(0..=u8::MAX).cycle().take(4096).collect::<Vec<_>>());
+    let mut terminal = Terminal::new(TestBackend::new(80, 25)).unwrap();
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    let frame = terminal.backend().buffer();
+    for column in [13, 14, 62] {
+        assert_eq!(frame[(column, 1)].fg, Color::Blue);
+        assert_eq!(frame[(column, 1)].bg, Color::Gray);
+    }
+    assert_eq!(frame[(15, 1)].fg, Color::LightCyan);
+    assert_eq!(frame[(9, 23)].symbol(), "0");
+    assert_eq!(frame[(0, 23)].symbol(), "▼");
+    assert_eq!(ui.visible_rows, 23);
+
+    key(&mut ui, KeyCode::F(3));
+    type_text(&mut ui, "A");
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    let frame = terminal.backend().buffer();
+    assert_eq!(frame[(62, 1)].symbol(), "á");
+    for column in [13, 14, 15, 62] {
+        assert_eq!(frame[(column, 1)].fg, Color::LightYellow);
+        assert_eq!(frame[(column, 1)].bg, Color::Blue);
+    }
+    assert!(!ui.editor.document().is_dirty());
+
+    type_text(&mut ui, "F");
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    let frame = terminal.backend().buffer();
+    assert_eq!(frame[(62, 1)].symbol(), "»");
+    assert_eq!(frame[(62, 1)].fg, Color::LightYellow);
+    assert_eq!(frame[(63, 1)].fg, Color::LightCyan);
+    assert_eq!(bytes(&mut ui)[0], 0xAF);
 }
 
 fn code_at_entry() -> Ui<MemorySource> {
@@ -948,8 +1063,8 @@ fn block_marking_updates_hex_and_text_cells_and_escape_cancels_tracking() {
     let mut terminal = Terminal::new(TestBackend::new(80, 25)).unwrap();
     terminal.draw(|frame| ui.render(frame)).unwrap();
     let buffer = terminal.backend().buffer();
-    for column in [20, 23, 25, 60, 61, 62] {
-        let cell = &buffer[(column, 2)];
+    for column in [16, 17, 19, 20, 22, 23, 63, 64, 65] {
+        let cell = &buffer[(column, 1)];
         assert_eq!(cell.fg, Color::Yellow, "column {column}");
         assert_eq!(cell.bg, Color::Magenta, "column {column}");
     }
@@ -1090,22 +1205,22 @@ fn native_caret_follows_hex_nibbles_ascii_and_focused_search_field() {
     key(&mut ui, KeyCode::F(3));
     terminal.draw(|frame| ui.render(frame)).unwrap();
     assert!(ui.has_input_caret());
-    terminal.backend_mut().assert_cursor_position((18, 2));
+    terminal.backend_mut().assert_cursor_position((13, 1));
 
     key(&mut ui, KeyCode::Char('A'));
     terminal.draw(|frame| ui.render(frame)).unwrap();
-    terminal.backend_mut().assert_cursor_position((19, 2));
+    terminal.backend_mut().assert_cursor_position((14, 1));
     assert_eq!(ui.pending_nibble, Some(0xA));
     assert!(!ui.editor.document().is_dirty());
 
     key(&mut ui, KeyCode::Char('F'));
     terminal.draw(|frame| ui.render(frame)).unwrap();
-    terminal.backend_mut().assert_cursor_position((20, 2));
+    terminal.backend_mut().assert_cursor_position((16, 1));
     assert_eq!(bytes(&mut ui)[0], 0xAF);
     key(&mut ui, KeyCode::Tab);
     terminal.draw(|frame| ui.render(frame)).unwrap();
     assert!(ui.has_input_caret());
-    terminal.backend_mut().assert_cursor_position((60, 2));
+    terminal.backend_mut().assert_cursor_position((63, 1));
 
     key(&mut ui, KeyCode::Esc);
     assert!(!ui.has_input_caret());

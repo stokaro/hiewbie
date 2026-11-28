@@ -94,7 +94,7 @@ impl<S: ByteSource> Ui<S> {
             }
         } else if is_control_char(key, 'c') || key.code == KeyCode::Esc && key.modifiers.is_empty()
         {
-            self.notice("Search dialog canceled");
+            self.hint("Search dialog canceled");
             return;
         } else if is_control_char(key, 'u') {
             dialog.input.clear();
@@ -105,7 +105,7 @@ impl<S: ByteSource> Ui<S> {
                     Ok(request) => {
                         self.editor.start_search(request);
                         self.scan_position = None;
-                        self.notice("Searching; Esc cancels");
+                        self.hint("Searching; Esc cancels");
                         return;
                     }
                     Err(error) => dialog.error = Some(escaped_text(&error)),
@@ -178,11 +178,11 @@ impl<S: ByteSource> Ui<S> {
         match self.editor.repeat_search() {
             SearchRepeat::Started => {
                 self.scan_position = None;
-                self.notice("Searching; Esc cancels");
+                self.hint("Searching; Esc cancels");
             }
             SearchRepeat::NoQuery => self.notice("No previous search; F7/Ctrl+F opens search"),
             SearchRepeat::Exhausted => {
-                self.notice("No further match; search does not wrap");
+                self.hint("No further match; search does not wrap");
                 self.dialog = Some(Dialog::SearchNotice("Target not found"));
             }
         }
@@ -192,14 +192,14 @@ impl<S: ByteSource> Ui<S> {
         match self.editor.step_search(SEARCH_STEP_BYTES) {
             Ok(Some(SearchProgress::Pending { next })) => {
                 self.scan_position = Some(next);
-                self.notice(format!("Scanning {:016X}; Esc cancels", next.get()));
+                self.hint(format!("Scanning {:016X}; Esc cancels", next.get()));
             }
-            Ok(Some(SearchProgress::Found(offset))) => self.notice(format!(
+            Ok(Some(SearchProgress::Found(offset))) => self.hint(format!(
                 "Found at {:016X}; Shift+F7/Ctrl+R repeats",
                 offset.get()
             )),
             Ok(Some(SearchProgress::NotFound)) => {
-                self.notice("No match; search does not wrap");
+                self.hint("No match; search does not wrap");
                 self.dialog = Some(Dialog::SearchNotice("Target not found"));
             }
             Ok(None) => {}

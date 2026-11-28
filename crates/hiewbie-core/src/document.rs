@@ -147,6 +147,12 @@ impl<S: ByteSource> Document<S> {
         !self.overlay.is_empty()
     }
 
+    /// Report whether this file byte differs from the source in the pending overlay.
+    #[must_use]
+    pub fn is_byte_modified(&self, offset: FileOffset) -> bool {
+        self.overlay.contains_key(&offset.get())
+    }
+
     /// Logical byte revision. Searches reject the exhausted `u64::MAX` state.
     #[must_use]
     pub const fn generation(&self) -> u64 {

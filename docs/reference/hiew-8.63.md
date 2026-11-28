@@ -164,6 +164,18 @@ Hex, and Decode. The Windows console reported a 12% native cursor in Hex
 and ASCII editing, search, and Goto. The prior size and visibility returned
 on exit. [Sanitized observation and cell bounds](../evidence/hiew-8.63-windows-dialogs.json)
 
+### Hex viewport
+
+The 80×25 console fits 23 data rows of 16 bytes. The first byte starts at
+column 13 and its character at column 62, counting from zero. The frame
+uses grouped byte separators, PC display glyphs, paired selection, a left
+scrollbar, and a compact title and function bar. The PE32+ title shows the
+full dotted virtual address in view, and rows show the low eight digits
+until the console reaches 89 columns. Editing a PE switches to file offsets.
+Hiewbie preserves its incomplete-byte transaction rule when the cursor
+moves. Startup mode, paging, and full modifier parity remain open.
+[Paired Windows observations](../evidence/hiew-8.63-windows-hex.json)
+
 ### Block marking, scoped search, and export
 
 A second 80×25 Windows console run used two independently generated files.

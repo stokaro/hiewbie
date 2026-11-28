@@ -119,3 +119,8 @@ For future copied or substantially adapted material, record the source repositor
 file, exact commit, original license, retained notice, destination file, and local
 changes. Include required notices in source and release artifacts. Keep hiewbie's
 original code MIT-licensed and describe third-party licenses accurately.
+
+Hex byte display uses characters defined by the PC glyph and encoding
+standards. The editor keeps byte values authoritative across rendering and
+editing. [IBM PC display glyph mapping](https://www.unicode.org/Public/MAPPINGS/VENDORS/MISC/IBMGRAPH.TXT)
+and [Microsoft CP437 mapping](https://www.unicode.org/Public/MAPPINGS/VENDORS/MICSFT/PC/CP437.TXT).

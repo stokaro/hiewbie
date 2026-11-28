@@ -29,12 +29,12 @@ and the parent epic remain open.
 | --- | --- | --- |
 | UI-001 | Implemented | [A], [T], [P], [Observation]: Text/Hex/Code share the document and cursor; the observed original preserves position across Enter cycling. |
 | UI-002 | Partial | [T], [P], [Commands], [Reference], [Observation]: separate F4 choice/Enter cycle, edit restores, Shift+F7 and Code/header/profile bindings; full modifier and command matrix remains unverified. |
-| UI-003 | Partial | [T], [ACLI], [Observation]: FO/VA context, mode, dirty state, effective decoder profile/backend and overrides are displayed; observed title/access tokens and pending-byte colors need complete comparison. |
+| UI-003 | Partial | [T], [ACLI], [Hex observation]: Raw/PE Hex title and access states, VA/file-offset display, and changed-byte colors now have paired Windows evidence. Decoder profile, overrides, and full state coverage remain open. |
 | UI-004 | Partial | [A], [T]: cursor survives all three views; branch return restores position and interpretation; bookmarks and reference-specific per-view behavior pending. |
 | UI-005 | Partial | [T], [Observation]: view/edit/search/recovery and mode/header/profile dialogs resolve their own commands; the two-field search dialog has its own help and contextual bindings; block tracking, active-mark cancellation, scoped search and Write block have tests. Transient modifier and other overlay details remain open. |
-| UI-006 | Partial | [T], [Commands], [Observation]: context-sensitive function bar and profile/bitness hints; the observed ten-slot bar, dialog bars, and transient Alt layer require complete parity. |
+| UI-006 | Partial | [T], [Commands], [Hex observation]: Hex uses the observed F-key label positions and dims unsupported commands. Dialog bars, other modes, and modifier layers remain open. |
 | UI-007 | Implemented | [T], [P]: all currently implemented operations are keyboard-accessible. |
-| UI-008 | Partial | [T], [P], [Dialog observation]: 80-column cells, dynamic rows, resize; mode, search, help, headers, and notices use inset double frames and shadows. Mode, search, and miss-alert bounds were compared in the same 80×25 Windows console. The viewport, help content, and header fields still need paired validation. |
+| UI-008 | Partial | [T], [P], [Hex observation], [Dialog observation]: Raw and PE Hex body cells, edit caret, and selected modal bounds have paired Windows evidence. Text, Code, Help content, and header fields still need paired validation. |
 | UI-009 | Partial | [T], [Observation]: blue/cyan default aligns with the observed palette; block bytes use yellow on magenta. Search focus, modal alerts, and Help use state-specific colors. Complete palette and accessible theme coverage remain open. |
 | UI-010 | Partial | [T], [Commands]: Ctrl alternatives and keyboard header/profile dialogs; comprehensive command-menu and intercepted-key coverage pending. |
 | UI-011 | Partial | [T], [ST], [Input], [Commands], [Reference], [Observation]: visible deviations and unavailable commands are explicit; the observed runtime now covers primary views and dialogs, while the remaining matrix stays open. |
@@ -285,6 +285,7 @@ and the parent epic remain open.
 [Block replay]: evidence/block-workflow.cast
 [Cursor replay]: evidence/native-cursor.cast
 [Dialog observation]: evidence/hiew-8.63-windows-dialogs.json
+[Hex observation]: evidence/hiew-8.63-windows-hex.json
 [Search replay]: evidence/search-repeat.cast
 [Recording]: evidence/executable-analysis.cast
 [Storage]: adr/0001-document-storage.md

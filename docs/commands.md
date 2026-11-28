@@ -76,6 +76,18 @@ DECSCUSR underline and user-default reset requests. Terminal emulators
 control their presentation. Caret position and visibility are controlled
 independently.
 
+Hex fits 16 bytes in each full-width row, with groups of four and a CP437
+display column. The selected byte is marked in both columns during viewing.
+The edit caret sits on the active digit or character and pending changes appear
+in bright yellow. The character column changes presentation only. Search and
+ASCII overwrite retain their existing input byte semantics.
+
+PE Hex viewing uses mapped virtual addresses where available. A PE32+ title
+always shows the full address. Its rows show the low eight hex digits below
+89 columns. Hex editing shows file offsets, and unavailable mappings fall
+back to raw offsets. The title uses hiewbie's identity and the Hex function
+bar dims unsupported commands.
+
 ### Search
 
 F7/Ctrl+F opens the search dialog. The field labeled ASCII accepts UTF-8 and

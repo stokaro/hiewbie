@@ -10,6 +10,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
 use super::block::{BlockField, BlockWrite};
+use super::hex_view::HEX_BODY;
 use super::search::{SearchDialog, SearchField};
 use super::{
     Dialog, EntryColumn, InputDialog, ModeChoice, PromptKind, Ui, escaped_text, printable,
@@ -18,7 +19,7 @@ use super::{
 pub(super) const BASE: Style = Style::new().fg(Color::Gray).bg(Color::Blue);
 const ADDRESS: Style = Style::new().fg(Color::Cyan).bg(Color::Blue);
 const SELECTED: Style = Style::new().fg(Color::Black).bg(Color::Cyan);
-const MARK: Style = Style::new().fg(Color::Yellow).bg(Color::Magenta);
+pub(super) const MARK: Style = Style::new().fg(Color::Yellow).bg(Color::Magenta);
 const ADDRESS_COLUMNS: usize = 18;
 pub(super) const PANEL: Style = Style::new().fg(Color::Black).bg(Color::Gray);
 const HELP_PANEL: Style = Style::new().fg(Color::LightYellow).bg(Color::Green);
@@ -34,26 +35,42 @@ impl<S: ByteSource> Ui<S> {
         if area.width == 0 || area.height == 0 {
             return;
         }
-        if self.editor.mode() == ViewMode::Code || matches!(self.dialog, Some(Dialog::Analysis(_)))
+        let hex = self.editor.mode() == ViewMode::Hex;
+        if self.editor.mode() == ViewMode::Code
+            || (hex && !self.editor.is_editing())
+            || matches!(self.dialog, Some(Dialog::Analysis(_)))
         {
             self.editor.refresh_analysis();
         }
-        frame.render_widget(Block::default().style(BASE), area);
+        frame.render_widget(
+            Block::default().style(if hex { HEX_BODY } else { BASE }),
+            area,
+        );
         let header = format!(" hiewbie {} | {}", env!("CARGO_PKG_VERSION"), self.label);
+        let title = row(area, 0);
+        if hex {
+            let scan = self
+                .editor
+                .is_searching()
+                .then(|| self.scan_position.unwrap_or(self.editor.cursor()).get());
+            self.render_hex_title(frame, title, scan);
+        }
         if self.editor.is_searching() {
             let width = (area.width / 3).min(18);
             let next = self.scan_position.unwrap_or(self.editor.cursor()).get();
             let address = format!("{next:08X}│");
             let address_width = (address.chars().count() as u16).min(area.width - width);
             let title_width = area.width - width - address_width;
-            frame.render_widget(
-                Paragraph::new(header).style(HEADER),
-                Rect::new(area.x, area.y, title_width, 1),
-            );
-            frame.render_widget(
-                Paragraph::new(address).right_aligned().style(PANEL),
-                Rect::new(area.x + title_width, area.y, address_width, 1),
-            );
+            if !hex {
+                frame.render_widget(
+                    Paragraph::new(header).style(HEADER),
+                    Rect::new(area.x, area.y, title_width, 1),
+                );
+                frame.render_widget(
+                    Paragraph::new(address).right_aligned().style(PANEL),
+                    Rect::new(area.x + title_width, area.y, address_width, 1),
+                );
+            }
             let len = self.editor.document().len().max(1);
             let filled = (u128::from(next.min(len)) * u128::from(width) / u128::from(len)) as usize;
             let bar = format!(
@@ -65,8 +82,8 @@ impl<S: ByteSource> Ui<S> {
                 Paragraph::new(bar).style(PANEL),
                 Rect::new(area.right() - width, area.y, width, 1),
             );
-        } else {
-            frame.render_widget(Paragraph::new(header).style(HEADER), row(area, 0));
+        } else if !hex {
+            frame.render_widget(Paragraph::new(header).style(HEADER), title);
         }
         self.update_viewport(area);
 
@@ -80,6 +97,82 @@ impl<S: ByteSource> Ui<S> {
             return;
         }
 
+        if hex {
+            self.render_hex(
+                frame,
+                Rect::new(area.x, area.y + 1, area.width, area.height - 2),
+                &self.hex_layout(area.width),
+            );
+        } else {
+            self.render_status_details(frame, row(area, 1));
+            if self.editor.mode() == ViewMode::Code {
+                self.render_code(frame, area);
+            } else {
+                self.render_bytes(frame, area);
+            }
+        }
+        if !hex
+            || self.show_hex_message
+            || self
+                .editor
+                .block_selection()
+                .is_some_and(|block| block.is_marking)
+        {
+            let last = area.height - 2;
+            let cursor = self.editor.cursor().get().saturating_sub(self.top);
+            let editing_last_row = hex
+                && self.editing_caret_visible()
+                && cursor / self.bytes_per_row as u64 == u64::from(last - 1);
+            let mut message = row(area, last - u16::from(editing_last_row));
+            if hex {
+                message.x += 1;
+                message.width -= 1;
+            }
+            self.render_status_message(frame, message);
+        }
+        self.render_function_bar(frame, row(area, area.height - 1));
+        if self.editor.is_searching() {
+            let content = draw_dialog(
+                frame,
+                Rect::new(area.x, area.y, area.width, area.height.saturating_sub(6)),
+                29,
+                5,
+                Line::default(),
+                PANEL,
+                false,
+            );
+            if content.height != 0 {
+                frame.render_widget(
+                    Paragraph::new("Processing...").centered().style(PANEL),
+                    content,
+                );
+            }
+        }
+        match self.dialog.as_ref() {
+            Some(Dialog::Help { selected }) => {
+                render_help(
+                    frame,
+                    area,
+                    self.editor.mode(),
+                    self.editor.is_editing(),
+                    *selected,
+                );
+            }
+            Some(Dialog::Input(input)) => render_prompt(frame, area, input),
+            Some(Dialog::Search(search)) => render_search(frame, area, search),
+            Some(Dialog::SearchNotice(message)) => render_search_notice(frame, area, message),
+            Some(Dialog::BlockWrite(dialog)) => {
+                if !self.export_in_progress {
+                    render_block_write(frame, area, dialog);
+                }
+            }
+            Some(Dialog::Mode(selected)) => render_mode_picker(frame, area, *selected),
+            Some(Dialog::Analysis(dialog)) => self.render_analysis_dialog(frame, area, dialog),
+            None => {}
+        }
+    }
+
+    fn render_status_details(&self, frame: &mut Frame<'_>, area: Rect) {
         let mode = match self.editor.mode() {
             ViewMode::Hex => "HEX",
             ViewMode::Text => "TEXT",
@@ -138,54 +231,7 @@ impl<S: ByteSource> Ui<S> {
                 self.editor.document().len()
             )
         };
-        frame.render_widget(Paragraph::new(status).style(ADDRESS), row(area, 1));
-
-        if self.editor.mode() == ViewMode::Code {
-            self.render_code(frame, area);
-        } else {
-            self.render_bytes(frame, area);
-        }
-        self.render_status_message(frame, row(area, area.height - 2));
-        self.render_function_bar(frame, row(area, area.height - 1));
-        if self.editor.is_searching() {
-            let content = draw_dialog(
-                frame,
-                Rect::new(area.x, area.y, area.width, area.height.saturating_sub(6)),
-                29,
-                5,
-                Line::default(),
-                PANEL,
-                false,
-            );
-            if content.height != 0 {
-                frame.render_widget(
-                    Paragraph::new("Processing...").centered().style(PANEL),
-                    content,
-                );
-            }
-        }
-        match self.dialog.as_ref() {
-            Some(Dialog::Help { selected }) => {
-                render_help(
-                    frame,
-                    area,
-                    self.editor.mode(),
-                    self.editor.is_editing(),
-                    *selected,
-                );
-            }
-            Some(Dialog::Input(input)) => render_prompt(frame, area, input),
-            Some(Dialog::Search(search)) => render_search(frame, area, search),
-            Some(Dialog::SearchNotice(message)) => render_search_notice(frame, area, message),
-            Some(Dialog::BlockWrite(dialog)) => {
-                if !self.export_in_progress {
-                    render_block_write(frame, area, dialog);
-                }
-            }
-            Some(Dialog::Mode(selected)) => render_mode_picker(frame, area, *selected),
-            Some(Dialog::Analysis(dialog)) => self.render_analysis_dialog(frame, area, dialog),
-            None => {}
-        }
+        frame.render_widget(Paragraph::new(status).style(ADDRESS), area);
     }
 
     fn render_status_message(&self, frame: &mut Frame<'_>, area: Rect) {
@@ -218,13 +264,15 @@ impl<S: ByteSource> Ui<S> {
         }
         self.bytes_per_row = match self.editor.mode() {
             ViewMode::Text => (area.width as usize).saturating_sub(18).clamp(1, 256),
-            ViewMode::Hex => [64, 32, 16, 8, 4, 2, 1]
-                .into_iter()
-                .find(|count| ascii_column(*count) + count <= area.width as usize)
-                .unwrap_or(1),
+            ViewMode::Hex => self.hex_layout(area.width).bytes_per_row,
             ViewMode::Code => 1,
         };
-        self.visible_rows = (area.height.saturating_sub(4) as usize)
+        let frame_rows = if self.editor.mode() == ViewMode::Hex {
+            2
+        } else {
+            4
+        };
+        self.visible_rows = (area.height.saturating_sub(frame_rows) as usize)
             .min(MAX_READ_BYTES / self.bytes_per_row)
             .max(1);
         let per_row = self.bytes_per_row as u64;
@@ -477,7 +525,7 @@ impl<S: ByteSource> Ui<S> {
             }
         };
         if let Some(labels) = labels {
-            render_function_slots(frame, area, labels);
+            render_function_slots(frame, area, &labels, &[]);
             return;
         }
         let contextual = if self.reopen_required {
@@ -513,6 +561,35 @@ impl<S: ByteSource> Ui<S> {
             frame.render_widget(Paragraph::new(text).style(HEADER), area);
             return;
         }
+        if self.editor.mode() == ViewMode::Hex {
+            let (labels, disabled): ([_; 12], &[_]) = if self.editor.is_editing() {
+                (
+                    [
+                        "Help", "", "Undo", "Byte", "Word", "Dword", "Crypt", "Xor", "Update",
+                        "Trunc", "", "",
+                    ],
+                    &[4, 5, 6, 7, 8, 10],
+                )
+            } else {
+                (
+                    [
+                        "Help", "PutBlk", "Edit", "Mode", "Goto", "DatRef", "Search", "Header",
+                        "Files", "Quit", "Hem", "Names",
+                    ],
+                    &[6, 9, 10, 11, 12],
+                )
+            };
+            let slots = (area.width / 8).clamp(10, 12);
+            render_function_slots(frame, area, &labels[..usize::from(slots)], disabled);
+            let tail = area.width.saturating_sub(slots * 8);
+            if tail != 0 {
+                frame.render_widget(
+                    Paragraph::new("▒".repeat(usize::from(tail))).style(FOCUSED_ROW),
+                    Rect::new(area.right() - tail, area.y, tail, 1),
+                );
+            }
+            return;
+        }
         let labels = if self.editor.is_editing() {
             [
                 "Help", "Asm-", "Rest", "--", "--", "--", "--", "--", "Save", "Trunc-",
@@ -532,18 +609,18 @@ impl<S: ByteSource> Ui<S> {
                 "Help", put, "Edit", "Mode", "Goto", "Refs-", "Search", "Header", "Open-", "--",
             ]
         };
-        render_function_slots(frame, area, labels);
+        render_function_slots(frame, area, &labels, &[]);
     }
 }
 
-fn render_function_slots(frame: &mut Frame<'_>, area: Rect, labels: [&str; 10]) {
-    let mut spans = Vec::with_capacity(20);
-    for (index, label) in labels.into_iter().enumerate() {
+fn render_function_slots(frame: &mut Frame<'_>, area: Rect, labels: &[&str], disabled: &[usize]) {
+    let mut spans = Vec::with_capacity(labels.len() * 2);
+    for (index, label) in labels.iter().enumerate() {
         spans.push(Span::styled(
             format!("{:>2}", index + 1),
             Style::new().fg(Color::Gray).bg(Color::Black),
         ));
-        let style = if label.contains('-') {
+        let style = if label.contains('-') || disabled.contains(&(index + 1)) {
             HEADER.fg(Color::DarkGray)
         } else {
             HEADER
@@ -561,7 +638,7 @@ fn ascii_column(bytes_per_row: usize) -> usize {
     ADDRESS_COLUMNS + bytes_per_row * 2 + (bytes_per_row - 1) / 2 + 2
 }
 
-fn set_body_caret(frame: &mut Frame<'_>, area: Rect, column: usize, row: usize) {
+pub(super) fn set_body_caret(frame: &mut Frame<'_>, area: Rect, column: usize, row: usize) {
     if column < usize::from(area.width) && row < usize::from(area.height) {
         frame.set_cursor_position((area.x + column as u16, area.y + row as u16));
     }

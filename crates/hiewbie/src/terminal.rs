@@ -2,6 +2,7 @@
 
 mod analysis;
 mod block;
+mod hex_view;
 mod render;
 mod search;
 mod symbols;
@@ -11,10 +12,11 @@ mod tests;
 mod windows_cursor;
 
 use std::io::{self, Stdout};
+use std::path::Path;
 use std::time::Duration;
 
 use hiewbie::file::{BlockExport, ExportProgress, FileSource, SaveError, save_document};
-use hiewbie_core::formats::VirtualAddress;
+use hiewbie_core::formats::{BinaryFormat, VirtualAddress};
 use hiewbie_core::{BlockBoundary, ByteSource, Command, Editor, Effect, FileOffset, ViewMode};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
@@ -147,7 +149,12 @@ impl Drop for TerminalGuard {
 }
 
 pub(crate) fn run(editor: Editor<FileSource>) -> io::Result<()> {
-    let label = escaped_text(&editor.document().source().path().to_string_lossy());
+    let label = editor
+        .document()
+        .source()
+        .path()
+        .to_string_lossy()
+        .into_owned();
     let mut ui = Ui::new(editor, label);
     let mut guard = TerminalGuard::enter()?;
     let backend = CrosstermBackend::new(io::stdout());
@@ -183,8 +190,9 @@ pub(crate) fn run(editor: Editor<FileSource>) -> io::Result<()> {
                 UiAction::Save => match save_document(ui.editor.document_mut()) {
                     Ok(source) => {
                         ui.editor.complete_save(source);
+                        ui.file_access = FileAccess::Updated;
                         ui.pending_nibble = None;
-                        ui.notice("Saved; edit transaction completed");
+                        ui.hint("Saved; edit transaction completed");
                     }
                     Err(error) => ui.save_failed(error),
                 },
@@ -285,30 +293,49 @@ enum Dialog {
 struct Ui<S: ByteSource> {
     editor: Editor<S>,
     label: String,
+    short_label: String,
     top: u64,
     bytes_per_row: usize,
     visible_rows: usize,
     entry_column: EntryColumn,
     pending_nibble: Option<u8>,
     message: String,
+    show_hex_message: bool,
+    file_access: FileAccess,
+    edit_format: Option<BinaryFormat>,
     dialog: Option<Dialog>,
     reopen_required: bool,
     export_in_progress: bool,
     scan_position: Option<FileOffset>,
 }
 
+#[derive(Clone, Copy)]
+enum FileAccess {
+    Read,
+    Write,
+    Updated,
+}
+
 impl<S: ByteSource> Ui<S> {
     fn new(mut editor: Editor<S>, label: String) -> Self {
         editor.refresh_analysis();
+        let short_label = Path::new(&label)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&label);
         Self {
             editor,
             label: escaped_text(&label),
+            short_label: escaped_text(short_label),
             top: 0,
             bytes_per_row: 16,
             visible_rows: 21,
             entry_column: EntryColumn::Hex,
             pending_nibble: None,
             message: "F1 help | Enter cycle | F4 select mode | F8 headers | Esc quit".into(),
+            show_hex_message: false,
+            file_access: FileAccess::Read,
+            edit_format: None,
             dialog: None,
             reopen_required: false,
             export_in_progress: false,
@@ -318,6 +345,12 @@ impl<S: ByteSource> Ui<S> {
 
     fn notice(&mut self, text: impl AsRef<str>) {
         self.message = escaped_text(text.as_ref());
+        self.show_hex_message = true;
+    }
+
+    fn hint(&mut self, text: impl AsRef<str>) {
+        self.message = escaped_text(text.as_ref());
+        self.show_hex_message = false;
     }
 
     fn dispatch(&mut self, command: Command) -> UiAction {
@@ -372,11 +405,12 @@ impl<S: ByteSource> Ui<S> {
                 UiAction::Continue
             };
         }
+        self.show_hex_message = false;
         if self.editor.is_searching() {
             if key.code == KeyCode::Esc || is_control_char(key, 'c') {
                 self.editor.cancel_search();
                 self.scan_position = None;
-                self.notice("Search canceled; cursor unchanged");
+                self.hint("Search canceled; cursor unchanged");
                 self.dialog = Some(Dialog::SearchNotice("Aborted by hacker"));
             }
             return UiAction::Continue;
@@ -525,7 +559,7 @@ impl<S: ByteSource> Ui<S> {
     fn cancel_or_exit(&mut self) -> UiAction {
         if self.editor.is_editing() {
             let action = self.dispatch(Command::DiscardEdit);
-            self.notice("Pending edits discarded; viewing original bytes. Esc quits");
+            self.hint("Pending edits discarded; viewing original bytes. Esc quits");
             action
         } else if self
             .editor
@@ -550,10 +584,14 @@ impl<S: ByteSource> Ui<S> {
             ViewMode::Hex | ViewMode::Code => EntryColumn::Hex,
             ViewMode::Text => EntryColumn::Ascii,
         };
-        self.notice(
-            "Editing: F9 saves; Esc discards; F3 restores byte; Backspace restores previous",
-        );
-        self.dispatch(Command::BeginEdit)
+        self.editor.refresh_analysis();
+        self.edit_format = self.editor.executable().map(|image| image.format);
+        self.hint("Editing: F9 saves; Esc discards; F3 restores byte; Backspace restores previous");
+        let action = self.dispatch(Command::BeginEdit);
+        if self.editor.is_editing() {
+            self.file_access = FileAccess::Write;
+        }
+        action
     }
 
     fn save(&mut self) -> UiAction {
@@ -572,7 +610,7 @@ impl<S: ByteSource> Ui<S> {
                 self.dispatch(Command::ExportBlock)
             }
             KeyCode::Enter => {
-                self.notice("Mode changed; Shift+F1/Ctrl+A selects the Code architecture");
+                self.hint("Mode changed; Shift+F1/Ctrl+A selects the Code architecture");
                 self.dispatch(Command::CycleMode)
             }
             KeyCode::F(4) => {
@@ -628,7 +666,7 @@ impl<S: ByteSource> Ui<S> {
                     EntryColumn::Hex => EntryColumn::Ascii,
                     EntryColumn::Ascii => EntryColumn::Hex,
                 };
-                self.notice(match self.entry_column {
+                self.hint(match self.entry_column {
                     EntryColumn::Hex => {
                         "Hex entry: type two digits per byte; F9 saves; Esc discards"
                     }
@@ -640,11 +678,11 @@ impl<S: ByteSource> Ui<S> {
             }
             KeyCode::Backspace if self.pending_nibble.is_some() => {
                 self.pending_nibble = None;
-                self.notice("Pending hex digit cancelled; document unchanged");
+                self.hint("Pending hex digit cancelled; document unchanged");
                 UiAction::Continue
             }
             KeyCode::Backspace => {
-                self.notice(if self.editor.cursor().get() == 0 {
+                self.hint(if self.editor.cursor().get() == 0 {
                     "No previous byte at start of file"
                 } else {
                     "Previous byte restored; F9 saves; Esc discards"
@@ -654,7 +692,7 @@ impl<S: ByteSource> Ui<S> {
             KeyCode::Char(character) => self.enter_character(character),
             KeyCode::F(3) => {
                 self.pending_nibble = None;
-                self.notice("Original byte restored; F9 saves; Esc discards");
+                self.hint("Original byte restored; F9 saves; Esc discards");
                 self.dispatch(Command::RestoreByte)
             }
             _ => {
@@ -676,11 +714,11 @@ impl<S: ByteSource> Ui<S> {
                     return UiAction::Continue;
                 };
                 if let Some(high) = self.pending_nibble.take() {
-                    self.notice("Byte overwrite applied; F9/Ctrl+S saves; Esc discards");
+                    self.hint("Byte overwrite applied; F9/Ctrl+S saves; Esc discards");
                     self.dispatch(Command::WriteByte((high << 4) | digit as u8))
                 } else {
                     self.pending_nibble = Some(digit as u8);
-                    self.notice(format!(
+                    self.hint(format!(
                         "Pending hex {digit:X}_: enter the second digit; document is unchanged"
                     ));
                     UiAction::Continue
@@ -693,7 +731,7 @@ impl<S: ByteSource> Ui<S> {
                     );
                     UiAction::Continue
                 } else {
-                    self.notice("Byte overwrite applied; F9/Ctrl+S saves; Esc discards");
+                    self.hint("Byte overwrite applied; F9/Ctrl+S saves; Esc discards");
                     self.dispatch(Command::WriteByte(character as u8))
                 }
             }
@@ -780,7 +818,7 @@ impl<S: ByteSource> Ui<S> {
                 return UiAction::Continue;
             }
             _ if key.code == KeyCode::Esc || is_control_char(key, 'c') => {
-                self.notice("Dialog canceled");
+                self.hint("Dialog canceled");
                 return UiAction::Continue;
             }
             Dialog::SearchNotice(message) => {
@@ -824,7 +862,7 @@ impl<S: ByteSource> Ui<S> {
                     };
                     if key.code == KeyCode::F(4) {
                         self.dispatch(Command::CycleMode);
-                        self.notice(format!("{} view selected", self.editor.mode()));
+                        self.hint(format!("{} view selected", self.editor.mode()));
                         return UiAction::Continue;
                     }
                     let mode = match key.code {
@@ -840,7 +878,7 @@ impl<S: ByteSource> Ui<S> {
                     };
                     if let Some(mode) = mode {
                         self.dispatch(Command::SetMode(mode));
-                        self.notice(format!("{mode} view selected; cursor unchanged"));
+                        self.hint(format!("{mode} view selected; cursor unchanged"));
                         return UiAction::Continue;
                     }
                 }
@@ -886,7 +924,7 @@ impl<S: ByteSource> Ui<S> {
                 self.editor
                     .goto_expression(&prompt.input)
                     .map_err(|error| error.to_string())?;
-                self.notice(format!("File offset {:016X}", self.editor.cursor().get()));
+                self.hint(format!("File offset {:016X}", self.editor.cursor().get()));
                 Ok(())
             }
             PromptKind::RawBase => {
