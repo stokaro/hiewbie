@@ -103,6 +103,13 @@ input surface. Its contextual bar exposes Help, Direct, Area, GoLast, Even, and
 Asm in their corresponding function-key slots. Escape cancels and restores the
 viewport.
 
+During a forward scan of a generated, 512 MiB zero-filled sparse file for
+`FF`, HIEW displayed a short processing panel with a double outline, an
+offset and a shaded progress strip in the title row, and blank function
+slots. Escape opened an alert. Dismissing it restored the previous byte
+position. See [the sanitized observation](../../../../docs/evidence/hiew-8.63-windows-dialogs.json)
+for dialog cell bounds and caret measurements.
+
 F1 opens a large contextual help panel over the viewport. The panel title names
 the current mode. It lists shared keys followed by contextual function keys,
 uses color to distinguish key names and descriptions, blanks the function-key
@@ -114,6 +121,8 @@ a separate application shell.
 F3 enters editing from Hex. The title changes immediately to `EDITMODE`, and a
 hardware cursor appears on the first hex digit of the selected byte. The bar
 becomes Help, blank F2, Undo, Byte, Word, Dword, Crypt, Xor, Update, Trunc.
+The Windows console reported a 12% cursor in Hex and ASCII editing, both
+search fields, and Goto. The prior console size and visibility returned on exit.
 
 Hex input is nibble-oriented. The first digit replaces the high nibble, leaves
 the cursor on the low nibble, and immediately redraws the byte and text column in

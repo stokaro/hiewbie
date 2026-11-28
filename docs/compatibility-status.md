@@ -34,8 +34,8 @@ and the parent epic remain open.
 | UI-005 | Partial | [T], [Observation]: view/edit/search/recovery and mode/header/profile dialogs resolve their own commands; the two-field search dialog has its own help and contextual bindings; block tracking, active-mark cancellation, scoped search and Write block have tests. Transient modifier and other overlay details remain open. |
 | UI-006 | Partial | [T], [Commands], [Observation]: context-sensitive function bar and profile/bitness hints; the observed ten-slot bar, dialog bars, and transient Alt layer require complete parity. |
 | UI-007 | Implemented | [T], [P]: all currently implemented operations are keyboard-accessible. |
-| UI-008 | Partial | [T], [P], [Observation]: 80-column cells, dynamic rows, resize; the observed 80x25 title/content/function-bar geometry is recorded, with resize comparison pending. |
-| UI-009 | Partial | [T], [Observation]: blue/cyan default aligns with the observed palette; block bytes use yellow on magenta. Pending-byte and accessible theme coverage remains open. |
+| UI-008 | Partial | [T], [P], [Dialog observation]: 80-column cells, dynamic rows, resize; mode, search, help, headers, and notices use inset double frames and shadows. Mode, search, and miss-alert bounds were compared in the same 80×25 Windows console. The viewport, help content, and header fields still need paired validation. |
+| UI-009 | Partial | [T], [Observation]: blue/cyan default aligns with the observed palette; block bytes use yellow on magenta. Search focus, modal alerts, and Help use state-specific colors. Complete palette and accessible theme coverage remain open. |
 | UI-010 | Partial | [T], [Commands]: Ctrl alternatives and keyboard header/profile dialogs; comprehensive command-menu and intercepted-key coverage pending. |
 | UI-011 | Partial | [T], [ST], [Input], [Commands], [Reference], [Observation]: visible deviations and unavailable commands are explicit; the observed runtime now covers primary views and dialogs, while the remaining matrix stays open. |
 | UI-012 | Partial | [T], [Commands]: contextual help and shared command inventory cover current analysis; key-event diagnostics and comprehensive command index UI pending. |
@@ -218,7 +218,7 @@ and the parent epic remain open.
 | TERM-009 | Implemented | [T], [P]: bracketed paste identified and rejected without command execution. |
 | TERM-010 | Partial | [T], [CLI], [ACLI], [N]: native/Unicode paths and escaping of metadata, decoder text and errors; Unicode document decoding and full width corpus pending. |
 | TERM-011 | Implemented | [T], [P]: tiny/narrow/large cells and real PTY resize. |
-| TERM-012 | Partial | [P], [PH], [Input]: raw/alternate/paste/cursor cleanup and PTY-supervisor failure cases tested locally; broader terminal failure and ConPTY coverage pending. |
+| TERM-012 | Partial | [P], [PH], [Input]: raw/alternate/paste/cursor cleanup and native caret output covered in Unix PTY. Configured shape reset, caret visibility, and nibble/field coordinates have [Cursor replay] evidence. Native ConPTY and emulator appearance remain open. |
 | TERM-013 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 
 ## DEV
@@ -259,7 +259,7 @@ and the parent epic remain open.
 | TEST-008 | Partial | [C], [T]: chunk-boundary literal matches in both directions, cancellation, and [native PTY search replay][Search replay]; latency benchmark pending. |
 | TEST-009 | Partial | [C], [T], [Block export], [Block replay]: overlapping overwrites and history, reversed marks, fixed range search, export cancellation, exact output and append. Overlapping block edits and EOF insertion/deletion remain open. |
 | TEST-010 | Implemented | [F], [D], [A], [ACLI]: generated malformed/truncated formats, bounded mutation corpora, arithmetic overflow, overlaps, zero-fill and unmapped VAs; not exhaustive fuzzing or format conformance. |
-| TEST-011 | Partial | [P], [T]: F-keys/Ctrl/paste/resize/cleanup subset; terminal application/modifier matrix pending. |
+| TEST-011 | Partial | [P], [T], [Cursor replay], [Dialog observation]: F-keys/Ctrl/paste/resize/cleanup and native cursor focus subset; terminal application/modifier matrix pending. |
 | TEST-012 | Implemented | [A], [T], [ACLI]: malformed formats, unknown machines and unavailable decoding retain raw inspection/editing; explicit profile override can decode raw bytes. |
 | TEST-013 | Partial | [N], [T], [Storage]: writer/conflict/temp-path failures and postcommit UI state; fault/crash matrix pending. |
 | TEST-014 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
@@ -283,6 +283,8 @@ and the parent epic remain open.
 [Block observation]: evidence/hiew-8.63-windows-blocks.json
 [Block export]: ../crates/hiewbie/tests/block_export.rs
 [Block replay]: evidence/block-workflow.cast
+[Cursor replay]: evidence/native-cursor.cast
+[Dialog observation]: evidence/hiew-8.63-windows-dialogs.json
 [Search replay]: evidence/search-repeat.cast
 [Recording]: evidence/executable-analysis.cast
 [Storage]: adr/0001-document-storage.md

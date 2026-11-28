@@ -488,7 +488,9 @@ def edit_save(binary: Path, directory: Path, *, record: bool) -> list[list]:
         session.send(F4, "F4: choose view without switching immediately")
         session.send(UP, "select Text in the mode menu")
         session.send(b"\r", "Enter: confirm Text view")
+        session.send(b"\r", "Enter: return to Hex")
         session.send(b"\r", "Enter: switch to Code")
+        session.send(b"\r", "Enter: switch to Text")
         session.send(b"\r", "Enter: return to Hex")
         session.send(F5, "F5: goto dialog")
         session.send(b"10\r", "goto hexadecimal offset 10")
@@ -556,6 +558,7 @@ def block_workflow(binary: Path, directory: Path, *, record: bool) -> list[list]
         session.send(F7 + F4, "F4 in Search selects the marked block")
         session.send(b"03\r", "Find byte 03 within the block")
         session.send(SHIFT_F7, "The next copy of 03 lies outside the block")
+        session.send(ESC, "Dismiss the search error")
         session.send(F3 + b"A6", "Change the scoped match at offset 3")
         session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
         session.send(F9, "Save exactly the scoped match")
@@ -588,6 +591,37 @@ def block_workflow(binary: Path, directory: Path, *, record: bool) -> list[list]
         session.expect_file(bytes(expected), mtime_ns=saved_mtime)
         session.send(ESC, "Exit from view", expect_exit=True)
         session.finish()
+        return sanitized_events(session.events, str(path.parent.resolve()))
+
+
+def native_cursor(binary: Path, directory: Path, *, record: bool) -> list[list]:
+    path, mtime_ns = fixture(directory)
+    with PtySession(binary, path, "native edit and search carets", record=record) as session:
+        def expect_input(data: bytes, label: str, *codes: bytes) -> None:
+            before = len(session.output)
+            session.send(data, label)
+            output = session.output[before:]
+            for code in codes:
+                if code not in output:
+                    session.fail(f"missing native cursor output {code!r} after {label}")
+
+        expect_input(F3, "Begin Hex edit at the high nibble", b"\x1b[4 q", b"\x1b[3;19H")
+        expect_input(b"A", "Advance to the pending byte's low nibble", b"\x1b[3;20H")
+        session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
+        expect_input(b"\t", "Switch to the ASCII overwrite column", b"\x1b[3;60H")
+        expect_input(ESC, "Discard edit and restore the terminal cursor shape", b"\x1b[0 q", b"\x1b[?25l")
+        expect_input(F7, "Open the Search Hex field with a native underline", b"\x1b[4 q", b"\x1b[14;14H")
+        expect_input(b"\t", "Move the caret to the text search field", b"\x1b[12;14H")
+        expect_input(ESC, "Close Search and return to paired byte selection", b"\x1b[0 q", b"\x1b[?25l")
+        expect_input(F5, "Open inline Goto at the first body row", b"\x1b[4 q", b"\x1b[2;2H")
+        expect_input(ESC, "Close Goto and restore the terminal cursor shape", b"\x1b[0 q", b"\x1b[?25l")
+        session.send(b"\x1bOP", "Open contextual Help")
+        session.send(ESC, "Close Help")
+        session.send(F4, "Open the mode chooser")
+        session.send(ESC, "Close the mode chooser")
+        session.send(ESC, "Exit from view", expect_exit=True)
+        session.finish()
+        session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
         return sanitized_events(session.events, str(path.parent.resolve()))
 
 
@@ -822,6 +856,7 @@ def main() -> int:
     parser.add_argument("--record-symbols", type=Path, help="record import/export target and metadata navigation with exact byte saves")
     parser.add_argument("--record-search", type=Path, help="record the two-field search, backward repeat, and exact byte save")
     parser.add_argument("--record-block", type=Path, help="record reverse selection, scoped search, and raw block export")
+    parser.add_argument("--record-cursor", type=Path, help="record native editing and search focus, Help, and mode selection")
     options = parser.parse_args()
     if os.name != "posix":
         parser.error("Unix PTYs are required; Windows ConPTY needs a separate harness")
@@ -839,6 +874,8 @@ def main() -> int:
             print("PASS: backward Shift+F7 resumes from the last match after cursor movement")
             block_events = block_workflow(binary, root / "block", record=options.record_block is not None)
             print("PASS: reverse block, range-limited search, cancel, exact export and append")
+            cursor_events = native_cursor(binary, root / "cursor", record=options.record_cursor is not None)
+            print("PASS: native edit/search cursor shape, cell position, and default restoration")
             discard_resize(binary, root / "discard")
             print("PASS: narrow resize, 80x25 restoration, discard preserves bytes and mtime")
             read_only(binary, root / "readonly")
@@ -882,6 +919,13 @@ def main() -> int:
                 filename=FIXTURE_NAME,
             )
             print(f"Block recording: {options.record_block}")
+        if options.record_cursor is not None:
+            write_recording(
+                options.record_cursor,
+                cursor_events,
+                title="hiewbie native cursor: editing, Search, Help, and mode selection",
+            )
+            print(f"Cursor recording: {options.record_cursor}")
         print("PASS: exact termios and alternate-screen/paste/cursor restoration in all sessions")
         return 0
     except (SmokeFailure, OSError, subprocess.SubprocessError) as error:

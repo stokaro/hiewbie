@@ -162,11 +162,11 @@ fn modes_share_cursor_and_read_only_cannot_begin_editing() {
     let mut ui = ui(b"0123456789");
     key(&mut ui, KeyCode::Right);
     key(&mut ui, KeyCode::Enter);
-    assert_eq!(ui.editor.mode(), ViewMode::Text);
+    assert_eq!(ui.editor.mode(), ViewMode::Code);
     assert_eq!(ui.editor.cursor(), FileOffset::new(1));
     key(&mut ui, KeyCode::F(4));
-    assert_eq!(ui.editor.mode(), ViewMode::Text);
-    key(&mut ui, KeyCode::Down);
+    assert_eq!(ui.editor.mode(), ViewMode::Code);
+    key(&mut ui, KeyCode::Up);
     key(&mut ui, KeyCode::Enter);
     assert_eq!(ui.editor.mode(), ViewMode::Hex);
     assert_eq!(ui.editor.cursor(), FileOffset::new(1));
@@ -231,23 +231,19 @@ fn mode_picker_cancels_and_selects_all_views_without_moving_or_editing() {
     let output = screen(&mut ui, 80, 25);
     let popup = output
         .lines()
-        .skip(9)
-        .take(7)
-        .map(|line| line.chars().skip(23).take(34).collect::<String>())
-        .collect::<Vec<_>>()
-        .join("\n");
+        .skip(10)
+        .take(5)
+        .map(|line| line.chars().skip(27).take(25).collect::<String>())
+        .collect::<Vec<_>>();
     assert_eq!(
         popup,
         [
-            format!("┌ View mode {}┐", "─".repeat(21)),
-            format!("│{:<32}│", "  Text"),
-            format!("│{:<32}│", "> Hex"),
-            format!("│{:<32}│", "  Code"),
-            format!("│{:<32}│", ""),
-            format!("│{:<32}│", "Enter selects; Esc cancels"),
-            format!("└{}┘", "─".repeat(32)),
+            "╔═════ Select mode ═════╗".into(),
+            "║         Text          ║".into(),
+            "║         Hex           ║".into(),
+            "║         Decode        ║".into(),
+            format!("╚{}╝", "═".repeat(23)),
         ]
-        .join("\n")
     );
     assert_eq!(key(&mut ui, KeyCode::Esc), UiAction::Continue);
     assert!(ui.dialog.is_none());
@@ -269,15 +265,19 @@ fn mode_picker_cancels_and_selects_all_views_without_moving_or_editing() {
     assert_eq!(ui.editor.mode(), ViewMode::Text);
     assert_eq!(ui.editor.cursor(), FileOffset::new(1));
     key(&mut ui, KeyCode::Enter);
+    assert_eq!(ui.editor.mode(), ViewMode::Hex);
+    key(&mut ui, KeyCode::Enter);
     assert_eq!(ui.editor.mode(), ViewMode::Code);
+    key(&mut ui, KeyCode::Enter);
+    assert_eq!(ui.editor.mode(), ViewMode::Text);
     key(&mut ui, KeyCode::Enter);
     assert_eq!(ui.editor.mode(), ViewMode::Hex);
 
     key(&mut ui, KeyCode::F(4));
     for (width, height) in [(23, 5), (40, 10), (80, 25)] {
         let output = screen(&mut ui, width, height);
-        assert!(output.contains("View mode"));
-        assert!(output.contains("Code"));
+        assert!(output.contains("Select mode"));
+        assert!(output.contains("Hex"));
         assert!(!output.contains("unavailable"));
     }
     key(&mut ui, KeyCode::Enter);
@@ -299,7 +299,7 @@ fn help_and_paste_cannot_execute_or_discard_edits() {
     key(&mut ui, KeyCode::F(3));
     type_text(&mut ui, "44");
     key(&mut ui, KeyCode::F(1));
-    assert!(screen(&mut ui, 80, 25).contains("hiewbie help"));
+    assert!(screen(&mut ui, 80, 25).contains("[Hex editing]"));
     key(&mut ui, KeyCode::Esc);
     assert!(ui.editor.is_editing());
     assert_eq!(bytes(&mut ui), b"DBC");
@@ -358,10 +358,20 @@ fn literal_search_repeats_and_long_scan_can_be_canceled() {
         .start_search(SearchRequest::bytes(vec![1, 2, 3]).unwrap());
     long.advance_search();
     assert!(long.editor.is_searching());
+    let processing = screen(&mut long, 80, 25);
+    assert!(processing.contains("Processing..."));
+    assert!(processing.lines().next().unwrap().contains("▓░"));
     assert_eq!(key(&mut long, KeyCode::Esc), UiAction::Continue);
     assert!(!long.editor.is_searching());
     assert_eq!(long.editor.cursor(), FileOffset::new(0));
     assert!(long.message.contains("canceled"));
+    assert!(matches!(
+        long.dialog,
+        Some(Dialog::SearchNotice("Aborted by hacker"))
+    ));
+    assert!(screen(&mut long, 80, 25).contains("Aborted by hacker"));
+    key(&mut long, KeyCode::Enter);
+    assert!(long.dialog.is_none());
 }
 
 #[test]
@@ -824,24 +834,28 @@ fn search_cells_show_both_representations_direction_and_context() {
     key(&mut ui, KeyCode::Tab);
     key(&mut ui, KeyCode::F(2));
     let cells = screen(&mut ui, 80, 25);
-    let panel: Vec<_> = cells
+    let panel = cells
         .lines()
-        .filter(|line| {
-            line.contains("┌ Search") || line.contains("│UTF-8 ") || line.contains("│Hex")
-        })
-        .collect();
+        .skip(10)
+        .take(5)
+        .map(|line| line.chars().skip(4).take(71).collect::<String>())
+        .collect::<Vec<_>>();
+    let title = "══[Backward •File •noCase•Even]";
+    let text_field = format!(" ASCII: AbC{}", "░".repeat(17));
+    let hex_field = format!("   Hex: 41 62 43{}", "░".repeat(52));
     assert_eq!(
         panel,
         [
-            "    ┌ Search | Backward | File ────────────────────────────────────────────┐",
-            "    │UTF-8 AbC                                                             │",
-            "    │Hex   41 62 43                                                        │",
-            "    │UTF-8 matches with ASCII case folding.                                │",
+            format!("╔{title}{}╗", "═".repeat(69 - title.chars().count())),
+            format!("║{text_field:<69}║"),
+            format!("║{:69}║", ""),
+            format!("║{hex_field:<69}║"),
+            format!("╚{}╝", "═".repeat(69)),
         ]
     );
     assert_eq!(
         cells.lines().last(),
-        Some(" F1 Help   F2 Direct   F5 GoLast   Tab field   Enter find   Esc cancel")
+        Some(" 1Help   2Direct 3       4Area   5GoLast 6       7       8       9      10")
     );
     key(&mut ui, KeyCode::F(1));
     assert!(screen(&mut ui, 80, 25).contains("UTF-8 folds ASCII letters only"));
@@ -879,7 +893,8 @@ fn search_keeps_exact_hex_separate_and_rejects_unconvertible_input() {
 #[test]
 fn backward_text_search_uses_last_hit_and_explicit_origin_resets() {
     let mut ui = ui(b"ABC abc AbC");
-    key(&mut ui, KeyCode::Enter);
+    key(&mut ui, KeyCode::F(4));
+    key(&mut ui, KeyCode::F(1));
     control(&mut ui, KeyCode::End);
     key(&mut ui, KeyCode::F(7));
     type_text(&mut ui, "aBc");
@@ -974,8 +989,8 @@ fn scoped_search_keeps_the_completed_block_and_its_original_bounds_for_repeat() 
     key(&mut ui, KeyCode::F(7));
     key(&mut ui, KeyCode::F(4));
     let frame = screen(&mut ui, 80, 25);
-    assert!(frame.contains("Search | Forward | Block"));
-    assert!(frame.lines().last().unwrap().contains("F4 Area"));
+    assert!(frame.contains("[Forward •Block •Case  •Even]"));
+    assert!(frame.lines().last().unwrap().contains("4Area"));
     type_text(&mut ui, "41");
     key(&mut ui, KeyCode::Enter);
     ui.advance_search();
@@ -1065,4 +1080,95 @@ fn code_block_highlight_uses_individual_instruction_bytes() {
             "column {column}"
         );
     }
+}
+
+#[test]
+fn native_caret_follows_hex_nibbles_ascii_and_focused_search_field() {
+    let mut ui = ui(&[0; 32]);
+    let mut terminal = Terminal::new(TestBackend::new(80, 25)).unwrap();
+    assert!(!ui.has_input_caret());
+    key(&mut ui, KeyCode::F(3));
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    assert!(ui.has_input_caret());
+    terminal.backend_mut().assert_cursor_position((18, 2));
+
+    key(&mut ui, KeyCode::Char('A'));
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    terminal.backend_mut().assert_cursor_position((19, 2));
+    assert_eq!(ui.pending_nibble, Some(0xA));
+    assert!(!ui.editor.document().is_dirty());
+
+    key(&mut ui, KeyCode::Char('F'));
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    terminal.backend_mut().assert_cursor_position((20, 2));
+    assert_eq!(bytes(&mut ui)[0], 0xAF);
+    key(&mut ui, KeyCode::Tab);
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    assert!(ui.has_input_caret());
+    terminal.backend_mut().assert_cursor_position((60, 2));
+
+    key(&mut ui, KeyCode::Esc);
+    assert!(!ui.has_input_caret());
+    assert_eq!(bytes(&mut ui), [0; 32]);
+    key(&mut ui, KeyCode::F(7));
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    assert!(ui.has_input_caret());
+    terminal.backend_mut().assert_cursor_position((13, 13));
+    key(&mut ui, KeyCode::Tab);
+    type_text(&mut ui, "界");
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    terminal.backend_mut().assert_cursor_position((15, 11));
+    key(&mut ui, KeyCode::Esc);
+    assert!(!ui.has_input_caret());
+    assert_eq!(ui.editor.cursor(), FileOffset::new(1));
+    key(&mut ui, KeyCode::F(5));
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    assert!(ui.has_input_caret());
+    terminal.backend_mut().assert_cursor_position((1, 1));
+    key(&mut ui, KeyCode::Esc);
+    assert!(!ui.has_input_caret());
+}
+
+#[test]
+fn picker_keys_and_help_select_without_moving_the_file_cursor() {
+    use ratatui::style::Color;
+
+    let mut ui = ui(b"abcdefgh");
+    key(&mut ui, KeyCode::Right);
+    key(&mut ui, KeyCode::F(4));
+    let mut terminal = Terminal::new(TestBackend::new(80, 25)).unwrap();
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    let cells = terminal.backend().buffer();
+    assert_eq!(cells[(28, 12)].bg, Color::Cyan);
+    assert_eq!(cells[(29, 12)].bg, Color::Black);
+    assert_eq!(cells[(49, 12)].bg, Color::Black);
+    assert_eq!(cells[(50, 12)].bg, Color::Cyan);
+    assert_eq!(cells[(54, 10)].bg, Color::Black);
+    assert_eq!(cells[(51, 9)].symbol(), "[");
+
+    key(&mut ui, KeyCode::Up);
+    key(&mut ui, KeyCode::F(4));
+    assert_eq!(ui.editor.mode(), ViewMode::Code);
+    assert!(ui.dialog.is_none());
+    key(&mut ui, KeyCode::F(4));
+    for (choice, mode) in [
+        (1, ViewMode::Text),
+        (2, ViewMode::Hex),
+        (3, ViewMode::Code),
+        (4, ViewMode::Text),
+    ] {
+        key(&mut ui, KeyCode::F(choice));
+        assert_eq!(ui.editor.mode(), mode);
+        assert!(ui.dialog.is_none());
+        assert_eq!(ui.editor.cursor(), FileOffset::new(1));
+        key(&mut ui, KeyCode::F(4));
+    }
+    key(&mut ui, KeyCode::Esc);
+    key(&mut ui, KeyCode::F(1));
+    assert!(screen(&mut ui, 55, 12).contains("[Text]"));
+    key(&mut ui, KeyCode::End);
+    assert!(screen(&mut ui, 55, 12).contains("Close help with F1"));
+    key(&mut ui, KeyCode::Esc);
+    assert!(ui.dialog.is_none());
+    assert_eq!(ui.editor.cursor(), FileOffset::new(1));
 }

@@ -7,6 +7,8 @@ mod search;
 mod symbols;
 #[cfg(test)]
 mod tests;
+#[cfg(windows)]
+mod windows_cursor;
 
 use std::io::{self, Stdout};
 use std::time::Duration;
@@ -17,7 +19,7 @@ use hiewbie_core::{BlockBoundary, ByteSource, Command, Editor, Effect, FileOffse
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::{
-    cursor::{Hide, Show},
+    cursor::{Hide, SetCursorStyle, Show},
     event::{
         self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent, KeyEventKind,
         KeyModifiers,
@@ -54,22 +56,31 @@ pub(crate) fn escaped_text(text: &str) -> String {
     result
 }
 
+enum ActiveCaret {
+    Ansi,
+    #[cfg(windows)]
+    Native(windows_cursor::ConsoleCursor),
+}
+
 /// Each acquisition is marked before writing, because a terminal command can
 /// take effect even when the subsequent flush reports an error. Drop also runs
 /// during partial initialization and ordinary Rust unwinding.
-#[derive(Default)]
 struct TerminalGuard {
     raw: bool,
     alternate: bool,
     paste: bool,
     cursor_hidden: bool,
+    caret: Option<ActiveCaret>,
 }
 
 impl TerminalGuard {
     fn enter() -> io::Result<Self> {
         let mut guard = Self {
             raw: true,
-            ..Self::default()
+            alternate: false,
+            paste: false,
+            cursor_hidden: false,
+            caret: None,
         };
         enable_raw_mode()?;
         guard.alternate = true;
@@ -80,6 +91,37 @@ impl TerminalGuard {
         execute!(io::stdout(), Hide)?;
         Ok(guard)
     }
+
+    fn set_input_caret(&mut self, visible: bool) -> io::Result<()> {
+        if self.caret.is_some() == visible {
+            return Ok(());
+        }
+        if !visible {
+            return self.restore_caret();
+        }
+        #[cfg(windows)]
+        if let Some(cursor) = windows_cursor::ConsoleCursor::underline() {
+            self.caret = Some(ActiveCaret::Native(cursor));
+            return Ok(());
+        }
+        // The terminal may receive the style before a flush error occurs.
+        self.caret = Some(ActiveCaret::Ansi);
+        execute!(io::stdout(), SetCursorStyle::SteadyUnderScore)
+    }
+
+    fn restore_caret(&mut self) -> io::Result<()> {
+        match self.caret.take() {
+            Some(ActiveCaret::Ansi) => {
+                self.caret = Some(ActiveCaret::Ansi);
+                execute!(io::stdout(), SetCursorStyle::DefaultUserShape)?;
+                self.caret = None;
+            }
+            #[cfg(windows)]
+            Some(ActiveCaret::Native(cursor)) => drop(cursor),
+            None => {}
+        }
+        Ok(())
+    }
 }
 
 impl Drop for TerminalGuard {
@@ -88,6 +130,7 @@ impl Drop for TerminalGuard {
         if self.alternate {
             let _ = execute!(io::stdout(), ResetColor);
         }
+        let _ = self.restore_caret();
         if self.cursor_hidden {
             let _ = execute!(io::stdout(), Show);
         }
@@ -106,7 +149,7 @@ impl Drop for TerminalGuard {
 pub(crate) fn run(editor: Editor<FileSource>) -> io::Result<()> {
     let label = escaped_text(&editor.document().source().path().to_string_lossy());
     let mut ui = Ui::new(editor, label);
-    let _guard = TerminalGuard::enter()?;
+    let mut guard = TerminalGuard::enter()?;
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal: Terminal<CrosstermBackend<Stdout>> = Terminal::new(backend)?;
     terminal.clear()?;
@@ -115,6 +158,7 @@ pub(crate) fn run(editor: Editor<FileSource>) -> io::Result<()> {
 
     loop {
         if redraw {
+            guard.set_input_caret(ui.has_input_caret())?;
             terminal.draw(|frame| ui.render(frame))?;
         }
         redraw = false;
@@ -231,8 +275,9 @@ enum ModeChoice {
 enum Dialog {
     Input(InputDialog),
     Search(SearchDialog),
+    SearchNotice(&'static str),
     BlockWrite(BlockWrite),
-    Help,
+    Help { selected: usize },
     Mode(ModeChoice),
     Analysis(AnalysisDialog),
 }
@@ -249,6 +294,7 @@ struct Ui<S: ByteSource> {
     dialog: Option<Dialog>,
     reopen_required: bool,
     export_in_progress: bool,
+    scan_position: Option<FileOffset>,
 }
 
 impl<S: ByteSource> Ui<S> {
@@ -266,6 +312,7 @@ impl<S: ByteSource> Ui<S> {
             dialog: None,
             reopen_required: false,
             export_in_progress: false,
+            scan_position: None,
         }
     }
 
@@ -328,7 +375,9 @@ impl<S: ByteSource> Ui<S> {
         if self.editor.is_searching() {
             if key.code == KeyCode::Esc || is_control_char(key, 'c') {
                 self.editor.cancel_search();
+                self.scan_position = None;
                 self.notice("Search canceled; cursor unchanged");
+                self.dialog = Some(Dialog::SearchNotice("Aborted by hacker"));
             }
             return UiAction::Continue;
         }
@@ -409,7 +458,7 @@ impl<S: ByteSource> Ui<S> {
             KeyCode::Esc => self.cancel_or_exit(),
             KeyCode::F(1) => {
                 self.pending_nibble = None;
-                self.dialog = Some(Dialog::Help);
+                self.dialog = Some(Dialog::Help { selected: 0 });
                 UiAction::Continue
             }
             KeyCode::Left => self.dispatch(Command::Move(-1)),
@@ -446,6 +495,23 @@ impl<S: ByteSource> Ui<S> {
             _ if self.editor.is_editing() => self.edit_key(key.code),
             _ => self.view_key(key.code),
         }
+    }
+
+    fn has_input_caret(&self) -> bool {
+        if self.reopen_required || self.export_in_progress || self.editor.is_searching() {
+            return false;
+        }
+        match self.dialog.as_ref() {
+            Some(Dialog::Input(_)) => true,
+            Some(Dialog::Search(search)) => !search.help,
+            Some(Dialog::BlockWrite(dialog)) => dialog.focus != block::BlockField::Format,
+            None => self.editor.is_editing() && !self.editor.document().is_empty(),
+            _ => false,
+        }
+    }
+
+    fn editing_caret_visible(&self) -> bool {
+        self.editor.is_editing() && self.dialog.is_none()
     }
 
     fn page_step(&self) -> i64 {
@@ -717,18 +783,33 @@ impl<S: ByteSource> Ui<S> {
                 self.notice("Dialog canceled");
                 return UiAction::Continue;
             }
+            Dialog::SearchNotice(message) => {
+                if key.code != KeyCode::Enter || !key.modifiers.is_empty() {
+                    self.dialog = Some(Dialog::SearchNotice(message));
+                }
+                return UiAction::Continue;
+            }
             Dialog::Input(input) => input,
             Dialog::Analysis(dialog) => {
                 self.analysis_key(dialog, key);
                 return UiAction::Continue;
             }
-            Dialog::Help => {
-                if !matches!(key.code, KeyCode::F(1) | KeyCode::Enter) {
-                    self.dialog = Some(Dialog::Help);
+            Dialog::Help { selected } => {
+                if key.modifiers.is_empty() {
+                    let last = render::HELP_LINES.len().saturating_sub(1);
+                    let next = match key.code {
+                        KeyCode::F(1) | KeyCode::Enter => return UiAction::Continue,
+                        KeyCode::Up => selected.saturating_sub(1),
+                        KeyCode::Down => selected.saturating_add(1).min(last),
+                        KeyCode::PageUp => selected.saturating_sub(10),
+                        KeyCode::PageDown => selected.saturating_add(10).min(last),
+                        KeyCode::Home => 0,
+                        KeyCode::End => last,
+                        _ => selected,
+                    };
+                    self.dialog = Some(Dialog::Help { selected: next });
                 } else {
-                    self.notice(
-                        "Help closed; Esc cancels or discards editing, and quits from view",
-                    );
+                    self.dialog = Some(Dialog::Help { selected });
                 }
                 return UiAction::Continue;
             }
@@ -741,12 +822,23 @@ impl<S: ByteSource> Ui<S> {
                         (KeyCode::Down, ModeChoice::Hex) => ModeChoice::Code,
                         _ => selected,
                     };
-                    if key.code == KeyCode::Enter {
-                        let mode = match selected {
+                    if key.code == KeyCode::F(4) {
+                        self.dispatch(Command::CycleMode);
+                        self.notice(format!("{} view selected", self.editor.mode()));
+                        return UiAction::Continue;
+                    }
+                    let mode = match key.code {
+                        KeyCode::F(1) => Some(ViewMode::Text),
+                        KeyCode::F(2) => Some(ViewMode::Hex),
+                        KeyCode::F(3) => Some(ViewMode::Code),
+                        KeyCode::Enter => Some(match selected {
                             ModeChoice::Text => ViewMode::Text,
                             ModeChoice::Hex => ViewMode::Hex,
                             ModeChoice::Code => ViewMode::Code,
-                        };
+                        }),
+                        _ => None,
+                    };
+                    if let Some(mode) = mode {
                         self.dispatch(Command::SetMode(mode));
                         self.notice(format!("{mode} view selected; cursor unchanged"));
                         return UiAction::Continue;

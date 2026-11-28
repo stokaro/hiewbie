@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "observation_date": "2026-11-28",
+  "reference_version": "8.63",
+  "environment": {
+    "os": "Windows 11 22H2, x86-64",
+    "runtime": "isolated Windows Server Core LTSC 2022 container",
+    "terminal_cells": "80x25"
+  },
+  "observations": [
+    {
+      "scenario": "H01",
+      "fixture": "generated nine-byte raw file",
+      "mode_cycle": ["Text", "Hex", "Decode", "Text"],
+      "mode_chooser": {
+        "surface_xywh": [25, 9, 29, 7],
+        "double_border_xywh": [27, 10, 25, 5],
+        "selected_hex_row_xywh": [29, 12, 21, 1]
+      },
+      "f4_next": "From Hex, F4 opens the chooser. F4 again selects Decode and closes it even after moving the highlight to Text."
+    },
+    {
+      "scenario": "H06",
+      "fixture": "generated nine-byte raw file",
+      "surface_xywh": [2, 9, 75, 7],
+      "double_border_xywh": [4, 10, 71, 5],
+      "text_field_xywh": [13, 11, 20, 1],
+      "hex_field_xywh": [13, 13, 60, 1],
+      "goto_caret_xy": [1, 1],
+      "empty_pattern_cells": "Light stipple. Active field has a cyan background."
+    },
+    {
+      "scenario": "H08",
+      "fixture": "generated zero-filled 512 MiB sparse file",
+      "query": "FF in the Hex field, whole file, forward",
+      "during_scan": "Small double-bordered processing panel, scan offset and shaded bar in title, blank function slots.",
+      "on_escape": "Abort alert. Dismissing it restored the starting offset 0."
+    },
+    {
+      "scenario": "H08",
+      "fixture": "generated nine-byte raw file",
+      "target_not_found_surface_xywh": [16, 10, 48, 5],
+      "target_not_found_double_border_xywh": [18, 11, 44, 3],
+      "shadow_offset_xy": [2, 1]
+    }
+  ],
+  "native_cursor": {
+    "method": "Read GetConsoleCursorInfo while delivering console key events with WriteConsoleInputW",
+    "visible_size_percent": 12,
+    "visible_in": ["Hex edit", "ASCII edit", "Hex search", "ASCII search", "Goto"],
+    "restored_size_percent": 25,
+    "restored_visibility": true,
+    "fixture": "generated nine-byte raw file"
+  },
+  "paired_replay": {
+    "hiewbie_runtime": "x86-64 Windows console, GNU-target build run under Windows",
+    "matched_glyph_regions": ["Mode chooser surface", "Empty search surface", "Target-not-found surface", "Goto placeholder"],
+    "matched_initial_caret_positions": ["Hex search", "ASCII search", "Goto"],
+    "hiewbie_search_progress_and_cancel_observed": true,
+    "alternate_buffer_cursor": "The Windows host changed the native height on the primary console. On the alternate buffer it retained its earlier height with VT enabled or disabled. Hiewbie uses an ANSI underline in this case.",
+    "open_differences": ["Byte viewport and edit caret coordinates", "Typed hex field grouping and legacy code-page glyphs", "Complete key-bar, Help, and executable header contents", "Graphical terminal appearance"]
+  },
+  "distribution_and_raw_capture_in_repository": false
+}

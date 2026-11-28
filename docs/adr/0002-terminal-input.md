@@ -34,7 +34,7 @@ effect. See [commands.md](../commands.md) for the actual inventory.
 
 - View F3 begins editing. Edit F9 saves; edit Esc discards. View F9 remains the
   planned Open command and never silently becomes Save.
-- Enter cycles Hex, Text, and Code. F4 opens a chooser for all three modes and
+- Enter cycles Text, Hex, and Code. F4 opens a chooser for all three modes and
   dispatches the shared SetMode command on confirmation; Esc leaves the mode
   unchanged. Code uses the selected executable image or explicit raw profile;
   unsupported interpretations retain raw-byte access. Hiew 8.63 documents F4

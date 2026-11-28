@@ -29,7 +29,7 @@ target and verification requirements remain in [build and release](build-and-rel
 
 ## Direct native dependencies
 
-All five direct third-party native dependencies below provide an MIT option.
+All direct third-party native dependencies below provide an MIT option.
 The alternatives are recorded as published rather than relabeling the packages
 as exclusively MIT. Native dependency versions are exact manifest pins.
 
@@ -40,6 +40,11 @@ as exclusively MIT. Native dependency versions are exact manifest pins.
 | [same-file](https://docs.rs/same-file/1.0.6/same_file/) | `1.0.6` | Compare opened-file identity with path identity before reads and replacement | Manifest spells the choice `Unlicense/MIT`; `COPYING` explicitly permits either license. Inspected `LICENSE-MIT` and `UNLICENSE`; MIT notice names Andrew Gallant |
 | [libc](https://docs.rs/libc/0.2.191/libc/) | `0.2.191` | `cfg(unix)` only: supplies `O_NONBLOCK` to avoid blocking while opening a path that may be a FIFO | `MIT OR Apache-2.0`; `LICENSE-MIT` and `LICENSE-APACHE`; MIT notice names The Rust Project Developers |
 | [winapi-util](https://docs.rs/winapi-util/0.1.11/winapi_util/) | `0.1.11` | `cfg(windows)` only: safe file information used to reject replacement saves through hard-linked files | `Unlicense OR MIT`; `COPYING`, `LICENSE-MIT`, and `UNLICENSE`; MIT notice names Andrew Gallant |
+| [winconsole](https://omarkmu.github.io/docs/winconsole/console/index.html) | `0.11.1` | `cfg(windows)` only: safe wrappers for [reading](https://learn.microsoft.com/en-us/windows/console/getconsolecursorinfo) and [setting](https://learn.microsoft.com/en-us/windows/console/setconsolecursorinfo) console cursor height | `MIT OR Apache-2.0`; `LICENSE-MIT` and `LICENSE-APACHE`; MIT notice names Omar M. |
+
+The Windows-only cursor dependency also resolves `rgb 0.8.53` (MIT, `LICENSE`,
+Kornel) and its `bytemuck 1.25.2` dependency (Zlib OR Apache-2.0 OR MIT,
+`LICENSE-ZLIB`, `LICENSE-APACHE`, and `LICENSE-MIT`, Daniel "Lokathor" Gee).
 
 `libc` licenses the Rust bindings and constants. Its package license does not
 replace the licenses of host system libraries or toolchains.
@@ -90,6 +95,9 @@ the package root, which can differ from the repository root.
 | `same-file 1.0.6` | [5799cd323b8eefd17a089c950dac113f66c89c9e](https://github.com/BurntSushi/same-file/tree/5799cd323b8eefd17a089c950dac113f66c89c9e) |
 | `libc 0.2.191` | [ccc2ff4aaab962f7fde7b8edda7379c045b1ca12](https://github.com/rust-lang/libc/tree/ccc2ff4aaab962f7fde7b8edda7379c045b1ca12) |
 | `winapi-util 0.1.11` | [803874c57dc1f10ecd42f7c86d9de72f53818432](https://github.com/BurntSushi/winapi-util/tree/803874c57dc1f10ecd42f7c86d9de72f53818432) |
+| `winconsole 0.11.1` | [1b8304d1486c0e827aa493d16f54dffc41700b7c](https://github.com/omarkmu/winconsole/tree/1b8304d1486c0e827aa493d16f54dffc41700b7c) |
+| `rgb 0.8.53` | [f453adedbbd1a672c654239b0eb0576de606d7d2](https://github.com/kornelski/rust-rgb/tree/f453adedbbd1a672c654239b0eb0576de606d7d2) |
+| `bytemuck 1.25.2` | [f363643e951a7ac9e4b9921de982f2b0918902e3](https://github.com/Lokathor/bytemuck/tree/f363643e951a7ac9e4b9921de982f2b0918902e3) |
 | `serde 1.0.229` | [7fc3b4c30c94f73a96ebd1553f2b090d928fc3a8](https://github.com/serde-rs/serde/tree/7fc3b4c30c94f73a96ebd1553f2b090d928fc3a8), package path `serde` |
 | `serde_json 1.0.154` | [20572a6d066958542d79cdd6cf1a7cd9f0c8e1f8](https://github.com/serde-rs/json/tree/20572a6d066958542d79cdd6cf1a7cd9f0c8e1f8) |
 | `iced-x86 1.22.0` | [cae65b1e90451f22c65f580d4acc752c8a486754](https://github.com/icedland/iced/tree/cae65b1e90451f22c65f580d4acc752c8a486754), package path `src/rust/iced-x86` |

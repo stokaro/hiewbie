@@ -103,7 +103,7 @@ fn identical_pe_and_arm64_macho_workflows_are_independent_of_host_cpu() {
 fn modes_share_cursor_and_pending_bytes() {
     let mut editor = raw(vec![0x90, 0xc3], DecodeMode::X86_64);
     editor.dispatch(Command::Goto(FileOffset::new(1))).unwrap();
-    for mode in [ViewMode::Text, ViewMode::Code, ViewMode::Hex] {
+    for mode in [ViewMode::Code, ViewMode::Text, ViewMode::Hex] {
         editor.dispatch(Command::CycleMode).unwrap();
         assert_eq!(editor.mode(), mode);
         assert_eq!(editor.cursor().get(), 1);

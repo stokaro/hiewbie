@@ -5,10 +5,10 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use ratatui::widgets::Paragraph;
 
 use super::analysis::{AnalysisDialog, AnalysisPage};
-use super::render::{HEADER, popup};
+use super::render::{PANEL, dialog_surface};
 use super::{ByteSource, Ui, escaped_text};
 
 impl<S: ByteSource> Ui<S> {
@@ -29,12 +29,12 @@ impl<S: ByteSource> Ui<S> {
         area: Rect,
         dialog: &AnalysisDialog,
     ) {
-        let popup = popup(area, 110, 23);
         let title = match dialog.page {
             AnalysisPage::Imports => " Parsed imports ",
             AnalysisPage::Exports => " Parsed exports ",
             _ => " Parsed symbols ",
         };
+        let content = dialog_surface(frame, area, 110, 23, title, PANEL);
         let mut lines = vec![
             Line::raw("F7 imports / F9 exports / N symbols / F8 headers"),
             Line::raw("Enter target / R metadata record / Esc close"),
@@ -57,7 +57,7 @@ impl<S: ByteSource> Ui<S> {
             )));
             // Keep the selected name visible in a short terminal. Lower-priority
             // details/coverage lines may clip, but never the whole selectable list.
-            let visible = popup.height.saturating_sub(9).max(1) as usize;
+            let visible = content.height.saturating_sub(7).max(1) as usize;
             let start = dialog.selected.saturating_sub(visible.saturating_sub(1));
             for (position, (index, symbol)) in table
                 .entries
@@ -93,7 +93,7 @@ impl<S: ByteSource> Ui<S> {
                 let style = if position == dialog.selected {
                     Style::new().fg(Color::Black).bg(Color::Yellow)
                 } else {
-                    HEADER
+                    PANEL
                 };
                 lines.push(Line::styled(text, style));
             }
@@ -123,12 +123,6 @@ impl<S: ByteSource> Ui<S> {
                 lines.push(Line::raw(escaped_text(problem)));
             }
         }
-        frame.render_widget(Clear, popup);
-        frame.render_widget(
-            Paragraph::new(lines)
-                .style(HEADER)
-                .block(Block::default().borders(Borders::ALL).title(title)),
-            popup,
-        );
+        frame.render_widget(Paragraph::new(lines).style(PANEL), content);
     }
 }

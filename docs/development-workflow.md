@@ -49,16 +49,29 @@ and forwarded-export record navigation with exact byte-save assertions.
 `--record-search PATH` records the two-field dialog and backward repeat after
 independent cursor movement, followed by an exact one-byte save.
 `--record-block PATH` records reverse block marking, scoped search, an exact
-edit, export cancellation, raw export, and confirmed append. All seven
-PTY scenarios run in the existing native Unix CI jobs even without recording
+edit, export cancellation, raw export, and confirmed append.
+`--record-cursor PATH` records native Hex and ASCII caret coordinates and
+shapes, Search field focus, Help, and the mode chooser. All eight PTY scenarios run in the existing native Unix CI jobs even without recording
 options. The symbol fixture contains no external executable bytes. The
 checked-in [editing](evidence/native-editor.cast) and
 [analysis](evidence/executable-analysis.cast) recordings, together with the
 [symbol navigation](evidence/symbol-navigation.cast),
 [search repeat](evidence/search-repeat.cast), and
-[block workflow](evidence/block-workflow.cast) recordings, are evidence of those
+[block workflow](evidence/block-workflow.cast), and
+[native cursor](evidence/native-cursor.cast) recordings, are evidence of those
 scenarios. Byte assertions, state assertions, and cleanup checks are the
 regression gate.
+
+Run the cursor-height check from an attached Windows console:
+
+```powershell
+cargo test --locked --package hiewbie --bin hiewbie -- --ignored --exact terminal::windows_cursor::tests::restores_the_previous_console_cursor_height
+```
+
+This verifies the 12% underline and restoration on the primary console
+buffer, then exercises the native or ANSI path in the alternate buffer.
+Pair it with cell comparisons to verify the focus location and emulator
+rendering.
 The PTY harness keeps a supervisor alive as the controlling session leader
 while the editor exits. It checks the editor's exact exit status, restored
 termios attributes, and terminal cleanup sequences before releasing that

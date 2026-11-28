@@ -7,9 +7,9 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use ratatui::widgets::Paragraph;
 
-use super::render::{HEADER, popup};
+use super::render::{PANEL, dialog_surface};
 use super::{
     ByteSource, Command, Dialog, KeyCode, KeyEvent, KeyModifiers, PromptKind, Ui, UiAction,
     ViewMode, escaped_text,
@@ -293,8 +293,6 @@ impl<S: ByteSource> Ui<S> {
             self.render_symbol_dialog(frame, area, dialog);
             return;
         }
-        let popup = popup(area, 96, 23);
-        let available = popup.height.saturating_sub(7) as usize;
         let title = match dialog.page {
             AnalysisPage::Overview => " Executable headers ",
             AnalysisPage::Regions => " Sections / load regions ",
@@ -303,6 +301,8 @@ impl<S: ByteSource> Ui<S> {
             AnalysisPage::Profiles => " Decoder and raw addressing ",
             AnalysisPage::Symbols | AnalysisPage::Imports | AnalysisPage::Exports => unreachable!(),
         };
+        let content = dialog_surface(frame, area, 96, 23, title, PANEL);
+        let available = content.height.saturating_sub(5) as usize;
         let context = self.editor.decode_context();
         let mode = context
             .mode
@@ -467,13 +467,7 @@ impl<S: ByteSource> Ui<S> {
                 }
             }
         }
-        frame.render_widget(Clear, popup);
-        frame.render_widget(
-            Paragraph::new(lines)
-                .style(HEADER)
-                .block(Block::default().borders(Borders::ALL).title(title)),
-            popup,
-        );
+        frame.render_widget(Paragraph::new(lines).style(PANEL), content);
     }
 }
 
@@ -483,7 +477,7 @@ fn selected_line(text: String, selected: bool) -> Line<'static> {
         if selected {
             Style::new().fg(Color::Black).bg(Color::Yellow)
         } else {
-            HEADER
+            PANEL
         },
     )
 }
