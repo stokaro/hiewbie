@@ -59,7 +59,7 @@ fn text_report_distinguishes_research_and_independent_operations() {
         text.lines()
             .find(|line| line.starts_with("assemble.aarch64 "))
             .unwrap()
-            .contains("unavailable")
+            .contains("limited")
     );
     assert!(!text.contains('\x1B'));
 }

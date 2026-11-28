@@ -43,8 +43,9 @@ reported revision because its crate archive omits that file. yaxpeax-arm declare
 `0BSD` in its pinned manifest; no standalone license file was found in the archive
 or at the inspected revision. yaxpeax-arch includes its 0BSD license and iximeow
 notice. These are distinct dependency licenses; hiewbie's MIT license does not
-relicense them. No decoder source was copied or locally patched, and no assembler
-engine is included.
+relicense them. The analysis dependencies use the published decoder and x86
+encoder code. The AArch64 production encoder is part of hiewbie. The standalone
+assembler evaluation has its own dependency manifest.
 
 No application dependency source is vendored here. Release packaging and complete
 target-specific notice aggregation remain unimplemented; this summary is not a

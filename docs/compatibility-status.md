@@ -127,7 +127,7 @@ cover visiting, switching, and reopening files.
 | ISA-001 | Partial | [D], [A], [ACLI]: iced-x86 1.22.0 decodes 16/32/64-bit modes with automatic raw x86-32, manual overrides, and a native Decode viewport [Decode observation]. [Assembly]: portable x86 text core is available. Dialog, preview and patch integration remain open. |
 | ISA-002 | Partial | [D], [x86 Decode coverage]: 58 portable corpus rows, 31 additional 16-bit rows, and 181 additional 32/64-bit rows cover scalar, system, x87, and vector instructions with iced-x86 1.22.0. Interactive Decode reproduces the observed legacy, VEX, XOP, and EVEX boundaries. [Assembly]: baseline VEX AVX text assembly for 32/64-bit is available. A complete extension inventory remains open. |
 | ISA-003 | Partial | [D], [A], [Analysis]: separate ARM/Thumb modes, strict decoding and direct mode exchange; precise ARMv6/revision filtering, IT-state propagation and big-endian instructions remain gaps. |
-| ISA-004 | Partial | [D], [A], [ACLI]: [AArch64 Decode coverage]: checked branches and PC-relative operands, A64 instruction order separate from data order, plus versioned scalar, BTI, Pointer Authentication and selected SVE/SVE2/SME forms. Remaining extensions and textual assembly are open. |
+| ISA-004 | Partial | [D], [A], [ACLI]: [AArch64 Decode coverage]: checked branches and PC-relative operands, A64 instruction order separate from data order, plus versioned scalar, BTI, Pointer Authentication and selected SVE/SVE2/SME forms. [AArch64 Assembly] covers selected little-endian instruction families. Wider ISA coverage remains open. |
 | ISA-005 | Implemented | [Capabilities], [Capability tests]: separate evaluated MIPS32/64 roadmap, decoder/assembly/license/target constraints and minimal future experiments. Both production decoders and assemblers remain explicitly unavailable. |
 | ISA-006 | Implemented | [Capabilities], [Capability tests]: separate evaluated PowerPC32/64 roadmap with endian, ABI, reference and format-mapping decisions. Production support is deferred and unavailable. |
 | ISA-007 | Implemented | [Capabilities], [Capability tests]: separate evaluated RISC-V32/64 roadmap and independent text-assembly decisions. Inspected-ISA support remains unavailable and is distinct from the required RISC-V host target. |
@@ -144,14 +144,14 @@ cover visiting, switching, and reopening files.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| ASM-001 | Partial | [Assembly]: bounded x86 text parsing and encoding in 16/32/64. AArch64 and interactive input remain open. |
-| ASM-002 | Partial | [Assembly]: mode, byte order and checked mapped/raw address drive x86 encoding. Other paths remain open. |
+| ASM-001 | Partial | [Assembly] and [AArch64 Assembly]: bounded x86 text in 16/32/64 and a single little-endian A64 word. Interactive input remains open. |
+| ASM-002 | Partial | [Assembly] and [AArch64 Assembly]: mode, instruction order and checked mapped or raw address drive encoding. Additional ISA and profile coverage remains open. |
 | ASM-003 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | ASM-004 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | ASM-005 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| ASM-006 | Partial | [Assembly]: syntax, range and missing names preserve bytes, cursor, generation and undo/redo in the x86 core adapter. The patch workflow remains open. |
-| ASM-007 | Partial | [Assembly]: published mode, syntax, label and family subset. Complete HIEW grammar and AArch64 remain open. |
-| ASM-008 | Partial | [Assembly]: x86 branch range/address/mode and endian regressions. Full platform and AArch64 text assembly remain open. |
+| ASM-006 | Partial | [Assembly] and [AArch64 Assembly]: syntax, range and missing names preserve bytes, cursor, generation and undo/redo in the core adapter. The patch workflow remains open. |
+| ASM-007 | Partial | [Assembly] and [AArch64 Assembly]: published mode, syntax, labels and implemented families. Complete HIEW grammar and wider extension support remain open. |
+| ASM-008 | Partial | [Assembly] and [AArch64 Assembly]: range, address, mode, symbol and byte-order regressions plus independent A64 words. Interactive and full platform qualification remain open. |
 
 ## FMT
 
@@ -265,7 +265,7 @@ cover visiting, switching, and reopening files.
 | TEST-002 | Implemented | [N], [P]: discard checks expected bytes and mtime on generated ordinary files. |
 | TEST-003 | Implemented | [N], [P]: exact persisted byte changes; reopen via file reads. |
 | TEST-004 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| TEST-005 | Partial | [Assembly]: near and short x86 proposals encode at multiple actual addresses. Applied patch and broader ISA checks remain open. |
+| TEST-005 | Partial | [Assembly] and [AArch64 Assembly]: x86 near and short branches and A64 PC-relative operands encode at multiple actual addresses. Applied patch and broader ISA checks remain open. |
 | TEST-006 | Partial | [F], [D], [A], [ACLI]: host-independent x86 PE, ARM64 Mach-O and ELF fixtures are shared by six native CI jobs; per-commit results are recorded in PR/CI, while the full required host/runtime matrix remains incomplete. |
 | TEST-007 | Partial | [N], [C], [F], [A], [T]: real Unix sparse file, synthetic 1 TiB format source and large-offset code windows; interactive large-file benchmark pending. |
 | TEST-008 | Partial | [C], [T]: chunk-boundary literal matches in both directions, cancellation, and [native PTY search replay][Search replay]; latency benchmark pending. |
@@ -326,6 +326,7 @@ cover visiting, switching, and reopening files.
 [Capability tests]: ../crates/hiewbie-core/src/capabilities_tests.rs
 [Fuzz]: fuzzing.md
 [Assembly]: x86-text-assembly.md
+[AArch64 Assembly]: aarch64-text-assembly.md
 [AArch64 Decode coverage]: aarch64-decode-coverage.md
 [Analysis]: adr/0004-analysis-backends.md
 [Symbols]: adr/0005-symbol-navigation.md

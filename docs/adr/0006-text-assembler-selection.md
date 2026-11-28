@@ -16,13 +16,11 @@ bytes and diagnostics without access to a document.
   instructions and enumerate legal encodings in stable order. Implement
   x86-16, x86-32, and x86-64 with checked symbols, sized memory operands,
   explicit branch widths, and a versioned AVX table.
-- [#77](https://github.com/stokaro/hiewbie/issues/77) uses asm-rs **0.2.0**
-  with only its AArch64 feature and defaults disabled. Lower one validated
-  instruction and pass resolved destinations as external absolute symbols.
-  Reject directives, macros, and multi-line input before lowering. Require
-  exactly four output bytes. Start with little-endian AArch64 and checked
-  PC-relative encodings. Qualify the production instruction-family table
-  before enabling it in the editor.
+- [#77](https://github.com/stokaro/hiewbie/issues/77) uses an in-tree AArch64
+  word encoder for the [qualified forms](../aarch64-text-assembly.md).
+  It lowers typed operands directly to the A64 fields, with checked
+  absolute-address expressions and one little-endian four-byte result.
+  The production workspace adds no dependency for this path.
 - [#78](https://github.com/stokaro/hiewbie/issues/78) integrates the HIEW
   dialog, encoding choices, preview, span validation, NOP padding, and
   atomic undoable overwrite.
@@ -73,6 +71,14 @@ bytes. The AArch64 adapter also rejected the out-of-range destination.
 The tested interface returns one encoding. The x86 path needs explicit
 candidate enumeration.
 
+**Production AArch64 qualification.** LLVM MC comparisons with the pinned
+asm-rs package found incorrect encodings for signed-word and FP literal loads
+and for some logical masks. An unencodable logical immediate was accepted.
+Some nonzero SVE MUL VL offsets were lost, and a far ADR could produce an
+eight-byte ADRP/ADD sequence. The supported production forms now share typed
+operands and checked fields in the core. The explicit instruction-family
+table and independent fixture define the current coverage.
+
 The [asm-rs 0.2.0 package](https://crates.io/crates/asm-rs/0.2.0) identifies
 [8dfe5d86db18d3d861b53e6db1be0816a177715a](https://github.com/hupe1980/asm-rs/tree/8dfe5d86db18d3d861b53e6db1be0816a177715a/crates/asm-rs)
 as its source revision. The crate declares MIT OR Apache-2.0. We inspected
@@ -100,7 +106,9 @@ The proposed path leaves Keystone out.
 ## Build and runtime routes
 
 The [target manifest](../../build/targets.json) drives the Rust workflow and
-its probe steps. The [x86 production core](../x86-text-assembly.md) now reports its implemented subset. The ledger retains the remaining AArch64 and interactive work.
+its probe steps. The [x86](../x86-text-assembly.md) and [AArch64](../aarch64-text-assembly.md)
+production contracts report their implemented subsets. The ledger tracks the
+remaining instruction forms and interactive work.
 
 | Required targets | Evidence route and remaining qualification |
 | --- | --- |
@@ -110,7 +118,7 @@ its probe steps. The [x86 production core](../x86-text-assembly.md) now reports 
 | Linux RISC-V | Pinned std and compile-check. GNU linker, matching sysroot and runtime belong to [#92](https://github.com/stokaro/hiewbie/issues/92). |
 | FreeBSD x64 | Pinned std and compile-check. Matched link and runtime belong to [#93](https://github.com/stokaro/hiewbie/issues/93). |
 | FreeBSD ARM64 | Rust 1.90.0 lacks distributed std. [#91](https://github.com/stokaro/hiewbie/issues/91) owns a matching compiler/std and runtime. |
-| WebAssembly | Link the standalone Rust library and instantiate with no host imports. The corpus exercises both selected paths. Browser integration and packaging belong to [#95](https://github.com/stokaro/hiewbie/issues/95) and [#96](https://github.com/stokaro/hiewbie/issues/96). |
+| WebAssembly | Link the standalone Rust library and instantiate with no host imports. The research probe exercises both evaluated packages. Browser integration and packaging belong to [#95](https://github.com/stokaro/hiewbie/issues/95) and [#96](https://github.com/stokaro/hiewbie/issues/96). |
 
 On Rust 1.90.0, the release WASM probe with both candidates linked measured
 846,823 bytes. Node ran the fixed corpus and checked the external-label

@@ -5,9 +5,12 @@ use std::fmt;
 use crate::formats::{Endian, VirtualAddress};
 use crate::instructions::DecodeMode;
 
+mod aarch64;
 mod syntax;
 mod x86;
 
+#[cfg(test)]
+mod aarch64_tests;
 #[cfg(test)]
 mod tests;
 
@@ -30,7 +33,9 @@ pub enum AssemblyError {
 impl fmt::Display for AssemblyError {
     fn fmt(&self, output: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::UnsupportedProfile => output.write_str("Select a little-endian x86 profile"),
+            Self::UnsupportedProfile => {
+                output.write_str("Select a supported little-endian assembly profile")
+            }
             Self::SourceLimit => write!(output, "Assembly input exceeds {MAX_SOURCE_BYTES} bytes"),
             Self::Syntax(reason) | Self::UnsupportedForm(reason) | Self::OutOfRange(reason) => {
                 output.write_str(reason)
@@ -45,6 +50,28 @@ impl fmt::Display for AssemblyError {
 }
 
 impl std::error::Error for AssemblyError {}
+
+/// Assemble one instruction at the inspected address. The resolver maps
+/// case-sensitive symbol names to absolute virtual addresses.
+pub fn assemble(
+    source: &str,
+    mode: DecodeMode,
+    endian: Endian,
+    address: VirtualAddress,
+    resolve: impl FnMut(&str) -> Option<VirtualAddress>,
+) -> Result<Vec<Vec<u8>>, AssemblyError> {
+    if endian != Endian::Little {
+        return Err(AssemblyError::UnsupportedProfile);
+    }
+    if mode == DecodeMode::Aarch64 {
+        if source.len() > MAX_SOURCE_BYTES {
+            return Err(AssemblyError::SourceLimit);
+        }
+        return aarch64::encode(source, address, resolve)
+            .map(|word| vec![word.to_le_bytes().to_vec()]);
+    }
+    assemble_x86(source, mode, endian, address, resolve)
+}
 
 /// Assemble one textual x86 instruction and return distinct byte encodings.
 /// Alternatives are ordered by length and then by their bytes.
