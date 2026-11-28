@@ -608,6 +608,45 @@ fn displayed_branch_labels_reach_letters_and_survive_cursor_movement() {
 }
 
 #[test]
+fn profile_changes_and_resync_drop_numbered_windows() {
+    for change in [
+        Command::SetDecodeMode(Some(DecodeMode::X86_16)),
+        Command::SetRawBase(VirtualAddress::new(0x100)),
+        Command::ResyncCode,
+    ] {
+        let mut editor = raw(vec![0xeb, 0, 0xeb, 2, 0xcc, 0xcc, 0xc3], DecodeMode::X86_32);
+        let rows = editor.code_viewport(FileOffset::new(0), 2).unwrap();
+        assert_eq!(rows[0].branch_number, Some(1));
+        assert_eq!(rows[1].branch_number, Some(2));
+        editor.dispatch(Command::Goto(FileOffset::new(2))).unwrap();
+        editor.dispatch(change).unwrap();
+        editor.dispatch(Command::FollowBranch(1)).unwrap();
+        assert_eq!(editor.cursor(), FileOffset::new(6));
+    }
+}
+
+#[test]
+fn architectural_x86_wrap_never_wraps_the_raw_file_offset() {
+    for (mode, limit) in [
+        (DecodeMode::X86_16, u64::from(u16::MAX)),
+        (DecodeMode::X86_32, u64::from(u32::MAX)),
+        (DecodeMode::X86_64, u64::MAX),
+    ] {
+        let mut editor = raw(vec![0xeb, 0], mode);
+        editor
+            .dispatch(Command::SetRawBase(VirtualAddress::new(limit - 1)))
+            .unwrap();
+        let rows = editor.code_viewport(FileOffset::new(0), 1).unwrap();
+        let row = &rows[0];
+        assert_eq!(row.instruction.bytes(), &[0xeb, 0]);
+        assert_eq!(row.instruction.direct_branch.unwrap().address.get(), 0);
+        assert_eq!(row.branch_number, Some(1));
+        assert!(editor.dispatch(Command::FollowBranch(1)).is_err());
+        assert_eq!(editor.cursor(), FileOffset::new(0));
+    }
+}
+
+#[test]
 fn compact_visual_padding_preserves_plain_disassembly_and_instruction_boundaries() {
     let mut editor = editor(vec![0x90, 0x90, 0x90, 0xCC, 0xCC, 0xC3]);
     let rows = editor.code_rows(5).unwrap();

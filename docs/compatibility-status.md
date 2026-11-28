@@ -118,7 +118,7 @@ cover visiting, switching, and reopening files.
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
 | ISA-001 | Partial | [D], [A], [ACLI]: iced-x86 1.22.0 decodes 16/32/64-bit modes with automatic raw x86-32, manual overrides, and a native Decode viewport [Decode observation]. Textual assembly remains planned. |
-| ISA-002 | Partial | [D], [Analysis]: version-pinned x86 decoder and AVX regression; exhaustive extension coverage and textual assembly are not established. |
+| ISA-002 | Partial | [D], [x86 Decode coverage]: 58 exact scalar, x87, SIMD, and extension encodings exercise iced-x86 1.22.0 in 16/32/64-bit modes. The table records which samples worked in HIEW 8.63. A complete extension inventory and textual assembly remain open. |
 | ISA-003 | Partial | [D], [A], [Analysis]: separate ARM/Thumb modes, strict decoding and direct mode exchange; precise ARMv6/revision filtering, IT-state propagation and big-endian instructions remain gaps. |
 | ISA-004 | Partial | [D], [A], [ACLI]: AArch64 decoding and checked direct targets independent of host CPU; textual assembly, SVE/SVE2 and complete extension coverage pending. |
 | ISA-005 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
@@ -126,11 +126,11 @@ cover visiting, switching, and reopening files.
 | ISA-007 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | ISA-008 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | ISA-009 | Implemented | [D], [T], [ACLI]: mode/bitness, endian, instruction lengths and backend version are reported; parsed CPU and explicit profile remain distinct. |
-| ISA-010 | Implemented | [D], [T], [ACLI]: Decoded, Unknown, Truncated and Unsupported preserve raw bytes and guarantee progress for nonempty input; unknown is not a universal invalid-encoding claim. |
+| ISA-010 | Implemented | [D], [T], [ACLI]: Decoded, Unknown, InvalidForMode, Truncated, and Unsupported preserve raw bytes and guarantee progress for nonempty input. InvalidForMode covers recognized legacy-only opcodes in long mode. |
 | ISA-011 | Implemented | [A], [T], [ACLI]: unknown machines, malformed metadata and unsupported instruction order preserve raw viewing and byte editing. |
 | ISA-012 | Partial | [D], [A], [T], [P]: visible direct branches have 1–9/A–Z labels and return via 0 or Backspace. Includes ARM/Thumb mode exchange. Indirect and far resolution remain open. |
 | ISA-013 | Partial | [A], [T], [Analysis], [Symbols], [Reference observations]: raw x86 near branches and selected mapped memory and literal operands are searchable in bounded steps. General references, loader symbol resolution and control-flow analysis remain open. |
-| ISA-014 | Implemented | [A], [T]: current logical bytes drive re-decoding and fresh direct targets after edits/undo. Generation and profile changes invalidate dependent reference continuation. |
+| ISA-014 | Implemented | [A], [T]: current logical bytes drive re-decoding after edits and undo. Generation and profile changes invalidate dependent reference continuation. Profile changes and resynchronization clear saved viewport labels. |
 | ISA-015 | Implemented | [A], [T], [Commands]: Code-view / resynchronizes at the selected byte; instruction navigation retraces known boundaries or uses a bounded byte/alignment fallback. |
 
 ## ASM
@@ -303,6 +303,7 @@ cover visiting, switching, and reopening files.
 [Bookmark observation]: evidence/hiew-8.63-windows-bookmarks.json
 [Bookmark replay]: evidence/bookmarks.cast
 [Decode observation]: evidence/hiew-8.63-windows-decode.json
+[x86 Decode coverage]: x86-decode-coverage.md
 [Reference observations]: evidence/hiew-8.63-windows-references.json
 [Decode replay]: evidence/decode.cast
 [Text observation]: evidence/hiew-8.63-windows-text.json

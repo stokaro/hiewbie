@@ -1,0 +1,61 @@
+# x86 decode corpus for the HIEW 8.63 capability audit.
+# Independently assembled by LLVM MC 23.1.6 from the final column.
+# Mode, file offset (hex), family, bytes, expected adapter text, LLVM Intel source.
+16	0000	scalar	B83412	mov ax,0x1234	mov ax, 0x1234
+16	0003	scalar	648B4002	mov ax,fs:[bx+si+0x2]	mov ax, word ptr fs:[bx+si+2]
+16	0007	legacy	60	pusha	pushaw
+16	0008	x87	D9E8	fld1	fld1
+16	000A	x87	DD4020	fld st,qword ptr [bx+si+0x20]	fld qword ptr [bx+si+0x20]
+16	000D	string	F3A4	rep movsb [di],[si]	rep movsb
+16	000F	CMOV	0F44C3	cmove ax,bx	cmove ax,bx
+16	0012	MMX	0FFCCA	paddb mm1,mm2	paddb mm1,mm2
+16	0015	SSE	0F28CA	movaps xmm1,xmm2	movaps xmm1,xmm2
+16	0018	AVX	C5F877	vzeroupper	vzeroupper
+32	0000	scalar	8B448BE0	mov eax,[ebx+ecx*4-0x20]	mov eax, dword ptr [ebx+ecx*4-0x20]
+32	0004	scalar	64A134120000	mov eax,fs:[0x1234]	mov eax, dword ptr fs:[0x1234]
+32	000A	legacy	60	pushad	pushal
+32	000B	x87	DB6C2410	fld st,tbyte ptr [esp+0x10]	fld tbyte ptr [esp+0x10]
+32	000F	3DNow!	0F0FCA9E	pfadd mm1,mm2	pfadd mm1,mm2
+32	0013	MMX	0FFCCA	paddb mm1,mm2	paddb mm1,mm2
+32	0016	SSE	0F28CA	movaps xmm1,xmm2	movaps xmm1,xmm2
+32	0019	SSE2	660FD4CA	paddq xmm1,xmm2	paddq xmm1,xmm2
+32	001D	SSE3	F20F7CCA	haddps xmm1,xmm2	haddps xmm1,xmm2
+32	0021	SSSE3	660F381CCA	pabsb xmm1,xmm2	pabsb xmm1,xmm2
+32	0026	SSE4.1	660F3840CA	pmulld xmm1,xmm2	pmulld xmm1,xmm2
+32	002B	SSE4.2	660F3A63CA00	pcmpistri xmm1,xmm2,0x0	pcmpistri xmm1,xmm2,0
+32	0031	POPCNT	F30FB8C8	popcnt ecx,eax	popcnt ecx,eax
+32	0035	AES-NI	660F38DCCA	aesenc xmm1,xmm2	aesenc xmm1,xmm2
+32	003A	PCLMULQDQ	660F3A44CA01	pclmulhqlqdq xmm1,xmm2	pclmulqdq xmm1,xmm2,1
+32	0040	AVX	C5EC58CB	vaddps ymm1,ymm2,ymm3	vaddps ymm1,ymm2,ymm3
+32	0044	AVX2	C4E27D58CA	vpbroadcastd ymm1,xmm2	vpbroadcastd ymm1,xmm2
+32	0049	FMA3	C4E26D98CB	vfmadd132ps ymm1,ymm2,ymm3	vfmadd132ps ymm1,ymm2,ymm3
+32	004E	BMI1	C4E270F2DA	andn ebx,ecx,edx	andn ebx,ecx,edx
+32	0053	BMI2	C4E26AF5C8	pext ecx,edx,eax	pext ecx,edx,eax
+32	0058	XOP	8FE868A2CB40	vpcmov xmm1,xmm2,xmm3,xmm4	vpcmov xmm1,xmm2,xmm3,xmm4
+32	005E	RDRAND	0FC7F0	rdrand eax	rdrand eax
+32	0061	SHA	0F38CBCA	sha256rnds2 xmm1,xmm2	sha256rnds2 xmm1,xmm2
+64	0000	scalar	498B445CE0	mov rax,[r12+rbx*2-0x20]	mov rax, qword ptr [r12+rbx*2-0x20]
+64	0005	scalar	4C8B0D20000000	mov r9,[0x2c]	mov r9, qword ptr [rip+0x20]
+64	000C	scalar	678B0520000000	mov eax,[0x33]	mov eax, dword ptr [eip+0x20]
+64	0013	scalar	658B042534120000	mov eax,gs:[0x1234]	mov eax, dword ptr gs:[0x1234]
+64	001B	x87	DD442410	fld st,qword ptr [rsp+0x10]	fld qword ptr [rsp+0x10]
+64	001F	3DNow!	0F0FCA9E	pfadd mm1,mm2	pfadd mm1,mm2
+64	0023	MMX	0FFCCA	paddb mm1,mm2	paddb mm1,mm2
+64	0026	SSE	0F28CA	movaps xmm1,xmm2	movaps xmm1,xmm2
+64	0029	SSE2	660FD4CA	paddq xmm1,xmm2	paddq xmm1,xmm2
+64	002D	SSE3	F20F7CCA	haddps xmm1,xmm2	haddps xmm1,xmm2
+64	0031	SSSE3	660F381CCA	pabsb xmm1,xmm2	pabsb xmm1,xmm2
+64	0036	SSE4.1	660F3840CA	pmulld xmm1,xmm2	pmulld xmm1,xmm2
+64	003B	SSE4.2	660F3A63CA00	pcmpistri xmm1,xmm2,0x0	pcmpistri xmm1,xmm2,0
+64	0041	POPCNT	F3480FB8C8	popcnt rcx,rax	popcnt rcx,rax
+64	0046	AES-NI	660F38DCCA	aesenc xmm1,xmm2	aesenc xmm1,xmm2
+64	004B	PCLMULQDQ	660F3A44CA01	pclmulhqlqdq xmm1,xmm2	pclmulqdq xmm1,xmm2,1
+64	0051	AVX	C5EC58CB	vaddps ymm1,ymm2,ymm3	vaddps ymm1,ymm2,ymm3
+64	0055	AVX2	C4E27D58CA	vpbroadcastd ymm1,xmm2	vpbroadcastd ymm1,xmm2
+64	005A	FMA3	C4E26D98CB	vfmadd132ps ymm1,ymm2,ymm3	vfmadd132ps ymm1,ymm2,ymm3
+64	005F	BMI1	C4E2F0F2DA	andn rbx,rcx,rdx	andn rbx,rcx,rdx
+64	0064	BMI2	C4E2EAF5C8	pext rcx,rdx,rax	pext rcx,rdx,rax
+64	0069	XOP	8FE868A2CB40	vpcmov xmm1,xmm2,xmm3,xmm4	vpcmov xmm1,xmm2,xmm3,xmm4
+64	006F	RDRAND	480FC7F0	rdrand rax	rdrand rax
+64	0073	SHA	0F38CBCA	sha256rnds2 xmm1,xmm2	sha256rnds2 xmm1,xmm2
+64	0077	AVX-512F	62F164CA58CC	vaddps zmm1{k2}{z},zmm3,zmm4	vaddps zmm1{k2}{z},zmm3,zmm4

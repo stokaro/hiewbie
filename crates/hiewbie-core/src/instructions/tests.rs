@@ -44,6 +44,42 @@ fn x86_avx_is_not_disabled_by_feature_selection() {
 }
 
 #[test]
+fn x86_extension_corpus_preserves_length_operands_and_bounded_truncation() {
+    for entry in include_str!("../../../../tests/fixtures/x86-decode-8.63.tsv").lines() {
+        if entry.starts_with('#') || entry.is_empty() {
+            continue;
+        }
+        let fields: Vec<_> = entry.split('\t').collect();
+        let [bits, offset, family, hex, expected, _assembly] = fields.as_slice() else {
+            panic!("malformed fixture row: {entry}");
+        };
+        let mode = match *bits {
+            "16" => DecodeMode::X86_16,
+            "32" => DecodeMode::X86_32,
+            "64" => DecodeMode::X86_64,
+            _ => panic!("unexpected fixture bitness: {bits}"),
+        };
+        let address = u64::from_str_radix(offset, 16).unwrap();
+        let bytes: Vec<_> = (0..hex.len())
+            .step_by(2)
+            .map(|index| u8::from_str_radix(&hex[index..index + 2], 16).unwrap())
+            .collect();
+        let decoded = decode(&bytes, mode, address);
+        assert_eq!(decoded.status, DecodeStatus::Decoded, "{family}: {entry}");
+        assert_eq!(decoded.bytes(), bytes, "{entry}");
+        assert_eq!(decoded.text, *expected, "{entry}");
+        assert_eq!(decoded.direct_branch, None, "{entry}");
+
+        if bytes.len() > 1 {
+            let tail = decode(&bytes[..bytes.len() - 1], mode, address);
+            assert_eq!(tail.status, DecodeStatus::Truncated, "{entry}");
+            assert_eq!(tail.bytes(), &bytes[..1], "{entry}");
+            assert_eq!(tail.direct_branch, None, "{entry}");
+        }
+    }
+}
+
+#[test]
 fn x86_direct_targets_use_actual_instruction_addresses() {
     branch(
         &[0xe8, 0xfb, 0xff, 0xff, 0xff],
@@ -99,6 +135,13 @@ fn x86_near_branches_retain_architectural_address_width() {
         1,
         DecodeMode::X86_32,
     );
+    branch(
+        &[0xeb, 0],
+        DecodeMode::X86_64,
+        u64::MAX - 1,
+        0,
+        DecodeMode::X86_64,
+    );
 }
 
 #[test]
@@ -119,6 +162,27 @@ fn unknown_and_truncated_x86_keep_raw_bytes_and_progress() {
     let tail = decode(&[0x0f], DecodeMode::X86_64, 0);
     assert_eq!(tail.status, DecodeStatus::Truncated);
     assert_eq!(tail.bytes(), &[0x0f]);
+}
+
+#[test]
+fn complete_legacy_only_opcodes_are_distinct_from_unknown_in_long_mode() {
+    for (bytes, mnemonic) in [
+        (&[0x60][..], "pusha"),
+        (&[0xd4, 0x0a][..], "aam 0xa"),
+        (&[0xce][..], "into"),
+    ] {
+        let legacy = decode(bytes, DecodeMode::X86_16, 0);
+        assert_eq!(legacy.status, DecodeStatus::Decoded);
+        assert_eq!(legacy.text, mnemonic);
+        let long = decode(bytes, DecodeMode::X86_64, 0);
+        assert_eq!(long.status, DecodeStatus::InvalidForMode);
+        assert_eq!(long.bytes(), &bytes[..1]);
+        assert_eq!(long.direct_branch, None);
+    }
+    let shared = decode(&[0x62, 0, 0, 0, 0, 0], DecodeMode::X86_64, 0);
+    assert_ne!(shared.status, DecodeStatus::InvalidForMode);
+    let missing_base = decode(&[0xd4], DecodeMode::X86_64, 0);
+    assert_ne!(missing_base.status, DecodeStatus::InvalidForMode);
 }
 
 #[test]

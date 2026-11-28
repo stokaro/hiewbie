@@ -14,6 +14,7 @@ use super::{EntryColumn, Ui, escaped_text};
 const SELECTED_BYTE: Style = Style::new().fg(Color::Blue).bg(Color::Gray);
 const MODIFIED_BYTE: Style = BYTE_BODY.fg(Color::LightYellow);
 const BRANCH: Style = BYTE_BODY.fg(Color::Yellow);
+const MEMORY: Style = BYTE_BODY.fg(Color::LightMagenta);
 
 #[derive(Default)]
 pub(super) struct CodeViewport {
@@ -182,9 +183,13 @@ fn instruction_spans(
 ) -> Vec<Span<'static>> {
     let instruction = &row.instruction;
     if instruction.status != DecodeStatus::Decoded {
+        if instruction.status == DecodeStatus::InvalidForMode && mode == Some(DecodeMode::X86_64) {
+            return vec![Span::raw("#UD(64)")];
+        }
         let state = match instruction.status {
             DecodeStatus::Decoded => unreachable!(),
             DecodeStatus::Unknown => "unknown: ",
+            DecodeStatus::InvalidForMode => "invalid mode: ",
             DecodeStatus::Truncated => "truncated: ",
             DecodeStatus::Unsupported => "unsupported: ",
         };
@@ -193,7 +198,7 @@ fn instruction_spans(
             escaped_text(&instruction.text)
         ))];
     }
-    let (name, operands) = instruction
+    let (name, mut operands) = instruction
         .text
         .split_once(' ')
         .unwrap_or((&instruction.text, ""));
@@ -202,11 +207,31 @@ fn instruction_spans(
         append_branch_indicator(&mut spans, row);
         return spans;
     }
+    let mut selector = None;
+    let mut memory_size = None;
     let (name, operands) = match name {
         "int3" => ("int", "3"),
         "ret" => ("retn", operands),
         "je" => ("jz", operands),
         "jne" => ("jnz", operands),
+        "cmove" => ("cmovz", operands),
+        "rep" if operands.starts_with("movsb ") => ("rep movsb", ""),
+        "fld" => {
+            if let Some(memory) = operands.strip_prefix("st,") {
+                for (intel, hiew) in [("qword ptr ", "q,"), ("tbyte ptr ", "t,")] {
+                    if let Some(remaining) = memory.strip_prefix(intel) {
+                        memory_size = Some(hiew);
+                        operands = remaining;
+                        break;
+                    }
+                }
+            }
+            (name, operands)
+        }
+        "pclmullqlqdq" | "pclmulhqlqdq" | "pclmullqhqdq" | "pclmulhqhqdq" => {
+            selector = instruction.bytes().last().copied();
+            ("pclmulqdq", operands)
+        }
         "jmp" if instruction.bytes().first() == Some(&0xEB) => ("jmps", operands),
         _ => (name, operands),
     };
@@ -235,7 +260,17 @@ fn instruction_spans(
         spans.push(Span::styled(address, BYTE_BODY.fg(Color::LightGreen)));
         append_branch_indicator(&mut spans, row);
     } else {
-        spans.extend(operand_spans(operands));
+        if let Some(size) = memory_size {
+            spans.push(Span::styled(size, MEMORY));
+        }
+        spans.extend(operand_spans(operands, mode));
+        if let Some(selector) = selector {
+            spans.push(Span::raw(","));
+            spans.push(Span::styled(
+                hex_literal(&format!("{selector:x}")),
+                BYTE_BODY.fg(Color::LightGreen),
+            ));
+        }
     }
     spans
 }
@@ -254,33 +289,66 @@ fn append_branch_indicator(spans: &mut Vec<Span<'static>>, row: &CodeRow) {
     }
 }
 
-fn operand_spans(operands: &str) -> Vec<Span<'static>> {
+fn hex_literal(digits: &str) -> String {
+    if digits.len() == 1 && digits.as_bytes()[0].is_ascii_digit() {
+        digits.to_owned()
+    } else {
+        format!("0{}", digits.to_ascii_uppercase())
+    }
+}
+
+fn memory_operand(source: &str, mode: Option<DecodeMode>) -> String {
+    if let Some(digits) = source.strip_prefix("0x")
+        && let Ok(address) = u64::from_str_radix(digits, 16)
+    {
+        let text = if address > u64::from(u32::MAX) {
+            address_digits(address, true)
+        } else if mode == Some(DecodeMode::X86_16) && address <= u64::from(u16::MAX) {
+            format!("{address:05X}")
+        } else {
+            format!("{address:09X}")
+        };
+        return format!("[{text}]");
+    }
+    let mut result = String::new();
+    let mut negative = false;
+    for term in source.split_inclusive(['+', '-']) {
+        let sign = term.ends_with('-');
+        let term = term.trim_end_matches(['+', '-']);
+        if let Some(displacement) = term.strip_prefix("0x") {
+            let sign = if negative { "-" } else { "" };
+            result.push_str(&format!("[{sign}{}]", hex_literal(displacement)));
+        } else if let Some((register, scale)) = term.split_once('*') {
+            result.push_str(&format!("[{register}]*{scale}"));
+        } else {
+            result.push_str(&format!("[{term}]"));
+        }
+        negative = sign;
+    }
+    result
+}
+
+fn operand_spans(operands: &str, mode: Option<DecodeMode>) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     let mut source = operands;
     while !source.is_empty() {
-        if source.starts_with('[')
-            && let Some(end) = source.find(']')
+        let segment = ["cs:", "ds:", "es:", "fs:", "gs:", "ss:"]
+            .into_iter()
+            .find(|segment| source.starts_with(segment))
+            .unwrap_or("");
+        if let Some(memory) = source[segment.len()..].strip_prefix('[')
+            && let Some(end) = memory.find(']')
         {
-            let memory = &source[1..end];
-            let text: String = memory
-                .split('+')
-                .map(|term| {
-                    if let Some(number) = term.strip_prefix("0x") {
-                        format!("[0{}]", number.to_ascii_uppercase())
-                    } else {
-                        format!("[{}]", term.replace("0x", "0"))
-                    }
-                })
-                .collect();
-            spans.push(Span::styled(text, BYTE_BODY.fg(Color::LightMagenta)));
-            source = &source[end + 1..];
+            let address = memory_operand(&memory[..end], mode);
+            spans.push(Span::styled(format!("{segment}{address}"), MEMORY));
+            source = &memory[end + 1..];
         } else if let Some(remaining) = source.strip_prefix("0x") {
             let end = remaining
                 .find(|value: char| !value.is_ascii_hexdigit())
                 .unwrap_or(remaining.len());
             let number = &remaining[..end];
             spans.push(Span::styled(
-                format!("0{}", number.to_ascii_uppercase()),
+                hex_literal(number),
                 BYTE_BODY.fg(Color::LightGreen),
             ));
             if end == remaining.len()
