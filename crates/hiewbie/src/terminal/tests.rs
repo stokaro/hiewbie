@@ -334,7 +334,13 @@ fn mode_picker_cancels_and_selects_all_views_without_moving_or_editing() {
     assert!(ui.dialog.is_none());
     assert_eq!(ui.editor.mode(), ViewMode::Code);
     assert_eq!(ui.editor.cursor(), FileOffset::new(1));
-    assert!(screen(&mut ui, 80, 25).contains("SELECT ISA"));
+    assert!(
+        screen(&mut ui, 80, 25)
+            .lines()
+            .next()
+            .unwrap()
+            .contains("a32")
+    );
     key(&mut ui, KeyCode::F(4));
     assert!(matches!(ui.dialog, Some(Dialog::Mode(ModeChoice::Code))));
     key(&mut ui, KeyCode::Up);
@@ -1005,24 +1011,83 @@ fn code_at_entry() -> Ui<MemorySource> {
 }
 
 #[test]
-fn raw_code_requires_an_explicit_profile_and_shows_its_context() {
+fn decode_view_keeps_the_selected_byte_and_pages_over_compact_nops() {
+    let mut ui = ui(&[0x90, 0xC3, 0xF8, 0xF9, 0xCC, 0x90, 0x90, 0xC3].repeat(8));
+    key(&mut ui, KeyCode::Enter);
+    let initial = screen(&mut ui, 80, 25);
+    assert_eq!(
+        initial.lines().nth(1),
+        Some("↑ 00000000: 90                             nop"),
+    );
+    assert!(initial.lines().nth(6).unwrap().contains("00000005: 9090"));
+    assert!(initial.lines().last().unwrap().contains("6Refer"));
+    key(&mut ui, KeyCode::Down);
+    assert_eq!(ui.editor.cursor().get(), 1);
+    assert_eq!(
+        screen(&mut ui, 80, 25).lines().nth(1),
+        initial.lines().nth(1)
+    );
+    key(&mut ui, KeyCode::PageDown);
+    assert_eq!(ui.editor.cursor().get(), 0x1a);
+    assert!(
+        screen(&mut ui, 80, 25)
+            .lines()
+            .nth(1)
+            .unwrap()
+            .contains("0000001A: F8")
+    );
+    key(&mut ui, KeyCode::PageUp);
+    assert_eq!(ui.editor.cursor().get(), 0x19);
+    assert_eq!(
+        screen(&mut ui, 80, 25).lines().nth(1),
+        initial.lines().nth(1)
+    );
+}
+
+#[test]
+fn raw_code_opens_in_x86_and_explicit_profiles_can_override_it() {
     let mut ui = ui(&[0x90, 0xc3]);
     ui.dispatch(Command::SetMode(ViewMode::Code));
-    assert!(screen(&mut ui, 80, 25).contains("SELECT ISA"));
-    assert!(ui.message.contains("select an instruction architecture"));
+    assert!(
+        screen(&mut ui, 80, 25)
+            .lines()
+            .next()
+            .unwrap()
+            .contains("a32")
+    );
+    let output = screen(&mut ui, 80, 25);
+    assert!(
+        output
+            .lines()
+            .nth(1)
+            .unwrap()
+            .contains("90                             nop")
+    );
     control(&mut ui, KeyCode::Char('a'));
     assert!(screen(&mut ui, 80, 25).contains("Decoder and raw addressing"));
     key(&mut ui, KeyCode::Char('3'));
     key(&mut ui, KeyCode::Enter);
     let output = screen(&mut ui, 80, 25);
-    assert!(output.contains("CODE VIEW RW CLEAN x86-64 little RAW@0!"));
-    assert!(output.contains("R:0000000000000000"));
+    assert!(output.lines().next().unwrap().contains("64     00000000"));
+    assert!(output.contains(" 00000000: 90"));
     assert!(output.contains("nop"));
     assert!(output.contains("ret"));
     control(&mut ui, KeyCode::Char('b'));
-    assert!(screen(&mut ui, 80, 25).contains("x86-16"));
+    assert!(
+        screen(&mut ui, 80, 25)
+            .lines()
+            .next()
+            .unwrap()
+            .contains("16     00000000")
+    );
     ui.key(KeyEvent::new(KeyCode::F(1), KeyModifiers::CONTROL));
-    assert!(screen(&mut ui, 80, 25).contains("x86-32"));
+    assert!(
+        screen(&mut ui, 80, 25)
+            .lines()
+            .next()
+            .unwrap()
+            .contains("32     00000000")
+    );
     ui.key(KeyEvent::new(KeyCode::F(1), KeyModifiers::SHIFT));
     assert!(matches!(ui.dialog, Some(Dialog::Analysis(_))));
 }
@@ -1074,10 +1139,11 @@ fn virtual_goto_refuses_unmapped_addresses_without_moving() {
 #[test]
 fn code_branch_follow_return_and_instruction_steps_use_shared_commands() {
     let mut ui = code_at_entry();
-    let output = screen(&mut ui, 80, 25);
-    assert!(output.contains("V:0000000140001000 1> EB04"));
-    assert!(output.contains("jmp"));
-    assert!(output.contains("x86-64 little AUTO"));
+    let output = screen(&mut ui, 100, 25);
+    assert!(output.contains(".00000001`40001000: EB04"));
+    assert!(output.contains("jmps"));
+    assert!(output.lines().next().unwrap().contains("a64 PE+"));
+    assert!(output.contains("--↓1"));
     key(&mut ui, KeyCode::Char('1'));
     assert_eq!(ui.editor.cursor().get(), 0x206);
     key(&mut ui, KeyCode::Backspace);
@@ -1116,7 +1182,7 @@ fn code_edit_restore_keys_preserve_the_view_branch_return_history() {
     key(&mut ui, KeyCode::F(3));
     assert_eq!(ui.editor.cursor().get(), 0x206);
     assert_eq!(bytes(&mut ui), original);
-    assert!(screen(&mut ui, 80, 25).contains("CODE EDIT RW CLEAN"));
+    assert!(screen(&mut ui, 80, 25).contains("EDITMODE"));
     assert!(ui.editor.is_editing());
 
     key(&mut ui, KeyCode::Esc);
@@ -1134,9 +1200,10 @@ fn code_edit_refreshes_branch_bytes_and_undo_without_assembly() {
     type_text(&mut ui, "02");
     ui.dispatch(Command::Goto(FileOffset::new(0x200)));
     let output = screen(&mut ui, 80, 25);
-    assert!(output.contains("CODE EDIT RW DIRTY"));
+    assert!(output.contains("EDITMODE"));
+    assert!(ui.editor.document().is_dirty());
     assert!(output.contains("EB02"));
-    assert!(output.contains("Asm-"));
+    assert!(output.contains("2Asm"));
     assert_eq!(
         ui.editor.code_rows(1).unwrap()[0]
             .instruction
@@ -1170,13 +1237,14 @@ fn code_edit_keeps_raw_bytes_visible_when_header_changes_break_detection() {
     type_text(&mut ui, "00");
     ui.dispatch(Command::Goto(FileOffset::new(0x80)));
     let output = screen(&mut ui, 80, 25);
-    assert!(output.contains("CODE EDIT RW DIRTY SELECT ISA"));
+    assert!(output.contains("EDITMODE"));
+    assert!(ui.editor.document().is_dirty());
     assert!(output.contains("Code unavailable; raw bytes:"));
     assert!(output.contains("0000000000000080  00"));
     assert!(ui.editor.is_editing());
     control(&mut ui, KeyCode::Char('z'));
     let output = screen(&mut ui, 80, 25);
-    assert!(output.contains("x86-64 little AUTO"));
+    assert!(output.lines().next().unwrap().contains("a64 PE+"));
     assert!(!output.contains("Code unavailable; raw bytes:"));
     key(&mut ui, KeyCode::Esc);
     assert_eq!(bytes(&mut ui), pe_fixture());
@@ -1201,8 +1269,11 @@ fn raw_base_endian_and_malformed_headers_remain_explicit() {
     key(&mut ui, KeyCode::Char('b'));
     key(&mut ui, KeyCode::Enter);
     let output = screen(&mut ui, 80, 25);
-    assert!(output.contains("aarch64 big RAW@100000000!"));
+    assert!(output.lines().next().unwrap().contains("A64"));
     assert!(output.contains("unsupported"));
+    control(&mut ui, KeyCode::Char('a'));
+    assert!(screen(&mut ui, 100, 25).contains("aarch64 / big / override / raw base 100000000"));
+    key(&mut ui, KeyCode::Esc);
     key(&mut ui, KeyCode::F(5));
     type_text(&mut ui, ".100000004");
     key(&mut ui, KeyCode::Enter);
@@ -1280,7 +1351,7 @@ fn code_viewport_and_small_windows_keep_reads_and_allocations_bounded() {
     }
     assert!(largest.get() <= 15);
     assert!(ui.visible_rows <= hiewbie_core::MAX_CODE_ROWS);
-    assert!(screen(&mut ui, 80, 25).contains("FO 0000000100000010"));
+    assert!(screen(&mut ui, 80, 25).contains("00000001`00000010"));
 }
 
 #[test]
@@ -1530,12 +1601,12 @@ fn code_block_highlight_uses_individual_instruction_bytes() {
     let mut terminal = Terminal::new(TestBackend::new(80, 25)).unwrap();
     terminal.draw(|frame| ui.render(frame)).unwrap();
     let cells = terminal.backend().buffer();
-    assert_eq!(cells[(31, 2)].symbol(), "E");
-    for column in 31..41 {
-        let bg = cells[(column, 2)].bg;
+    assert_eq!(cells[(12, 1)].symbol(), "E");
+    for column in 12..22 {
+        let bg = cells[(column, 1)].bg;
         assert_eq!(
             bg == Color::Magenta,
-            (33..37).contains(&column),
+            (14..18).contains(&column),
             "column {column}"
         );
     }

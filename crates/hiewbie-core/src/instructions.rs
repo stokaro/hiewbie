@@ -31,6 +31,10 @@ pub enum DecodeMode {
 }
 
 impl DecodeMode {
+    pub const fn is_x86(self) -> bool {
+        matches!(self, Self::X86_16 | Self::X86_32 | Self::X86_64)
+    }
+
     pub const fn max_instruction_len(self) -> usize {
         match self {
             Self::X86_16 | Self::X86_32 | Self::X86_64 => MAX_INSTRUCTION_BYTES,

@@ -111,14 +111,24 @@ impl<S: ByteSource> Ui<S> {
 
     pub(super) fn render_code_title(&self, frame: &mut Frame<'_>, area: Rect) {
         let cursor = self.editor.cursor();
-        let image = self.hex_pe().filter(|_| !self.editor.is_editing());
-        let (marker, address) = byte_address(image, cursor);
+        let profile = self.editor.decode_context();
+        let editing = self.editor.is_editing();
+        let image = self.editor.executable().filter(|_| !editing);
+        let (marker, address) = if !editing && profile.raw && profile.base.get() != 0 {
+            profile
+                .base
+                .get()
+                .checked_add(cursor.get())
+                .map_or((' ', cursor.get()), |address| ('.', address))
+        } else {
+            byte_address(image, cursor)
+        };
         let wide = self.hex_format() == Some(BinaryFormat::Pe64)
             || self.editor.document().len().saturating_sub(1) > u64::from(u32::MAX)
             || address > u64::from(u32::MAX);
         let address = format!("{marker}{}", address_digits(address, wide));
         let automatic = self.editor.decode_mode_override().is_none();
-        let context = match (self.editor.decode_context().mode, automatic) {
+        let context = match (profile.mode, automatic) {
             (Some(DecodeMode::X86_16), true) => "a16",
             (Some(DecodeMode::X86_32), true) => "a32",
             (Some(DecodeMode::X86_64), true) => "a64",
@@ -132,7 +142,11 @@ impl<S: ByteSource> Ui<S> {
         };
         let address_width = address.len().max(13);
         let context_width = 26 - address_width;
-        let detail = format!("{context:>context_width$}{address:>address_width$}");
+        let detail = match self.hex_format() {
+            Some(BinaryFormat::Pe32) => format!("{context:>4}{:>4}{address:>18}", "PE"),
+            Some(BinaryFormat::Pe64) => format!("{context:>4}{:>4}{address:>18}", "PE+"),
+            _ => format!("{context:>context_width$}{address:>address_width$}"),
+        };
         self.render_byte_title(frame, area, &address, &detail, context);
     }
 
@@ -325,7 +339,7 @@ fn byte_address(image: Option<&Executable>, offset: FileOffset) -> (char, u64) {
         .map_or((' ', offset.get()), |address| ('.', address.get()))
 }
 
-fn address_digits(value: u64, wide: bool) -> String {
+pub(super) fn address_digits(value: u64, wide: bool) -> String {
     if wide {
         format!("{:08X}`{:08X}", value >> 32, value as u32)
     } else {
@@ -333,7 +347,13 @@ fn address_digits(value: u64, wide: bool) -> String {
     }
 }
 
-fn render_scrollbar(frame: &mut Frame<'_>, body: Rect, top: u64, length: u64, page: u64) {
+pub(super) fn render_scrollbar(
+    frame: &mut Frame<'_>,
+    body: Rect,
+    top: u64,
+    length: u64,
+    page: u64,
+) {
     let track = body.height.saturating_sub(3);
     let scale = |offset: u64| {
         let fraction = u128::from(offset.min(length)) * u128::from(track + 1);

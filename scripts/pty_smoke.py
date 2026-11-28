@@ -23,6 +23,7 @@ import errno
 import json
 from itertools import count
 import os
+import re
 from pathlib import Path
 import select
 import shutil
@@ -645,6 +646,32 @@ def screen_bookmarks(binary: Path, directory: Path, *, record: bool) -> list[lis
         return session.events
 
 
+def decode_x86(binary: Path, directory: Path, *, record: bool) -> list[list]:
+    directory.mkdir()
+    path = directory / "decode.bin"
+    data = bytes.fromhex("EB 00") * 14 + bytes.fromhex("C3")
+    path.write_bytes(data)
+    mtime_ns = path.stat().st_mtime_ns
+    with PtySession(binary, path, "automatic x86 Decode and visible branch shortcuts", record=record) as session:
+        def expect_input(value: bytes, label: str, *checks: bytes) -> None:
+            before = len(session.output)
+            session.send(value, label)
+            # SGR changes may split a glyph sequence without moving the cursor.
+            changed = re.sub(rb"\x1b\[[0-9;]*m", b"", session.output[before:])
+            for check in checks:
+                if check not in changed:
+                    session.fail(f"missing Decode output {check!r} after {label}")
+
+        expect_input(b"\r", "Enter Decode on ordinary raw bytes", b"a32", b"jmps", "--↓A".encode())
+        expect_input(b"a", "Use the tenth visible branch", b"\x1b[1;60H14")
+        expect_input(b"0", "Return to the saved byte", b"\x1b[1;60H00")
+        expect_input(b"\x1b[1;5P", "Select the 64-bit x86 decoder", b"64")
+        session.send(ESC, "Exit without editing", expect_exit=True)
+        session.finish()
+        session.expect_file(data, mtime_ns=mtime_ns)
+        return session.events
+
+
 def edit_save(binary: Path, directory: Path, *, record: bool) -> list[list]:
     path, mtime_ns = fixture(directory)
     with PtySession(binary, path, "edit/save and paste rejection", record=record) as session:
@@ -1055,6 +1082,7 @@ def main() -> int:
     parser.add_argument("--record-symbols", type=Path, help="record import/export target and metadata navigation with exact byte saves")
     parser.add_argument("--record-search", type=Path, help="record the two-field search, backward repeat, and exact byte save")
     parser.add_argument("--record-block", type=Path, help="record reverse selection, scoped search, and raw block export")
+    parser.add_argument("--record-decode", type=Path, help="record automatic x86 and branch navigation")
     parser.add_argument("--record-bookmarks", type=Path, help="record per-mode screen bookmark selection and restoration")
     parser.add_argument("--record-history", type=Path, help="record file arguments and history restoration")
     parser.add_argument("--record-files", type=Path, help="record startup Files, filtering, selection, F9 cancellation, and save")
@@ -1103,6 +1131,12 @@ def main() -> int:
                 with file_recording_workspace(Path("/tmp")) as demo:
                     bookmark_events = screen_bookmarks(binary, demo / "bookmarks", record=True)
             print("PASS: per-view screen bookmarks, exact Hex offset, unchanged bytes and timestamp")
+            if options.record_decode is None:
+                decode_events = decode_x86(binary, root / "decode", record=False)
+            else:
+                with file_recording_workspace(Path("/tmp")) as demo:
+                    decode_events = decode_x86(binary, demo / "decode", record=True)
+            print("PASS: automatic x86 Decode, lettered branches, return, and bitness")
             analysis_events = analyze_edit_save(binary, root / "analysis", record=options.record_analysis is not None)
             print("PASS: PE headers/entry, Code, branch/return, virtual goto, exact byte save")
             symbol_events = symbols_edit_save(binary, root / "symbols", record=options.record_symbols is not None)
@@ -1142,6 +1176,13 @@ def main() -> int:
                 filename=FIXTURE_NAME,
             )
             print(f"Block recording: {options.record_block}")
+        if options.record_decode is not None:
+            write_recording(
+                options.record_decode,
+                decode_events,
+                title="hiewbie x86 Decode: automatic raw profile, branch labels, and return",
+            )
+            print(f"Decode recording: {options.record_decode}")
         if options.record_bookmarks is not None:
             write_recording(
                 options.record_bookmarks,

@@ -34,7 +34,7 @@ and the parent epic remain open.
 | UI-005 | Partial | [T], [Observation]: view/edit/search/recovery and mode/header/profile dialogs resolve their own commands; the two-field search dialog has its own help and contextual bindings; block tracking, active-mark cancellation, scoped search, Write block, Calculator, and the file lists have tests. Transient modifier and other overlay details remain open. |
 | UI-006 | Partial | [T], [Commands], [Hex observation]: Hex uses the observed F-key label positions and dims unsupported commands. Contextual Help uses the observed blank bar and wide slots. History and the argument list have their own bars. Other dialog bars, modes, and modifier layers remain open. |
 | UI-007 | Implemented | [T], [P]: all currently implemented operations are keyboard-accessible. |
-| UI-008 | Partial | [T], [P], [Hex observation], [Dialog observation], [Text observation], [Help observation], [Calculator observation]: Raw and PE Hex, selected dialogs, the single-byte Text view and line-feed selector, contextual Help geometry, Calculator, and the file lists have paired Windows evidence. The Text scrollbar, Code, Help content, and header fields still have gaps. |
+| UI-008 | Partial | [T], [P], [Hex observation], [Decode observation], [Dialog observation], [Text observation], [Help observation], [Calculator observation]: Paired Windows evidence covers Hex, initial raw/PE Decode, selected dialogs, single-byte Text, Help geometry, Calculator, and file lists. Complete Decode syntax and navigation, the Text scrollbar, Help content, and header fields remain open. |
 | UI-009 | Partial | [T], [Observation]: blue/cyan default aligns with the observed palette; block bytes use yellow on magenta. Search focus, modal alerts, and Help use state-specific colors. Complete palette and accessible theme coverage remain open. |
 | UI-010 | Partial | [T], [Commands]: Ctrl alternatives and keyboard header/profile dialogs; comprehensive command-menu and intercepted-key coverage pending. |
 | UI-011 | Partial | [T], [ST], [Input], [Commands], [Reference], [Observation]: visible deviations and unavailable commands are explicit; the observed runtime now covers primary views and dialogs, while the remaining matrix stays open. |
@@ -117,7 +117,7 @@ cover visiting, switching, and reopening files.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| ISA-001 | Partial | [D], [A], [ACLI]: iced-x86 1.22.0 decodes 16/32/64-bit modes with independent instruction lengths; textual assembly remains planned. |
+| ISA-001 | Partial | [D], [A], [ACLI]: iced-x86 1.22.0 decodes 16/32/64-bit modes with automatic raw x86-32, manual overrides, and a native Decode viewport [Decode observation]. Textual assembly remains planned. |
 | ISA-002 | Partial | [D], [Analysis]: version-pinned x86 decoder and AVX regression; exhaustive extension coverage and textual assembly are not established. |
 | ISA-003 | Partial | [D], [A], [Analysis]: separate ARM/Thumb modes, strict decoding and direct mode exchange; precise ARMv6/revision filtering, IT-state propagation and big-endian instructions remain gaps. |
 | ISA-004 | Partial | [D], [A], [ACLI]: AArch64 decoding and checked direct targets independent of host CPU; textual assembly, SVE/SVE2 and complete extension coverage pending. |
@@ -128,7 +128,7 @@ cover visiting, switching, and reopening files.
 | ISA-009 | Implemented | [D], [T], [ACLI]: mode/bitness, endian, instruction lengths and backend version are reported; parsed CPU and explicit profile remain distinct. |
 | ISA-010 | Implemented | [D], [T], [ACLI]: Decoded, Unknown, Truncated and Unsupported preserve raw bytes and guarantee progress for nonempty input; unknown is not a universal invalid-encoding claim. |
 | ISA-011 | Implemented | [A], [T], [ACLI]: unknown machines, malformed metadata and unsupported instruction order preserve raw viewing and byte editing. |
-| ISA-012 | Partial | [D], [A], [T], [P]: visible direct branches can be followed and returned from without execution, including ARM/Thumb mode exchange; indirect/far resolution pending. |
+| ISA-012 | Partial | [D], [A], [T], [P]: visible direct branches have 1–9/A–Z labels and return via 0 or Backspace. Includes ARM/Thumb mode exchange. Indirect and far resolution remain open. |
 | ISA-013 | Partial | [Analysis], [Symbols], [README]: direct branch targets and selected symbol definitions are navigable; general references, complete loader symbol resolution and control-flow analysis remain planned. |
 | ISA-014 | Implemented | [A], [T]: current logical bytes drive re-decoding and fresh direct targets after edits/undo; generation changes invalidate dependent interpretation. |
 | ISA-015 | Implemented | [A], [T], [Commands]: Code-view / resynchronizes at the selected byte; instruction navigation retraces known boundaries or uses a bounded byte/alignment fallback. |
@@ -301,6 +301,8 @@ cover visiting, switching, and reopening files.
 [History replay]: evidence/file-history.cast
 [Bookmark observation]: evidence/hiew-8.63-windows-bookmarks.json
 [Bookmark replay]: evidence/bookmarks.cast
+[Decode observation]: evidence/hiew-8.63-windows-decode.json
+[Decode replay]: evidence/decode.cast
 [Text observation]: evidence/hiew-8.63-windows-text.json
 [Search replay]: evidence/search-repeat.cast
 [Recording]: evidence/executable-analysis.cast

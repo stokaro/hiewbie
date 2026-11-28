@@ -39,6 +39,7 @@ cargo run --locked --package hiewbie -- --headers path/to/program
 cargo run --locked --package hiewbie -- --imports path/to/program.exe
 cargo run --locked --package hiewbie -- --symbols --slice 1 path/to/universal-macho
 cargo run --locked --package hiewbie -- --disassemble --entry path/to/program
+cargo run --locked --package hiewbie -- --disassemble raw.bin
 cargo run --locked --package hiewbie -- --disassemble --arch x86-64 --base 0x1000 raw.bin
 cargo xtask check
 ```
@@ -77,7 +78,7 @@ beyond 4 GiB, without loading the complete file into memory.
 | Calculator | Enter / Insert / Page Up | Evaluate / toggle insertion / clear the expression |
 | View | Shift+F1 / Ctrl+A | Decoder profile, byte order and explicit raw base |
 | Code | Ctrl+F1 / Ctrl+B | Cycle x86 16/32/64 bitness |
-| Code, viewing | 1–9 / Backspace | Follow a displayed direct destination / return |
+| Decode, viewing | 1–9 / A–Z / 0 / Backspace | Follow a displayed direct destination by label or return |
 | Code, viewing | / | Restart decoding at the current byte |
 | Edit | Two hex digits / Tab | Write a byte / select printable ASCII entry |
 | Edit | F3 / Backspace | Restore the original current / previous byte |
@@ -125,12 +126,16 @@ PTY test, not a comparison recording of proprietary HIEW.
 ## Executable analysis
 
 The inspected architecture is independent of the host: the same ARM64 Mac build
-can decode an x86 PE and an ARM64 Mach-O. Automatic selection uses image metadata;
-raw bytes require an explicit profile. Profiles are `x86-16`, `x86-32`, `x86-64`,
+can decode an x86 PE and an ARM64 Mach-O. Automatic selection uses image metadata
+and starts ordinary unrecognized raw files in x86-32. Ctrl+F1 cycles x86 modes
+in Decode. Profiles are `x86-16`, `x86-32`, `x86-64`,
 `arm`, `thumb` and `aarch64`. The profile dialog offers automatic selection,
 little/big/automatic instruction byte order, raw addressing and an explicit base.
-The status and Code rows distinguish mapped VAs, raw-based addresses and unmapped
-file offsets. Unmapped or zero-fill virtual destinations are rejected.
+The title and Decode rows distinguish mapped VAs, raw-based addresses and unmapped
+file offsets. Use F4 then Decode, or press Enter from Hex. In the default x86
+view, adjacent single-byte NOPs share a row and Page Up and Page Down move by the
+visible rows. The headless listing reports each instruction individually.
+[Windows Decode evidence](docs/evidence/hiew-8.63-windows-decode.json)
 
 | Input | Current interpretation |
 | --- | --- |

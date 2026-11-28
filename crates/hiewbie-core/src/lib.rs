@@ -18,7 +18,7 @@ mod offset;
 mod search;
 pub mod symbols;
 
-pub use analysis::{CodeRow, DecodeContext, MAX_CODE_ROWS, MAX_NAVIGATION_HISTORY};
+pub use analysis::{BRANCH_LABELS, CodeRow, DecodeContext, MAX_CODE_ROWS, MAX_NAVIGATION_HISTORY};
 pub use block::{BlockBoundary, BlockSelection};
 pub use bookmark::{BOOKMARK_SLOTS, BookmarkCommand, BookmarkMark, BookmarkViewport};
 pub use command::{COMMANDS, Command, CommandInfo, Editor, Effect, FileNavigation, ViewMode};

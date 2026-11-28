@@ -63,7 +63,9 @@ restoration of a file at its previous Hex offset. It uses the same synthetic
 fixtures and preserves the original terminal output.
 `--record-bookmarks PATH` records storing and restoring separate screen
 bookmarks in a synthetic fixture and verifies that the file remains unchanged.
-All twelve PTY scenarios run in the existing native Unix CI jobs even without
+`--record-decode PATH` records automatic raw x86, lettered branch follow and
+return, and bitness switching.
+All thirteen PTY scenarios run in the existing native Unix CI jobs even without
 recording options. The fixtures are generated. The terminal recordings cover
 [editing](evidence/native-editor.cast),
 [analysis](evidence/executable-analysis.cast),
@@ -73,7 +75,7 @@ recording options. The fixtures are generated. The terminal recordings cover
 [native cursor](evidence/native-cursor.cast),
 [calculator](evidence/calculator.cast),
 [file selection](evidence/files.cast), [file history](evidence/file-history.cast),
-and [screen bookmarks](evidence/bookmarks.cast).
+[screen bookmarks](evidence/bookmarks.cast), and [x86 Decode](evidence/decode.cast).
 Byte assertions, state assertions, and cleanup checks are the regression gate.
 
 The export scenario waits for the new destination to appear or for an

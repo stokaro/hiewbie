@@ -179,11 +179,15 @@ fn universal_slice_selection_reports_global_file_offsets_and_selected_cpu() {
 }
 
 #[test]
-fn raw_interpretation_requires_explicit_architecture_and_obeys_base_and_byte_order() {
+fn ordinary_raw_disassembles_and_explicit_architecture_obeys_base_and_byte_order() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("raw.bin");
     fs::write(&path, [0x90, 0xeb, 0xfd, 0x0f]).unwrap();
-    assert!(!invoke(&path, &["--disassemble"]).status.success());
+    let automatic = text(&invoke(&path, &["--disassemble"]));
+    assert!(automatic.contains("Profile: x86-32"));
+    assert!(automatic.contains("90  nop"));
+    assert!(automatic.contains("-> VA 0000000000000000 (x86-32)"));
+    assert!(!invoke(&path, &["--disassemble", "--raw"]).status.success());
     let output = text(&invoke(
         &path,
         &["--disassemble", "--raw", "--arch=x86-64", "--base=4096t"],
