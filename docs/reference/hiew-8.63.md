@@ -332,6 +332,13 @@ that began in the resulting decode stream.
 
 [16-bit Windows observations](../evidence/hiew-8.63-windows-x86-16.json)
 
+In 32- and 64-bit Decode, the sampled 128-bit VPXOR, VPADDD, and VPSHUFB
+forms decoded with operands. Their 256-bit forms showed `#UD(vex.L)` and
+stopped at the opcode. On a generated file, the next byte became a short
+jump opcode and F6 found the jump at file offset 3 in both modes.
+
+[32/64-bit Windows observations](../evidence/hiew-8.63-windows-x86-32-64.json)
+
 ### x86 reference search
 
 On a generated raw x86-32 file, F6 searched from the beginning for the address

@@ -2,9 +2,12 @@
 
 The portable adapter uses iced-x86 1.22.0. The
 [fixture corpus](../tests/fixtures/x86-decode-8.63.tsv) contains 58 rows in
-16-, 32-, and 64-bit modes. An additional
-[31-row 16-bit corpus](../tests/fixtures/x86-16-hiew-8.63.tsv) records portable
-operand text, HIEW opcode boundaries, and HIEW instruction cells. Core tests
+16-, 32-, and 64-bit modes. The
+[31-row 16-bit corpus](../tests/fixtures/x86-16-hiew-8.63.tsv) and the
+[181-row 32/64-bit corpus](../tests/fixtures/x86-32-64-hiew-8.63.tsv) record
+portable operand text, HIEW opcode boundaries, and HIEW instruction cells.
+The 32/64-bit corpus contains 49 independently assembled rows and 132
+hand-encoded boundary probes. Core tests
 assert the complete operand text,
 opcode length, preserved bytes, absence of direct branch metadata, and
 one-byte recovery when the final byte of a multi-byte encoding is missing.
@@ -17,9 +20,11 @@ Intel source assembled by LLVM MC 23.1.6. To regenerate a raw stream for a given
 mode, prepend `.intel_syntax noprefix`, `.text`, and `.code16`, `.code32`,
 or `.code64` to that mode's source column. Assemble with
 `llvm-mc -triple=x86_64 -filetype=obj` and extract `.text` with
-`llvm-objcopy --only-section=.text -O binary`. For the 16-bit corpus, assemble
-each source line independently and pad it to 16 bytes with `90`. Test each
-group as a separate raw file at the offsets in its rows.
+`llvm-objcopy --only-section=.text -O binary`. For the 16-bit and 32/64-bit
+corpora, assemble each source line independently and pad it to 16 bytes with
+`90`. Copy the explicit input bytes for hand-encoded rows, which have a
+`-` in the portable-text column. Test each group and mode as a separate raw
+file at the offsets in its rows.
 
 | Family | Representative fixture | Adapter modes exercised | HIEW 8.63 observations |
 | --- | --- | --- | --- |
@@ -30,25 +35,28 @@ group as a separate raw file at the offsets in its rows.
 | MMX and 3DNow! | `paddb`, `pfadd` | 16/32/64 | Decoded in all three modes. |
 | SSE through SSE4.2 | `movaps`, `paddq`, `haddps`, `pabsb`, `pmulld`, `pcmpistri` | 16/32/64 | Decoded in all three modes. |
 | POPCNT, AES-NI, PCLMULQDQ | `popcnt`, `aesenc`, `pclmulqdq` | 16/32/64 | Decoded in all three modes. |
-| AVX | `vzeroupper`, `vaddps` | 16/32/64 | `vaddps` decoded in 32/64. The observed 16-bit VEX forms start with `C5 #UD(mod)`. |
+| AVX | `vzeroupper`, `vaddps`, `vperm2f128`, `vpxor xmm` | 16/32/64 | The sampled 128-bit integer and 256-bit floating-point forms decoded in 32/64. The observed 16-bit VEX forms start with `C5 #UD(mod)`. |
 | FMA3 and RDRAND | `vfmadd132ps`, `rdrand` | 16/32/64 | RDRAND decoded in all three modes. FMA3 decoded in 32/64, and its 16-bit sample starts with `C4 #UD(mod)`. |
-| AVX2, BMI1, BMI2, XOP, SHA | `vpbroadcastd`, `andn`, `pext`, `vpcmov`, `sha256rnds2` | 32/64 | HIEW displayed `#UD` at the tested instruction starts. The adapter decoded all samples. |
-| AVX-512F | masked and zeroing `vaddps` | 64 | HIEW displayed `62 #UD(64)`. The adapter decoded the complete EVEX instruction. |
+| AVX2 | `vpxor ymm`, `vpaddd ymm`, `vpshufb ymm`, `vperm2i128`, `vpbroadcastd` | 32/64 | The first three forms show `#UD(vex.L)`. The other forms show `#UD`. Each row stops at the opcode. |
+| BMI1 and BMI2 | `tzcnt`, `andn`, `bzhi`, `pext`, `pdep` | 32/64 | HIEW displays TZCNT as BSF. The tested VEX forms stop at the opcode with `#UD`. |
+| XOP, SHA, ADX, FSGSBASE, RTM, PKU | `vpcmov`, `sha256rnds2`, `adcx`, `rdfsbase`, `xend`, `rdpkru` | Applicable 32/64 cases | The tested forms stop at different boundaries. See the 32/64-bit Windows evidence for exact byte spans. |
+| AVX-512F | masked and zeroing `vaddps` | 32/64 | HIEW displays `62 #UD(mod)` in 32-bit mode and `62 #UD(64)` in 64-bit mode. The portable adapter decodes the full EVEX instruction. |
+| Scalar extensions | `lzcnt`, `rdseed`, `movbe`, `clflushopt` | 32/64 | LZCNT, RDSEED, and MOVBE decoded. CLFLUSHOPT displays as CLFLUSH. |
 
 The table records individual encodings. Broader family coverage and the
 exhaustive 8.63 inventory remain open. The locations and byte spans behind
 these observations are recorded in the
-[general Windows evidence](evidence/hiew-8.63-windows-x86-coverage.json) and
-[16-bit Windows evidence](evidence/hiew-8.63-windows-x86-16.json).
+[general Windows evidence](evidence/hiew-8.63-windows-x86-coverage.json),
+[16-bit Windows evidence](evidence/hiew-8.63-windows-x86-16.json), and
+[32/64-bit Windows evidence](evidence/hiew-8.63-windows-x86-32-64.json).
 
 The native viewport has tests for the observed segmented and split memory
 operands, encoded displacement widths, scaled indexes, x87 operands, repeat
-and lock prefixes, conditional-move mnemonics, and vector selectors. The two
-Windows comparisons matched 42 original corpus rows and an additional 93
-selected instruction rows. The latter includes 85 rows in 16-bit mode and
-eight address-displacement rows in 32-bit mode. Headless output retains the
-adapter's Intel syntax. Full mnemonic and operand parity and original
-rejection lengths for unrecognized extensions remain open.
+and lock prefixes, conditional-move mnemonics, and vector selectors. The
+Windows comparisons matched 42 original corpus rows, 93 later rows across
+16-bit and 32-bit views, and all 181 selected rows in the 32/64-bit corpus.
+Headless output uses the adapter's Intel syntax. Full mnemonic and operand
+parity and original rejection lengths for other extensions remain open.
 
 [Mapped operand observations](evidence/hiew-8.63-windows-x86-operands.json)
 cover numbered memory and literal references, a file-backed indirect slot,
@@ -60,8 +68,13 @@ Complete, unambiguous legacy opcodes rejected in long mode have an
 62 as LES, LDS, and BOUND. In their register-only ModR/M forms the row contains
 the legacy prefixes and opcode, displays `#UD(mod)` or `#UD(lock)`, and leaves
 the ModR/M byte for the next row. Instruction movement and aligned F6 scans
-use that same boundary. The portable adapter interprets valid modern
-encodings in the shared opcode space using iced-x86.
+use that same boundary. In 32- and 64-bit windows the profile models the
+observed VEX prefix errors and opcode rejections, legacy POP group rejections,
+EVEX lead-byte diagnostics, and selected system-opcode boundaries. The sampled
+F3-prefixed forms of FXSAVE, FXRSTOR, LDMXCSR, and STMXCSR use the legacy
+mnemonic and the full encoded length for addressing. The sampled XSAVE and
+XRSTOR forms consume the complete memory operand and show `#UD()`.
+The portable adapter interprets valid modern encodings using iced-x86.
 
 `Unknown` records an undecoded byte and
 `Truncated` records incomplete input. These results preserve the first raw

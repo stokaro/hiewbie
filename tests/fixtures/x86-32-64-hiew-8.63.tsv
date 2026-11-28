@@ -1,0 +1,184 @@
+# LLVM MC 23.1.6 and hand-encoded rows in 16-byte, NOP-padded slots per group and mode.
+# mode, group, slot offset, family, input bytes, Intel assembly, portable text, HIEW bytes, HIEW row
+32	vector	0000	AVX	C5EC58CB	vaddps ymm1,ymm2,ymm3	vaddps ymm1,ymm2,ymm3	C5EC58CB	vaddps       ymm1,ymm2,ymm3
+32	vector	0010	AVX	C5E9EFCB	vpxor xmm1,xmm2,xmm3	vpxor xmm1,xmm2,xmm3	C5E9EFCB	vpxor        xmm1,xmm2,xmm3
+32	vector	0020	AVX	C4E36D06CB01	vperm2f128 ymm1,ymm2,ymm3,1	vperm2f128 ymm1,ymm2,ymm3,0x1	C4E36D06CB01	vperm2f128   ymm1,ymm2,ymm3,1
+32	vector	0030	AVX	C4E36D18CB01	vinsertf128 ymm1,ymm2,xmm3,1	vinsertf128 ymm1,ymm2,xmm3,0x1	C4E36D18CB01	vinsertf128  ymm1,ymm2,xmm3,1
+32	vector	0040	AVX2	C5EDEFCB	vpxor ymm1,ymm2,ymm3	vpxor ymm1,ymm2,ymm3	C5EDEF	#UD(vex.L)
+32	vector	0050	AVX2	C4E26D00CB	vpshufb ymm1,ymm2,ymm3	vpshufb ymm1,ymm2,ymm3	C4E26D00	#UD(vex.L)
+32	vector	0060	AVX2	C4E36D46CB01	vperm2i128 ymm1,ymm2,ymm3,1	vperm2i128 ymm1,ymm2,ymm3,0x1	C4E36D46	#UD
+32	vector	0070	AVX2	C4E27D58CA	vpbroadcastd ymm1,xmm2	vpbroadcastd ymm1,xmm2	C4E27D58	#UD
+32	vector	0080	FMA3	C4E26D98CB	vfmadd132ps ymm1,ymm2,ymm3	vfmadd132ps ymm1,ymm2,ymm3	C4E26D98CB	vfmadd132ps  ymm1,ymm2,ymm3
+32	vector	0090	XOP	8FE868A2CB40	vpcmov xmm1,xmm2,xmm3,xmm4	vpcmov xmm1,xmm2,xmm3,xmm4	8FE8	#UD
+32	vector	00A0	EVEX	62F164CA58CC	vaddps zmm1{k2}{z},zmm3,zmm4	vaddps zmm1{k2}{z},zmm3,zmm4	62	#UD(mod)
+32	scalar	0000	LZCNT	F30FBDC8	lzcnt ecx,eax	lzcnt ecx,eax	F30FBDC8	lzcnt        ecx,eax
+32	scalar	0010	BMI1	F30FBCC8	tzcnt ecx,eax	tzcnt ecx,eax	F30FBCC8	bsf          ecx,eax
+32	scalar	0020	BMI1	C4E270F2DA	andn ebx,ecx,edx	andn ebx,ecx,edx	C4E270F2	#UD
+32	scalar	0030	BMI2	C4E278F5CA	bzhi ecx,edx,eax	bzhi ecx,edx,eax	C4E278F5	#UD
+32	scalar	0040	BMI2	C4E26AF5C8	pext ecx,edx,eax	pext ecx,edx,eax	C4E26AF5	#UD
+32	scalar	0050	ADX	660F38F6C8	adcx ecx,eax	adcx ecx,eax	660F38F6	#UD
+32	scalar	0060	RDRAND	0FC7F0	rdrand eax	rdrand eax	0FC7F0	rdrand       eax
+32	scalar	0070	RDSEED	0FC7F8	rdseed eax	rdseed eax	0FC7F8	rdseed       eax
+32	scalar	0080	MOVBE	0F38F008	movbe ecx,dword ptr [eax]	movbe ecx,[eax]	0F38F008	movbe        ecx,[eax]
+32	scalar	0090	SHA	0F38CBCA	sha256rnds2 xmm1,xmm2	sha256rnds2 xmm1,xmm2	0F38CB	#UD
+32	scalar	00A0	CLFLUSHOPT	660FAE38	clflushopt [eax]	clflushopt [eax]	660FAE38	clflush      [eax]
+32	scalar	00B0	RTM	0F01D5	xend	xend	0F01D5	#UD
+32	scalar	00C0	PKU	0F01EE	rdpkru	rdpkru	0F01EE	#UD
+64	vector	0000	AVX	C5EC58CB	vaddps ymm1,ymm2,ymm3	vaddps ymm1,ymm2,ymm3	C5EC58CB	vaddps       ymm1,ymm2,ymm3
+64	vector	0010	AVX	C5E9EFCB	vpxor xmm1,xmm2,xmm3	vpxor xmm1,xmm2,xmm3	C5E9EFCB	vpxor        xmm1,xmm2,xmm3
+64	vector	0020	AVX	C4E36D06CB01	vperm2f128 ymm1,ymm2,ymm3,1	vperm2f128 ymm1,ymm2,ymm3,0x1	C4E36D06CB01	vperm2f128   ymm1,ymm2,ymm3,1
+64	vector	0030	AVX	C4E36D18CB01	vinsertf128 ymm1,ymm2,xmm3,1	vinsertf128 ymm1,ymm2,xmm3,0x1	C4E36D18CB01	vinsertf128  ymm1,ymm2,xmm3,1
+64	vector	0040	AVX2	C5EDEFCB	vpxor ymm1,ymm2,ymm3	vpxor ymm1,ymm2,ymm3	C5EDEF	#UD(vex.L)
+64	vector	0050	AVX2	C4E26D00CB	vpshufb ymm1,ymm2,ymm3	vpshufb ymm1,ymm2,ymm3	C4E26D00	#UD(vex.L)
+64	vector	0060	AVX2	C4E36D46CB01	vperm2i128 ymm1,ymm2,ymm3,1	vperm2i128 ymm1,ymm2,ymm3,0x1	C4E36D46	#UD
+64	vector	0070	AVX2	C4E27D58CA	vpbroadcastd ymm1,xmm2	vpbroadcastd ymm1,xmm2	C4E27D58	#UD
+64	vector	0080	FMA3	C4E26D98CB	vfmadd132ps ymm1,ymm2,ymm3	vfmadd132ps ymm1,ymm2,ymm3	C4E26D98CB	vfmadd132ps  ymm1,ymm2,ymm3
+64	vector	0090	XOP	8FE868A2CB40	vpcmov xmm1,xmm2,xmm3,xmm4	vpcmov xmm1,xmm2,xmm3,xmm4	8FE8	#UD
+64	vector	00A0	EVEX	62F164CA58CC	vaddps zmm1{k2}{z},zmm3,zmm4	vaddps zmm1{k2}{z},zmm3,zmm4	62	#UD(64)
+64	scalar	0000	LZCNT	F30FBDC8	lzcnt ecx,eax	lzcnt ecx,eax	F30FBDC8	lzcnt        ecx,eax
+64	scalar	0010	BMI1	F30FBCC8	tzcnt ecx,eax	tzcnt ecx,eax	F30FBCC8	bsf          ecx,eax
+64	scalar	0020	BMI1	C4E270F2DA	andn ebx,ecx,edx	andn ebx,ecx,edx	C4E270F2	#UD
+64	scalar	0030	BMI2	C4E278F5CA	bzhi ecx,edx,eax	bzhi ecx,edx,eax	C4E278F5	#UD
+64	scalar	0040	BMI2	C4E26AF5C8	pext ecx,edx,eax	pext ecx,edx,eax	C4E26AF5	#UD
+64	scalar	0050	ADX	660F38F6C8	adcx ecx,eax	adcx ecx,eax	660F38F6	#UD
+64	scalar	0060	RDRAND	0FC7F0	rdrand eax	rdrand eax	0FC7F0	rdrand       eax
+64	scalar	0070	RDSEED	0FC7F8	rdseed eax	rdseed eax	0FC7F8	rdseed       eax
+64	scalar	0080	MOVBE	0F38F008	movbe ecx,dword ptr [rax]	movbe ecx,[rax]	0F38F008	movbe        ecx,[rax]
+64	scalar	0090	SHA	0F38CBCA	sha256rnds2 xmm1,xmm2	sha256rnds2 xmm1,xmm2	0F38CB	#UD
+64	scalar	00A0	CLFLUSHOPT	660FAE38	clflushopt [rax]	clflushopt [rax]	660FAE38	clflush      [rax]
+64	scalar	00B0	FSGSBASE	F30FAEC0	rdfsbase eax	rdfsbase eax	F30FAEC0	#UD
+64	scalar	00C0	RTM	0F01D5	xend	xend	0F01D5	#UD
+64	scalar	00D0	PKU	0F01EE	rdpkru	rdpkru	0F01EE	#UD
+# Hand-encoded boundary and operand probes use - for the portable text.
+32	packets	0000	boundary	C5E9EFCB	vpxor-128	-	C5E9EFCB	vpxor        xmm1,xmm2,xmm3
+32	packets	0010	boundary	C5EDEFEB	vpxor-256-other-register	-	C5EDEF	#UD(vex.L)
+32	packets	0020	boundary	C4E16DEFCB	vpxor-256-three-byte	-	C4E16DEF	#UD(vex.L)
+32	packets	0030	boundary	C5EDEF437F	vpxor-256-memory	-	C5EDEF	#UD(vex.L)
+32	packets	0040	boundary	C4E26900CB	vpshufb-128	-	C4E26900CB	vpshufb      xmm1,xmm2,xmm3
+32	packets	0050	boundary	C4E26D00437F	vpshufb-256-memory	-	C4E26D00	#UD(vex.L)
+32	packets	0060	boundary	C5E9FECB	vpaddd-128	-	C5E9FECB	vpaddd       xmm1,xmm2,xmm3
+32	packets	0070	boundary	C5EDFECB	vpaddd-256	-	C5EDFE	#UD(vex.L)
+32	packets	0080	boundary	C4E27958CA	vpbroadcastd-128	-	C4E27958	#UD
+32	packets	0090	boundary	C4E26BF5C8	pdep	-	C4E26BF5	#UD
+32	packets	00A0	boundary	8FC0	plain-pop	-	8FC0	pop          eax
+32	packets	00B0	boundary	8FE0	legacy-pop-group	-	8FE0	#UD
+32	packets	00C0	boundary	8FE96882CB	xop-map9	-	8FE9	#UD
+32	packets	00D0	boundary	6200	bound-memory	-	6200	bound        eax,[eax]
+32	packets	00E0	boundary	62F17C485808	evex-memory	-	62	#UD(mod)
+32	scalar-more	0000	boundary	66F30FBCC8	tzcnt-16	-	66F30FBCC8	bsf          cx,ax
+32	scalar-more	0010	boundary	F30FBC4804	tzcnt-memory	-	F30FBC4804	bsf          ecx,[eax][4]
+32	scalar-more	0020	boundary	0FAE7804	clflush-memory	-	0FAE7804	clflush      [eax][4]
+32	scalar-more	0030	boundary	660FAE7804	clflushopt-memory	-	660FAE7804	clflush      [eax][4]
+32	scalar-more	0040	boundary	F30F38F6C8	adox	-	F30F38F6	#UD
+32	scalar-more	0050	boundary	0F38C8CA	sha1nexte	-	0F38C8	#UD
+32	scalar-more	0060	boundary	0F38CDCA	sha256msg2	-	0F38CD	#UD
+32	scalar-more	0070	boundary	0F01D0	xgetbv	-	0F01D0	xgetbv
+32	scalar-more	0080	boundary	0F01D1	xsetbv	-	0F01D1	xsetbv
+32	scalar-more	0090	boundary	0F01D5	xend	-	0F01D5	#UD
+32	scalar-more	00A0	boundary	0F01D6	xtest	-	0F01D6	#UD
+32	scalar-more	00B0	boundary	0F01EE	rdpkru	-	0F01EE	#UD
+32	scalar-more	00C0	boundary	0F01EF	wrpkru	-	0F01EF	#UD
+32	scalar-more	00D0	boundary	F30FAEC8	rdgsbase	-	F30FAEC8	#UD
+32	scalar-more	00E0	boundary	F30FAED0	wrfsbase	-	F30FAED0	#UD
+32	scalar-more	00F0	boundary	F30FAED8	wrgsbase	-	F30FAED8	#UD
+32	scalar-more	0100	boundary	F30FAE00	rep-fxsave-memory	-	F30FAE00	fxsave       [eax]
+32	prefixes	0000	boundary	64C5EDEF437F	prefixes	-	64C5EDEF	#UD(vex.L)
+32	prefixes	0010	boundary	67C5EDEF437F	prefixes	-	67C5EDEF	#UD(vex.L)
+32	prefixes	0020	boundary	66C5EDEFCB	prefixes	-	66C5ED	#UD()
+32	prefixes	0030	boundary	F3C5EDEFCB	prefixes	-	F3C5ED	#UD()
+32	prefixes	0040	boundary	F2C5EDEFCB	prefixes	-	F2C5ED	#UD()
+32	prefixes	0050	boundary	F0C5EDEFCB	prefixes	-	F0C5ED	#UD()
+32	prefixes	0060	boundary	48C5EDEFCB	prefixes	-	48	dec          eax
+32	prefixes	0070	boundary	4062F164CA58CC	prefixes	-	40	inc          eax
+32	prefixes	0080	boundary	6462F164CA58CC	prefixes	-	6462	#UD(mod)
+32	prefixes	0090	boundary	F062F164CA58CC	prefixes	-	F062	#UD(lock)
+32	prefixes	00A0	boundary	F38FE868A2CB40	prefixes	-	F38FE8	#UD
+32	prefixes	00B0	boundary	F08FE868A2CB40	prefixes	-	F08F	#UD(lock)
+32	prefixmore	0000	boundary	66C4E26D00437F	prefixmore	-	66C4E26D	#UD()
+32	prefixmore	0010	boundary	F3C4E26D00CB	prefixmore	-	F3C4E26D	#UD()
+32	prefixmore	0020	boundary	F0C4E26D00CB	prefixmore	-	F0C4E26D	#UD()
+32	prefixmore	0030	boundary	48C4E26D00CB	prefixmore	-	48	dec          eax
+32	prefixmore	0040	boundary	F08FC0	prefixmore	-	F08F	#UD(lock)
+32	prefixmore	0050	boundary	F08F00	prefixmore	-	F08F	#UD(lock)
+32	prefixmore	0060	boundary	F08F6004	prefixmore	-	F08F	#UD(lock)
+32	prefixmore	0070	boundary	8F6004	prefixmore	-	8F60	#UD
+32	system-memory	0000	boundary	F30FAE00	system-memory	-	F30FAE00	fxsave       [eax]
+32	system-memory	0010	boundary	F30FAE4004	system-memory	-	F30FAE4004	fxsave       [eax][4]
+32	system-memory	0020	boundary	F30FAE0510000000	system-memory	-	F30FAE0510000000	fxsave       [000000010]
+32	system-memory	0030	boundary	F30FAE08	system-memory	-	F30FAE08	fxrstor      [eax]
+32	system-memory	0040	boundary	F30FAE10	system-memory	-	F30FAE10	ldmxcsr      [eax]
+32	system-memory	0050	boundary	F30FAE18	system-memory	-	F30FAE18	stmxcsr      [eax]
+32	system-memory	0060	boundary	F30FAE20	system-memory	-	F30FAE20	#UD()
+32	system-memory	0070	boundary	F30FAE28	system-memory	-	F30FAE28	#UD()
+32	systemmore	0000	boundary	F30FAE6004	systemmore	-	F30FAE6004	#UD()
+32	systemmore	0010	boundary	F30FAE6804	systemmore	-	F30FAE6804	#UD()
+32	systemmore	0020	boundary	F30FAE2510000000	systemmore	-	F30FAE2510000000	#UD()
+32	systemmore	0030	boundary	F30FAE2D10000000	systemmore	-	F30FAE2D10000000	#UD()
+32	systemmore	0040	boundary	0FAE20	systemmore	-	0FAE20	xsave        [eax]
+32	systemmore	0050	boundary	0FAE28	systemmore	-	0FAE28	xrstor       [eax]
+64	packets	0000	boundary	C5E9EFCB	vpxor-128	-	C5E9EFCB	vpxor        xmm1,xmm2,xmm3
+64	packets	0010	boundary	C5EDEFEB	vpxor-256-other-register	-	C5EDEF	#UD(vex.L)
+64	packets	0020	boundary	C4E16DEFCB	vpxor-256-three-byte	-	C4E16DEF	#UD(vex.L)
+64	packets	0030	boundary	C5EDEF437F	vpxor-256-memory	-	C5EDEF	#UD(vex.L)
+64	packets	0040	boundary	C4E26900CB	vpshufb-128	-	C4E26900CB	vpshufb      xmm1,xmm2,xmm3
+64	packets	0050	boundary	C4E26D00437F	vpshufb-256-memory	-	C4E26D00	#UD(vex.L)
+64	packets	0060	boundary	C5E9FECB	vpaddd-128	-	C5E9FECB	vpaddd       xmm1,xmm2,xmm3
+64	packets	0070	boundary	C5EDFECB	vpaddd-256	-	C5EDFE	#UD(vex.L)
+64	packets	0080	boundary	C4E27958CA	vpbroadcastd-128	-	C4E27958	#UD
+64	packets	0090	boundary	C4E26BF5C8	pdep	-	C4E26BF5	#UD
+64	packets	00A0	boundary	8FC0	plain-pop	-	8FC0	pop          rax
+64	packets	00B0	boundary	8FE0	legacy-pop-group	-	8FE0	#UD
+64	packets	00C0	boundary	8FE96882CB	xop-map9	-	8FE9	#UD
+64	packets	00D0	boundary	6200	bound-memory	-	62	#UD(64)
+64	packets	00E0	boundary	62F17C485808	evex-memory	-	62	#UD(64)
+64	scalar-more	0000	boundary	66F30FBCC8	tzcnt-16	-	66F30FBCC8	bsf          cx,ax
+64	scalar-more	0010	boundary	F30FBC4804	tzcnt-memory	-	F30FBC4804	bsf          ecx,[rax][4]
+64	scalar-more	0020	boundary	0FAE7804	clflush-memory	-	0FAE7804	clflush      [rax][4]
+64	scalar-more	0030	boundary	660FAE7804	clflushopt-memory	-	660FAE7804	clflush      [rax][4]
+64	scalar-more	0040	boundary	F30F38F6C8	adox	-	F30F38F6	#UD
+64	scalar-more	0050	boundary	0F38C8CA	sha1nexte	-	0F38C8	#UD
+64	scalar-more	0060	boundary	0F38CDCA	sha256msg2	-	0F38CD	#UD
+64	scalar-more	0070	boundary	0F01D0	xgetbv	-	0F01D0	xgetbv
+64	scalar-more	0080	boundary	0F01D1	xsetbv	-	0F01D1	xsetbv
+64	scalar-more	0090	boundary	0F01D5	xend	-	0F01D5	#UD
+64	scalar-more	00A0	boundary	0F01D6	xtest	-	0F01D6	#UD
+64	scalar-more	00B0	boundary	0F01EE	rdpkru	-	0F01EE	#UD
+64	scalar-more	00C0	boundary	0F01EF	wrpkru	-	0F01EF	#UD
+64	scalar-more	00D0	boundary	F30FAEC8	rdgsbase	-	F30FAEC8	#UD
+64	scalar-more	00E0	boundary	F30FAED0	wrfsbase	-	F30FAED0	#UD
+64	scalar-more	00F0	boundary	F30FAED8	wrgsbase	-	F30FAED8	#UD
+64	scalar-more	0100	boundary	F30FAE00	rep-fxsave-memory	-	F30FAE00	fxsave       [rax]
+64	prefixes	0000	boundary	64C5EDEF437F	prefixes	-	64C5EDEF	#UD(vex.L)
+64	prefixes	0010	boundary	67C5EDEF437F	prefixes	-	67C5EDEF	#UD(vex.L)
+64	prefixes	0020	boundary	66C5EDEFCB	prefixes	-	66C5ED	#UD()
+64	prefixes	0030	boundary	F3C5EDEFCB	prefixes	-	F3C5ED	#UD()
+64	prefixes	0040	boundary	F2C5EDEFCB	prefixes	-	F2C5ED	#UD()
+64	prefixes	0050	boundary	F0C5EDEFCB	prefixes	-	F0C5ED	#UD()
+64	prefixes	0060	boundary	48C5EDEFCB	prefixes	-	48C5ED	#UD()
+64	prefixes	0070	boundary	4062F164CA58CC	prefixes	-	4062	#UD(64)
+64	prefixes	0080	boundary	6462F164CA58CC	prefixes	-	6462	#UD(64)
+64	prefixes	0090	boundary	F062F164CA58CC	prefixes	-	F062	#UD(64)
+64	prefixes	00A0	boundary	F38FE868A2CB40	prefixes	-	F38FE8	#UD
+64	prefixes	00B0	boundary	F08FE868A2CB40	prefixes	-	F08F	#UD(lock)
+64	prefixmore	0000	boundary	66C4E26D00437F	prefixmore	-	66C4E26D	#UD()
+64	prefixmore	0010	boundary	F3C4E26D00CB	prefixmore	-	F3C4E26D	#UD()
+64	prefixmore	0020	boundary	F0C4E26D00CB	prefixmore	-	F0C4E26D	#UD()
+64	prefixmore	0030	boundary	48C4E26D00CB	prefixmore	-	48C4E26D	#UD()
+64	prefixmore	0040	boundary	F08FC0	prefixmore	-	F08F	#UD(lock)
+64	prefixmore	0050	boundary	F08F00	prefixmore	-	F08F	#UD(lock)
+64	prefixmore	0060	boundary	F08F6004	prefixmore	-	F08F	#UD(lock)
+64	prefixmore	0070	boundary	8F6004	prefixmore	-	8F60	#UD
+64	system-memory	0000	boundary	F30FAE00	system-memory	-	F30FAE00	fxsave       [rax]
+64	system-memory	0010	boundary	F30FAE4004	system-memory	-	F30FAE4004	fxsave       [rax][4]
+64	system-memory	0020	boundary	F30FAE0510000000	system-memory	-	F30FAE0510000000	fxsave       [000000038]
+64	system-memory	0030	boundary	F30FAE08	system-memory	-	F30FAE08	fxrstor      [rax]
+64	system-memory	0040	boundary	F30FAE10	system-memory	-	F30FAE10	ldmxcsr      [rax]
+64	system-memory	0050	boundary	F30FAE18	system-memory	-	F30FAE18	stmxcsr      [rax]
+64	system-memory	0060	boundary	F30FAE20	system-memory	-	F30FAE20	#UD()
+64	system-memory	0070	boundary	F30FAE28	system-memory	-	F30FAE28	#UD()
+64	systemmore	0000	boundary	F30FAE6004	systemmore	-	F30FAE6004	#UD()
+64	systemmore	0010	boundary	F30FAE6804	systemmore	-	F30FAE6804	#UD()
+64	systemmore	0020	boundary	F30FAE2510000000	systemmore	-	F30FAE2510000000	#UD()
+64	systemmore	0030	boundary	F30FAE2D10000000	systemmore	-	F30FAE2D10000000	#UD()
+64	systemmore	0040	boundary	0FAE20	systemmore	-	0FAE20	xsave        [rax]
+64	systemmore	0050	boundary	0FAE28	systemmore	-	0FAE28	xrstor       [rax]
