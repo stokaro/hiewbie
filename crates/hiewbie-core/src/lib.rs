@@ -7,6 +7,7 @@
 
 mod analysis;
 mod block;
+pub mod calculator;
 mod command;
 mod document;
 mod error;

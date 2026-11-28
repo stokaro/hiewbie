@@ -213,6 +213,25 @@ confirmation before updating an existing export file. Its export currently
 offers raw bytes. The original file chooser, translation-table selection,
 cross-file block history, and import remain open.
 
+### Calculator
+
+Alt+= opens the same dialog in view and Hex editing. Enter updates signed
+decimal, unsigned decimal, binary, split hexadecimal, and the eight display
+bytes. Page Up clears the input and retains the last result. Insert toggles
+between replacement and insertion. Reopening puts the caret at the end of
+the retained expression. F1 opens a green operator and reference panel above
+the Calculator and hides the caret until the panel closes.
+
+The observed 8.63 default wraps arithmetic at 64 bits. Division and
+comparisons are signed. Right shift fills with zero. On the tested program
+`010+100t+10i` evaluated to `76h`. The `o` suffix selected octal explicitly.
+A zero divisor replaced the output rows with a caret marker and an error.
+The lower- and uppercase typed tags differed in sign extension on bytes
+above `7F`. In the generated PE32+ image, `@o` produced `140001000h` at file
+offset `200h`, and `@O` produced `200h`.
+
+[Paired Windows observations](../evidence/hiew-8.63-windows-calculator.json)
+
 ### Text is a line-oriented view, with encoding and layout settings
 
 The original Text help describes line wrapping, selectable line endings,

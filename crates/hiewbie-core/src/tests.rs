@@ -628,6 +628,7 @@ fn command_registry_contains_every_stable_command_once() {
         Command::ResizeBlock,
         Command::GotoBlockBoundary(BlockBoundary::First),
         Command::ExportBlock,
+        Command::OpenCalculator,
         Command::Move(1),
         Command::Goto(offset(0)),
         Command::GotoVirtual(crate::formats::VirtualAddress::new(0)),

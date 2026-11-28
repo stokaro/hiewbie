@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "observation_date": "2026-11-28",
+  "reference_version": "8.63",
+  "environment": {
+    "runtime": "x64 Windows console in an isolated Windows Server Core LTSC 2022 container",
+    "candidate": "GNU-target x64 build running in the same Windows environment",
+    "paired_terminal_sizes": ["80x25", "100x30"],
+    "fixtures": "Generated nine-byte raw file and a synthetic PE32+ image with one .text section"
+  },
+  "panel_rectangles_zero_based": {
+    "80x25": [2, 8, 76, 9],
+    "100x30": [12, 11, 76, 9]
+  },
+  "layout": {
+    "frame": "Inset double lines and centered title on gray, with a dark gray close marker",
+    "frame_inset_columns_rows": [2, 1],
+    "shadow_offset_columns_rows": [2, 1],
+    "input": "68 cells, white on cyan, with unused cells shaded",
+    "result": "Signed and unsigned decimal, 64 adjacent binary digits, and split hexadecimal with eight CP437 display glyphs",
+    "error": "Caret marker below the expression and a diagnostic on the next row",
+    "help": "Green double frame with a centered context title and a white-on-black highlighted row"
+  },
+  "paired_checks": {
+    "calculator_frames": 48,
+    "matching_calculator_surface_glyphs": 48,
+    "matching_panel_palette_samples": 48,
+    "matching_visible_caret_coordinates": 48,
+    "matching_help_geometry_and_hidden_caret": 3,
+    "coverage": "Opening, editing, evaluation, insertion, clearing, reopening, Help, syntax and arithmetic errors, data reads, mapped address and file offset, pending Hex nibble",
+    "limits": "Compares calculator surface cells and selected colors. Help descriptions use independent wording. Scroll indicators, footer palette, mouse interactions, native cursor height, and other terminal frontends are outside this comparison."
+  }
+}

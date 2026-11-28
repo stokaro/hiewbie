@@ -169,6 +169,25 @@ impl Analysis {
         }
     }
 
+    pub fn address_at(&self, offset: FileOffset) -> Result<(VirtualAddress, bool), Error> {
+        if let Some(image) = &self.executable {
+            return Ok(match image.file_to_va(offset) {
+                Ok(address) => (address, true),
+                Err(_) => (VirtualAddress::new(offset.get()), false),
+            });
+        }
+        let address = self
+            .interpretation
+            .base
+            .unwrap_or_default()
+            .get()
+            .checked_add(offset.get())
+            .ok_or_else(|| {
+                Error::Analysis("raw base plus file offset overflows a virtual address".into())
+            })?;
+        Ok((VirtualAddress::new(address), true))
+    }
+
     pub fn virtual_offset(&self, address: VirtualAddress, len: u64) -> Result<FileOffset, Error> {
         let offset = if let Some(image) = &self.executable {
             image.va_to_file(address).map_err(analysis_error)?
@@ -264,23 +283,7 @@ impl Analysis {
         let mut offset = start;
         let mut branch_number = 0;
         for _ in 0..limit {
-            let (address, mapped) = if let Some(image) = &self.executable {
-                match image.file_to_va(offset) {
-                    Ok(address) => (address, true),
-                    Err(_) => (VirtualAddress::new(offset.get()), false),
-                }
-            } else {
-                let address = context
-                    .base
-                    .get()
-                    .checked_add(offset.get())
-                    .ok_or_else(|| {
-                        Error::Analysis(
-                            "raw base plus file offset overflows a virtual address".into(),
-                        )
-                    })?;
-                (VirtualAddress::new(address), true)
-            };
+            let (address, mapped) = self.address_at(offset)?;
             let mut buffer = [0u8; 15];
             let mut read_len = mode.max_instruction_len().min(buffer.len());
             if let Some(image) = &self.executable {

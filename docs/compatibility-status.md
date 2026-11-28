@@ -31,14 +31,14 @@ and the parent epic remain open.
 | UI-002 | Partial | [T], [P], [Commands], [Reference], [Observation]: separate F4 choice/Enter cycle, edit restores, Shift+F7 and Code/header/profile bindings; full modifier and command matrix remains unverified. |
 | UI-003 | Partial | [T], [ACLI], [Hex observation]: Raw/PE Hex title and access states, VA/file-offset display, and changed-byte colors now have paired Windows evidence. Decoder profile, overrides, and full state coverage remain open. |
 | UI-004 | Partial | [A], [T]: cursor survives all three views; branch return restores position and interpretation; bookmarks and reference-specific per-view behavior pending. |
-| UI-005 | Partial | [T], [Observation]: view/edit/search/recovery and mode/header/profile dialogs resolve their own commands; the two-field search dialog has its own help and contextual bindings; block tracking, active-mark cancellation, scoped search and Write block have tests. Transient modifier and other overlay details remain open. |
+| UI-005 | Partial | [T], [Observation]: view/edit/search/recovery and mode/header/profile dialogs resolve their own commands; the two-field search dialog has its own help and contextual bindings; block tracking, active-mark cancellation, scoped search, Write block, and Calculator have tests. Transient modifier and other overlay details remain open. |
 | UI-006 | Partial | [T], [Commands], [Hex observation]: Hex uses the observed F-key label positions and dims unsupported commands. Contextual Help uses the observed blank bar and wide slots. Other dialog bars, modes, and modifier layers remain open. |
 | UI-007 | Implemented | [T], [P]: all currently implemented operations are keyboard-accessible. |
-| UI-008 | Partial | [T], [P], [Hex observation], [Dialog observation], [Text observation], [Help observation]: Raw and PE Hex, selected dialogs, the single-byte Text view and line-feed selector, and contextual Help geometry have paired Windows evidence. The Text scrollbar, Code, Help content, and header fields still have gaps. |
+| UI-008 | Partial | [T], [P], [Hex observation], [Dialog observation], [Text observation], [Help observation], [Calculator observation]: Raw and PE Hex, selected dialogs, the single-byte Text view and line-feed selector, contextual Help geometry, and Calculator have paired Windows evidence. The Text scrollbar, Code, Help content, and header fields still have gaps. |
 | UI-009 | Partial | [T], [Observation]: blue/cyan default aligns with the observed palette; block bytes use yellow on magenta. Search focus, modal alerts, and Help use state-specific colors. Complete palette and accessible theme coverage remain open. |
 | UI-010 | Partial | [T], [Commands]: Ctrl alternatives and keyboard header/profile dialogs; comprehensive command-menu and intercepted-key coverage pending. |
 | UI-011 | Partial | [T], [ST], [Input], [Commands], [Reference], [Observation]: visible deviations and unavailable commands are explicit; the observed runtime now covers primary views and dialogs, while the remaining matrix stays open. |
-| UI-012 | Partial | [T], [P], [Help observation], [Commands]: view, edit, and Search Help render contextual rows and preserve modal state. Complete original command lists, a shared command registry, and key-event diagnostics remain open. |
+| UI-012 | Partial | [T], [P], [Help observation], [Commands]: view, edit, Search, and Calculator Help render contextual rows and preserve modal state. Complete original command lists, a shared command registry, and key-event diagnostics remain open. |
 | UI-013 | Implemented | [F], [D], [A], [T]: bounded viewport, metadata reads and per-row decoding; no eager whole-file disassembly or indexing. |
 | UI-014 | Implemented | [CLI], [P]: ordinary editing has no network/service dependency. |
 | UI-015 | Partial | [P], [Input]: acquired-mode guard and normal exit; ConPTY/signal/failure matrix pending. |
@@ -47,7 +47,7 @@ and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| KEY-001 | Implemented | [C], [A], [SN], [Commands]: 32 stable IDs include source-byte restores, block selection/export, profiles, mappings, branches and separate symbol-target/record navigation. |
+| KEY-001 | Implemented | [C], [A], [SN], [Commands]: Stable IDs include source-byte restores, block selection/export, profiles, mappings, branches and separate symbol-target/record navigation. |
 | KEY-002 | Partial | [A], [T], [ACLI]: terminal dialogs, shortcuts and headless inspection use shared application commands; macro/browser callers pending. |
 | KEY-003 | Partial | [C], [A], [T], [ACLI], [Reference]: hexadecimal, decimal t, relative and dotted absolute-VA syntax reject overflow/unavailable mappings; original current-section-relative dotted interpretation remains open. |
 | KEY-004 | Partial | [A], [T]: shared position, bounded branch-return history and a search resume point independent of ordinary movement; general navigation return and per-view bookmarks remain open. |
@@ -185,8 +185,8 @@ and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| CALC-001 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| CALC-002 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
+| CALC-001 | Partial | [Calculator tests], [A], [T], [Calculator observation], [Calculator replay]: 64-bit wrapping HIEW expressions, bases, diagnostics, data reads, and native dialog. Checked overflow arithmetic, expression grammar edge cases, and full parity coverage remain open. |
+| CALC-002 | Partial | [Commands], [Calculator tests]: legacy tags encode signedness and width, and use little-endian byte order. Explicit byte-order control remains open. |
 
 ## CRYPT
 
@@ -283,6 +283,9 @@ and the parent epic remain open.
 [Block observation]: evidence/hiew-8.63-windows-blocks.json
 [Block export]: ../crates/hiewbie/tests/block_export.rs
 [Block replay]: evidence/block-workflow.cast
+[Calculator observation]: evidence/hiew-8.63-windows-calculator.json
+[Calculator replay]: evidence/calculator.cast
+[Calculator tests]: ../crates/hiewbie-core/src/calculator_tests.rs
 [Cursor replay]: evidence/native-cursor.cast
 [Dialog observation]: evidence/hiew-8.63-windows-dialogs.json
 [Hex observation]: evidence/hiew-8.63-windows-hex.json

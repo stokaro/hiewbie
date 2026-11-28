@@ -51,14 +51,17 @@ independent cursor movement, followed by an exact one-byte save.
 `--record-block PATH` records reverse block marking, scoped search, an exact
 edit, export cancellation, raw export, and confirmed append.
 `--record-cursor PATH` records native Hex and ASCII caret coordinates and
-shapes, restoration of pending Hex and Search input after Help, and the mode chooser. All eight PTY scenarios run in the existing native Unix CI jobs even without recording
-options. The symbol fixture contains no external executable bytes. The
+shapes, restoration of pending Hex and Search input after Help, and the mode chooser.
+`--record-calculator PATH` records expression evaluation, Help, a diagnostic,
+and restoration of a pending Hex digit. All nine PTY scenarios run in the
+existing native Unix CI jobs even without recording options. The symbol fixture contains no external executable bytes. The
 checked-in [editing](evidence/native-editor.cast) and
 [analysis](evidence/executable-analysis.cast) recordings, together with the
 [symbol navigation](evidence/symbol-navigation.cast),
 [search repeat](evidence/search-repeat.cast), and
-[block workflow](evidence/block-workflow.cast), and
-[native cursor](evidence/native-cursor.cast) recordings, are evidence of those
+[block workflow](evidence/block-workflow.cast),
+[native cursor](evidence/native-cursor.cast), and
+[calculator](evidence/calculator.cast) recordings, are evidence of those
 scenarios. Byte assertions, state assertions, and cleanup checks are the
 regression gate.
 

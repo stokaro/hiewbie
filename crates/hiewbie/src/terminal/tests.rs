@@ -1561,3 +1561,58 @@ fn picker_keys_and_help_select_without_moving_the_file_cursor() {
     assert!(ui.dialog.is_none());
     assert_eq!(ui.editor.cursor(), FileOffset::new(1));
 }
+
+#[test]
+fn calculator_modal_evaluates_on_enter_and_restores_the_edit_context() {
+    let mut ui = ui(&[0xFE, 0x80]);
+    key(&mut ui, KeyCode::F(3));
+    key(&mut ui, KeyCode::Char('A'));
+    ui.key(KeyEvent::new(KeyCode::Char('='), KeyModifiers::ALT));
+
+    let initial = screen(&mut ui, 80, 25);
+    let lines: Vec<_> = initial.lines().collect();
+    assert_eq!(lines[9].chars().nth(4), Some('╔'));
+    assert!(lines[9].contains("═ Calculator ═"));
+    assert!(lines[10].contains(&"░".repeat(68)));
+    assert!(lines[13].contains(&format!("Bin:{:064b}", 0)));
+    assert!(ui.has_input_caret());
+
+    type_text(&mut ui, "1+2");
+    assert!(screen(&mut ui, 80, 25).contains("Sig:0"));
+    key(&mut ui, KeyCode::Enter);
+    let evaluated = screen(&mut ui, 80, 25);
+    assert!(evaluated.contains("Hex:00000000`00000003     \"       ♥\""));
+    key(&mut ui, KeyCode::F(2));
+    assert!(screen(&mut ui, 80, 25).contains("Sig:3"));
+    key(&mut ui, KeyCode::F(1));
+    assert!(!ui.has_input_caret());
+    assert!(screen(&mut ui, 80, 25).contains("[Calculator]"));
+    key(&mut ui, KeyCode::Esc);
+    assert!(ui.has_input_caret());
+
+    key(&mut ui, KeyCode::PageUp);
+    type_text(&mut ui, "12");
+    key(&mut ui, KeyCode::Home);
+    type_text(&mut ui, "9");
+    key(&mut ui, KeyCode::Insert);
+    type_text(&mut ui, "8");
+    key(&mut ui, KeyCode::Enter);
+    assert!(screen(&mut ui, 80, 25).contains("Hex:00000000`00000982"));
+    key(&mut ui, KeyCode::Esc);
+    assert_eq!(ui.pending_nibble, Some(0xA));
+    assert_eq!(bytes(&mut ui), [0xFE, 0x80]);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(0));
+
+    control(&mut ui, KeyCode::Char('l'));
+    assert!(screen(&mut ui, 80, 25).contains("982░"));
+    key(&mut ui, KeyCode::PageUp);
+    type_text(&mut ui, "1/0");
+    key(&mut ui, KeyCode::Enter);
+    let error = screen(&mut ui, 80, 25);
+    assert_eq!(error.lines().nth(11).unwrap().chars().nth(9), Some('^'));
+    assert!(error.contains("Error: Division by zero"));
+    assert!(!error.contains("Bin:"));
+    key(&mut ui, KeyCode::Esc);
+    key(&mut ui, KeyCode::Char('5'));
+    assert_eq!(bytes(&mut ui), [0xA5, 0x80]);
+}

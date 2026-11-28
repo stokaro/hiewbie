@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::analysis::{Analysis, Location, analysis_error};
 use crate::block::{BlockBoundary, BlockMark, BlockSelection};
+use crate::calculator::{self, CalculationError};
 use crate::formats::{Endian, Executable, FileRange, VirtualAddress};
 use crate::instructions::DecodeMode;
 use crate::search::SearchSession;
@@ -43,6 +44,7 @@ pub enum Command {
     ResizeBlock,
     GotoBlockBoundary(BlockBoundary),
     ExportBlock,
+    OpenCalculator,
     Move(i64),
     Goto(FileOffset),
     GotoVirtual(VirtualAddress),
@@ -82,6 +84,7 @@ impl Command {
             Self::ResizeBlock => "block.resize",
             Self::GotoBlockBoundary(_) => "block.goto-boundary",
             Self::ExportBlock => "block.export",
+            Self::OpenCalculator => "tools.calculator",
             Self::Move(_) => "navigate.move",
             Self::Goto(_) => "navigate.goto",
             Self::GotoVirtual(_) => "navigate.virtual",
@@ -174,6 +177,10 @@ pub const COMMANDS: &[CommandInfo] = &[
         description: "Request platform export of the fixed file range",
     },
     CommandInfo {
+        id: "tools.calculator",
+        description: "Open the read-only integer calculator",
+    },
+    CommandInfo {
         id: "navigate.move",
         description: "Move by a signed byte count, clamped to the document",
     },
@@ -249,6 +256,7 @@ pub enum Effect {
     None,
     Save,
     ExportBlock(FileRange),
+    OpenCalculator,
 }
 
 /// Shared view, cursor, and edit-state semantics around a document.
@@ -365,6 +373,23 @@ impl<S: ByteSource> Editor<S> {
         let rows = self.analysis.rows(&mut self.document, self.cursor, limit)?;
         self.analysis.numbered_window = Some(limit);
         Ok(rows)
+    }
+
+    /// Evaluate with the same mapped or raw address used for Code rows.
+    pub fn calculate(&mut self, expression: &str) -> Result<u64, CalculationError> {
+        // Only @o needs executable metadata. Plain arithmetic and file-byte
+        // reads work independently of the current interpretation.
+        let local =
+            if expression.contains("@o") && expression.len() <= calculator::MAX_EXPRESSION_BYTES {
+                self.refresh_analysis();
+                self.analysis
+                    .address_at(self.cursor)
+                    .ok()
+                    .map(|(address, _)| address.get())
+            } else {
+                None
+            };
+        calculator::evaluate(expression, &mut self.document, self.cursor, local)
     }
 
     /// All adapters share the same raw/dotted-VA syntax and navigation rules.
@@ -496,6 +521,7 @@ impl<S: ByteSource> Editor<S> {
                 };
                 return self.dispatch(Command::Goto(offset));
             }
+            Command::OpenCalculator => return Ok(Effect::OpenCalculator),
             Command::ExportBlock => {
                 self.require_block_view()?;
                 let block = self

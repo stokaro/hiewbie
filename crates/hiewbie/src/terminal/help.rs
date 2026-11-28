@@ -18,6 +18,7 @@ pub(super) enum HelpTopic {
     View(ViewMode),
     Edit(ViewMode),
     Search,
+    Calculator,
 }
 
 impl HelpTopic {
@@ -30,6 +31,7 @@ impl HelpTopic {
             Self::Edit(ViewMode::Hex) => "[HexEdit]",
             Self::Edit(ViewMode::Code) => "[CodeEdit]",
             Self::Search => "[FindEdit]",
+            Self::Calculator => "[Calculator]",
         }
     }
 
@@ -41,6 +43,7 @@ impl HelpTopic {
             Self::Edit(ViewMode::Text | ViewMode::Hex) => [HEX_EDIT, &[], &[]],
             Self::Edit(ViewMode::Code) => [CODE_EDIT, &[], &[]],
             Self::Search => [FIND, &[], &[]],
+            Self::Calculator => [CALCULATOR_HELP, &[], &[]],
         }
     }
 }
@@ -123,6 +126,7 @@ impl Help {
         self.keep_selection_visible(len);
 
         let highlight = content.inner(Margin::new(1, 0));
+        let calculator = matches!(self.topic, HelpTopic::Calculator);
         for (index, entry) in self
             .topic
             .sections()
@@ -140,7 +144,10 @@ impl Help {
                     Rect::new(highlight.x, y, highlight.width, 1),
                 );
             }
-            let x = highlight.x.saturating_add(1).min(content.right());
+            let x = highlight
+                .x
+                .saturating_add(u16::from(!calculator))
+                .min(content.right());
             let edge = if selected {
                 highlight.right()
             } else {
@@ -171,6 +178,7 @@ enum Entry {
     Key(&'static str, &'static str),
     Function(&'static str, &'static str, &'static str),
     Section(usize, &'static str),
+    Text(&'static str),
 }
 
 const fn key(binding: &'static str, description: &'static str) -> Entry {
@@ -192,6 +200,7 @@ impl Entry {
             Self::Function(binding, label, description) => {
                 format!("{binding:<8} - {label:<6} - {description}")
             }
+            Self::Text(text) => text.to_owned(),
             Self::Section(lead, title) => {
                 let tail = 60 - lead - title.len();
                 format!("{} {title} {}", "─".repeat(lead), "─".repeat(tail))
@@ -204,7 +213,7 @@ const ESCAPE: Entry = key("Escape", "Exit the current file");
 const FILE_HISTORY: Entry = key("Ctrl-Backspace", "Browse file history (planned)");
 const NEXT_FILE: Entry = key("Tab", "Switch to a recent file (planned)");
 const SCREEN: Entry = key("Alt-P", "Export the screen (planned)");
-const CALCULATOR: Entry = key("Alt-=", "Open the calculator (planned)");
+const CALCULATOR: Entry = key("Alt-=", "Open the calculator");
 const INFORMATION: Entry = key("Ctrl-Alt", "Show file information (planned)");
 const REPEAT: Entry = key("Ctrl-Enter", "Repeat the last search");
 const COMMENT: Entry = key("Semicolon", "Annotate this offset (planned)");
@@ -526,4 +535,35 @@ const FIND: &[Entry] = &[
     key("Insert", "Toggle insertion in the field (planned)"),
     key("Ctrl-End, Alt-X", "Trim the rest of the field (planned)"),
     key("Shift-Insert", "Clipboard paste is unavailable"),
+];
+
+const CALCULATOR_HELP: &[Entry] = &[
+    Entry::Text("64-bit integer expressions with grouping by parentheses."),
+    Entry::Text(""),
+    Entry::Text("+   Add                 ~   Bitwise complement"),
+    Entry::Text("-   Subtract            &   Bitwise AND"),
+    Entry::Text("*   Multiply            ^   Bitwise XOR"),
+    Entry::Text("/   Divide (signed)     |   Bitwise OR"),
+    Entry::Text("%   Remainder"),
+    Entry::Text(""),
+    Entry::Text("!   Logical NOT         <   Less than"),
+    Entry::Text("&&  Logical AND         >   Greater than"),
+    Entry::Text("||  Logical OR          <=  At most"),
+    Entry::Text("                        >=  At least"),
+    Entry::Text("<<  Shift left          ==  Equal"),
+    Entry::Text(">>  Shift right         !=  Not equal"),
+    Entry::Text(""),
+    Entry::Text("Bare integers use hexadecimal notation."),
+    Entry::Text("An expression can mix bases with these prefixes and suffixes."),
+    Entry::Text(""),
+    Entry::Text("0x10 or 10h             Hexadecimal"),
+    Entry::Text("10i / 10o / 10t         Binary / octal / decimal"),
+    Entry::Text("\"AB\"                    Eight ASCII bytes at most, high byte first"),
+    Entry::Text(""),
+    Entry::Text("@b @w @d @q             Signed reads of 1, 2, 4, or 8 bytes"),
+    Entry::Text("@B @W @D @Q             Unsigned reads in the same widths"),
+    Entry::Text("@o / @O                 Local address / file offset"),
+    Entry::Text(""),
+    Entry::Text("Enter evaluates. Insert toggles replacement and insertion."),
+    Entry::Text("Page Up clears the input. Escape returns to the editor."),
 ];

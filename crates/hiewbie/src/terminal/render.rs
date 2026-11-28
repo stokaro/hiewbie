@@ -10,6 +10,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
 use super::block::{BlockField, BlockWrite};
+use super::calculator::render_calculator;
 use super::hex_view::BYTE_BODY;
 use super::search::{SearchDialog, SearchField};
 use super::{
@@ -143,9 +144,13 @@ impl<S: ByteSource> Ui<S> {
             }
             self.render_status_message(frame, message);
         }
+        if matches!(self.dialog, Some(Dialog::Calculator)) {
+            render_calculator(frame, area, &self.calculator);
+        }
         let help = match self.dialog.as_mut() {
             Some(Dialog::Help(help)) => Some(help),
             Some(Dialog::Search(search)) => search.help.as_mut(),
+            Some(Dialog::Calculator) => self.calculator.help.as_mut(),
             _ => None,
         };
         if let Some(help) = help {
@@ -185,7 +190,7 @@ impl<S: ByteSource> Ui<S> {
                 super::text_view::render_line_feed(frame, area, *selected)
             }
             Some(Dialog::Analysis(dialog)) => self.render_analysis_dialog(frame, area, dialog),
-            Some(Dialog::Help(_)) | None => {}
+            Some(Dialog::Calculator | Dialog::Help(_)) | None => {}
         }
     }
 
@@ -526,6 +531,12 @@ impl<S: ByteSource> Ui<S> {
     }
 
     fn render_function_bar(&self, frame: &mut Frame<'_>, area: Rect) {
+        if matches!(self.dialog, Some(Dialog::Calculator)) {
+            let mut labels = [""; 12];
+            labels[0] = "Help";
+            render_full_function_bar(frame, area, &labels, &[]);
+            return;
+        }
         let labels = if self.editor.is_searching() {
             Some([""; 10])
         } else {

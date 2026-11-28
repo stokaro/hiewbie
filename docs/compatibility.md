@@ -253,6 +253,8 @@ each capability requires independent fixtures and acceptance evidence.
 - **META-002**: Version sidecar data and bind it to an identifiable document revision.
 - **META-003**: Record verification work for HIEW name/map import/export compatibility.
 - **CALC-001**: Provide checked 64-bit expressions, bases, bit operations, and data reads.
+  Preserve the observed 8.63 wrapping arithmetic in the default Calculator.
+  Expose checked overflow handling separately.
 - **CALC-002**: Make signedness, width, and endianness explicit in new capabilities.
 - **CRYPT-001**: Track the HIEW transform-interpreter workflow as parity work [S1].
 - **CRYPT-002**: Interpret transform instructions; never execute inspected bytes as host code.
