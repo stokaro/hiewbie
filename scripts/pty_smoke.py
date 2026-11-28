@@ -615,6 +615,36 @@ def file_history(binary: Path, directory: Path, *, record: bool) -> list[list]:
         return session.events
 
 
+def screen_bookmarks(binary: Path, directory: Path, *, record: bool) -> list[list]:
+    path, mtime_ns = fixture(directory)
+    with PtySession(binary, path, "screen bookmarks", record=record) as session:
+        def expect_input(data: bytes, label: str, *checks: bytes) -> None:
+            before = len(session.output)
+            session.send(data, label)
+            for code in checks:
+                if code not in session.output[before:]:
+                    session.fail(f"missing bookmark output {code!r} after {label}")
+
+        diamond = "♦".encode()
+        session.send(F5, "Open Goto in Hex view")
+        session.send(b"22E\r", "Set the first bookmark position")
+        expect_input(b"+", "Save the first Hex screen", diamond)
+        session.send(RIGHT, "Move to the second bookmark position")
+        expect_input(b"+", "Save a second numbered Hex screen", diamond)
+        session.send(b"\x1b[1;5H", "Go to the first file byte")
+        # The terminal diff rewrites only changed digits of the 80-column title.
+        expect_input(b"\x1b1", "Restore the first Hex screen", b"\x1b[1;59H22E", diamond)
+        expect_input(b"\x1b2", "Restore the second Hex screen", b"\x1b[1;61HF", diamond)
+        session.send(b"\x1b-", "Delete the second bookmark")
+        session.send(b"\r", "Switch to Code and its separate bookmark table")
+        expect_input(b"+", "Store a Code position independently", diamond)
+        session.send(b"\x1b0", "Clear all mode tables")
+        session.send(ESC, "Exit the view", expect_exit=True)
+        session.finish()
+        session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
+        return session.events
+
+
 def edit_save(binary: Path, directory: Path, *, record: bool) -> list[list]:
     path, mtime_ns = fixture(directory)
     with PtySession(binary, path, "edit/save and paste rejection", record=record) as session:
@@ -1025,6 +1055,7 @@ def main() -> int:
     parser.add_argument("--record-symbols", type=Path, help="record import/export target and metadata navigation with exact byte saves")
     parser.add_argument("--record-search", type=Path, help="record the two-field search, backward repeat, and exact byte save")
     parser.add_argument("--record-block", type=Path, help="record reverse selection, scoped search, and raw block export")
+    parser.add_argument("--record-bookmarks", type=Path, help="record per-mode screen bookmark selection and restoration")
     parser.add_argument("--record-history", type=Path, help="record file arguments and history restoration")
     parser.add_argument("--record-files", type=Path, help="record startup Files, filtering, selection, F9 cancellation, and save")
     parser.add_argument("--record-cursor", type=Path, help="record native editing and search focus, Help, and mode selection")
@@ -1066,6 +1097,12 @@ def main() -> int:
                 with file_recording_workspace(Path("/tmp")) as demo:
                     history_events = file_history(binary, demo / "history", record=True)
             print("PASS: command-line selection, history cycling, exact offset and mode restoration")
+            if options.record_bookmarks is None:
+                bookmark_events = screen_bookmarks(binary, root / "bookmarks", record=False)
+            else:
+                with file_recording_workspace(Path("/tmp")) as demo:
+                    bookmark_events = screen_bookmarks(binary, demo / "bookmarks", record=True)
+            print("PASS: per-view screen bookmarks, exact Hex offset, unchanged bytes and timestamp")
             analysis_events = analyze_edit_save(binary, root / "analysis", record=options.record_analysis is not None)
             print("PASS: PE headers/entry, Code, branch/return, virtual goto, exact byte save")
             symbol_events = symbols_edit_save(binary, root / "symbols", record=options.record_symbols is not None)
@@ -1105,6 +1142,13 @@ def main() -> int:
                 filename=FIXTURE_NAME,
             )
             print(f"Block recording: {options.record_block}")
+        if options.record_bookmarks is not None:
+            write_recording(
+                options.record_bookmarks,
+                bookmark_events,
+                title="hiewbie screen bookmarks: store and restore independent view slots",
+            )
+            print(f"Bookmarks recording: {options.record_bookmarks}")
         if options.record_history is not None:
             write_recording(
                 options.record_history,

@@ -112,6 +112,24 @@ when it still fits. An unvisited file opened from either list starts in
 Text at zero. On-disk history, bookmarks, and other per-file analysis state
 remain separate compatibility work.
 
+### Screen bookmarks
+
+In Text, Hex, or Code view, press `+` to store the screen in the first free
+slot. Each view has eight slots. A filled view keeps its bookmarks when
+you press `+` again. The title shows digits for stored slots, a diamond for the
+active slot, and dashes for empty slots.
+
+`-` recalls the active slot. Alt+1 through Alt+8 recall a numbered slot
+in the current view and make it active. Alt+Minus empties the active slot and
+keeps the other numbers in place. Alt+0 clears all three views' slots without
+moving the cursor. Recalling an empty slot leaves the current view as it was.
+
+The restored screen includes the Hex top row and the selected file byte,
+Text's horizontal scroll when wrapping is off, or the active Code decoder
+mode. Bookmarks are held for the current open document. Stored bookmarks
+across separate openings, annotations, and general navigation return remain
+separate repository work.
+
 ### Terminal focus
 
 F4 opens the mode chooser. Up and Down move the highlight and Enter selects.

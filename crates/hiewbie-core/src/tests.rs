@@ -25,6 +25,132 @@ fn logical<S: ByteSource>(document: &mut Document<S>) -> Vec<u8> {
 }
 
 #[test]
+fn bookmarks_fill_the_first_free_slot_without_replacing_or_renumbering() {
+    use BookmarkCommand::*;
+    use BookmarkMark::*;
+
+    let mut editor = Editor::new(memory(&[0xA5; 64]), false);
+    let viewport = BookmarkViewport {
+        top: offset(1),
+        column: 0,
+    };
+    for index in 0..BOOKMARK_SLOTS {
+        editor
+            .dispatch(Command::Goto(offset(index as u64 + 1)))
+            .unwrap();
+        editor.dispatch(Command::Bookmark(Store(viewport))).unwrap();
+    }
+    editor.dispatch(Command::Goto(offset(61))).unwrap();
+    editor.dispatch(Command::Bookmark(Store(viewport))).unwrap();
+    assert_eq!(editor.cursor(), offset(61));
+    assert_eq!(editor.bookmark_marks()[7], Current);
+    assert_eq!(
+        editor.dispatch(Command::Bookmark(Recall)).unwrap(),
+        Effect::RestoreBookmark(viewport)
+    );
+    assert_eq!(editor.cursor(), offset(8));
+    editor.dispatch(Command::Bookmark(Select(2))).unwrap();
+    assert_eq!(editor.cursor(), offset(2));
+
+    editor.dispatch(Command::Bookmark(Delete)).unwrap();
+    editor.dispatch(Command::Goto(offset(32))).unwrap();
+    for action in [Recall, Select(2), Select(0), Select(9)] {
+        assert_eq!(
+            editor.dispatch(Command::Bookmark(action)).unwrap(),
+            Effect::None
+        );
+        assert_eq!(editor.cursor(), offset(32));
+    }
+    assert_eq!(editor.bookmark_marks()[1], Empty);
+    assert_eq!(editor.bookmark_marks()[2], Stored);
+
+    editor.dispatch(Command::Bookmark(Store(viewport))).unwrap();
+    assert_eq!(editor.bookmark_marks()[1], Current);
+    editor.dispatch(Command::Bookmark(Select(3))).unwrap();
+    assert_eq!(editor.cursor(), offset(3));
+    editor.dispatch(Command::Bookmark(Select(2))).unwrap();
+    assert_eq!(editor.cursor(), offset(32));
+    assert_eq!(logical(editor.document_mut()), [0xA5; 64]);
+    assert!(!editor.document().is_dirty());
+}
+
+#[test]
+fn bookmark_recall_is_per_view_clear_is_global_and_edits_are_guarded() {
+    use BookmarkCommand::*;
+    use BookmarkMark::*;
+
+    let viewport = BookmarkViewport::default();
+    let mut editor = Editor::new(memory(b"0123456789"), false);
+    let views = [(ViewMode::Hex, 2), (ViewMode::Text, 4), (ViewMode::Code, 6)];
+    for (mode, position) in views {
+        editor.dispatch(Command::SetMode(mode)).unwrap();
+        assert_eq!(editor.bookmark_marks(), [Empty; BOOKMARK_SLOTS]);
+        editor.dispatch(Command::Goto(offset(position))).unwrap();
+        editor.dispatch(Command::Bookmark(Store(viewport))).unwrap();
+    }
+    for (mode, position) in views {
+        editor.dispatch(Command::SetMode(mode)).unwrap();
+        editor.dispatch(Command::Goto(offset(0))).unwrap();
+        editor.dispatch(Command::Bookmark(Select(1))).unwrap();
+        assert_eq!(editor.cursor(), offset(position));
+        assert_eq!(editor.mode(), mode);
+    }
+
+    editor.dispatch(Command::BeginEdit).unwrap();
+    editor.dispatch(Command::WriteByte(b'Z')).unwrap();
+    for action in [Store(viewport), Recall, Select(1), Delete, Clear] {
+        let command = Command::Bookmark(action);
+        assert!(matches!(
+            editor.dispatch(command),
+            Err(Error::EditingInProgress)
+        ));
+    }
+    assert!(editor.is_editing());
+    assert!(editor.document().is_dirty());
+    assert_eq!(logical(editor.document_mut()), b"012345Z789");
+    editor.dispatch(Command::DiscardEdit).unwrap();
+    editor.dispatch(Command::Bookmark(Clear)).unwrap();
+    for (mode, _) in views {
+        editor.dispatch(Command::SetMode(mode)).unwrap();
+        assert_eq!(editor.bookmark_marks(), [Empty; BOOKMARK_SLOTS]);
+    }
+    assert_eq!(logical(editor.document_mut()), b"0123456789");
+}
+
+#[test]
+fn code_bookmarks_restore_decoder_mode_without_changing_the_raw_base() {
+    use instructions::DecodeMode;
+
+    let mut editor = Editor::new(memory(&[0x90; 64]), true);
+    editor.dispatch(Command::SetMode(ViewMode::Code)).unwrap();
+    editor
+        .dispatch(Command::SetDecodeMode(Some(DecodeMode::X86_32)))
+        .unwrap();
+    editor.dispatch(Command::Goto(offset(7))).unwrap();
+    editor
+        .dispatch(Command::Bookmark(BookmarkCommand::Store(
+            BookmarkViewport::default(),
+        )))
+        .unwrap();
+    editor
+        .dispatch(Command::SetRawBase(formats::VirtualAddress::new(0x8000)))
+        .unwrap();
+    editor
+        .dispatch(Command::SetDecodeMode(Some(DecodeMode::X86_64)))
+        .unwrap();
+    editor.dispatch(Command::Goto(offset(16))).unwrap();
+    editor
+        .dispatch(Command::Bookmark(BookmarkCommand::Recall))
+        .unwrap();
+
+    assert_eq!(editor.cursor(), offset(7));
+    assert_eq!(editor.decode_mode_override(), Some(DecodeMode::X86_32));
+    assert_eq!(editor.decode_context().base.get(), 0x8000);
+    assert!(editor.is_read_only());
+    assert_eq!(logical(editor.document_mut()), [0x90; 64]);
+}
+
+#[test]
 fn overlay_reads_patches_and_original_bytes_are_exact() {
     let mut document = memory(b"0123456789");
     document.overwrite(offset(2), b"AB").unwrap();
@@ -640,6 +766,11 @@ fn command_registry_contains_every_stable_command_once() {
         Command::GotoBlockBoundary(BlockBoundary::First),
         Command::ExportBlock,
         Command::OpenCalculator,
+        Command::Bookmark(BookmarkCommand::Store(BookmarkViewport::default())),
+        Command::Bookmark(BookmarkCommand::Recall),
+        Command::Bookmark(BookmarkCommand::Select(1)),
+        Command::Bookmark(BookmarkCommand::Delete),
+        Command::Bookmark(BookmarkCommand::Clear),
         Command::Move(1),
         Command::Goto(offset(0)),
         Command::GotoVirtual(crate::formats::VirtualAddress::new(0)),

@@ -82,6 +82,10 @@ The diagram also contains planned consumers; it does not claim a browser UI.
   single document generation in bounded steps. A completed scan updates the
   resume point, and a canceled scan leaves the previous completed request
   available. Frontends translate keys and display progress.
+- The editor holds eight screen bookmarks per view independently of the search
+  resume point and branch-return history. The viewport coordinates are logical
+  offsets and columns supplied by the frontend. On restore, the frontend
+  reapplies them to its current terminal dimensions.
 - External modification, truncation, replacement, and loss of permissions must
   be handled explicitly. A naive file-wide mapping can fault when another
   process truncates the file; choose paging or a controlled mapping strategy.

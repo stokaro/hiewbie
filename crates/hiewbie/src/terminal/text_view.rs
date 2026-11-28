@@ -99,6 +99,10 @@ impl TextView {
         }
     }
 
+    pub(super) fn restore_horizontal(&mut self, column: u16) {
+        self.horizontal = usize::from(column).min(LINE_COLUMNS - 1);
+    }
+
     pub(super) fn horizontal(&self) -> Option<usize> {
         self.options
             .filter(|options| !options.wrap)

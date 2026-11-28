@@ -24,8 +24,8 @@ use std::time::Duration;
 use hiewbie::file::{BlockExport, ExportProgress, FileSource, SaveError, save_document};
 use hiewbie_core::formats::{BinaryFormat, VirtualAddress};
 use hiewbie_core::{
-    BlockBoundary, ByteSource, Command, Document, Editor, Effect, FileNavigation, FileOffset,
-    ViewMode,
+    BlockBoundary, BookmarkCommand, BookmarkViewport, ByteSource, Command, Document, Editor,
+    Effect, FileNavigation, FileOffset, ViewMode,
 };
 use ratatui::Terminal;
 use ratatui::backend::{Backend, CrosstermBackend};
@@ -452,6 +452,13 @@ impl<S: ByteSource> Ui<S> {
         }
         match self.editor.dispatch(command) {
             Ok(Effect::None) => UiAction::Continue,
+            Ok(Effect::RestoreBookmark(viewport)) => {
+                self.top = viewport.top.get().min(self.editor.cursor().get());
+                if self.editor.mode() == ViewMode::Text {
+                    self.text.restore_horizontal(viewport.column);
+                }
+                UiAction::Continue
+            }
             Ok(Effect::BrowseFiles) => UiAction::BrowseFiles,
             Ok(Effect::FileNavigation(navigation)) => UiAction::NavigateFile(navigation),
             Ok(Effect::Save) => UiAction::Save,
@@ -540,6 +547,34 @@ impl<S: ByteSource> Ui<S> {
         {
             self.open_analysis(AnalysisPage::Profiles);
             return UiAction::Continue;
+        }
+        if !self.editor.is_editing() {
+            let bookmark = match (key.code, key.modifiers) {
+                (KeyCode::Char('+'), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
+                    Some(BookmarkCommand::Store(BookmarkViewport {
+                        top: if self.editor.mode() == ViewMode::Hex {
+                            FileOffset::new(self.top.min(self.editor.cursor().get()))
+                        } else {
+                            self.editor.cursor()
+                        },
+                        column: if self.editor.mode() == ViewMode::Text {
+                            self.text.horizontal().unwrap_or(0) as u16
+                        } else {
+                            0
+                        },
+                    }))
+                }
+                (KeyCode::Char('-'), KeyModifiers::NONE) => Some(BookmarkCommand::Recall),
+                (KeyCode::Char('-'), KeyModifiers::ALT) => Some(BookmarkCommand::Delete),
+                (KeyCode::Char('0'), KeyModifiers::ALT) => Some(BookmarkCommand::Clear),
+                (KeyCode::Char(slot @ '1'..='8'), KeyModifiers::ALT) => {
+                    Some(BookmarkCommand::Select(slot as u8 - b'0'))
+                }
+                _ => None,
+            };
+            if let Some(command) = bookmark {
+                return self.dispatch(Command::Bookmark(command));
+            }
         }
         if !self.editor.is_editing() && self.editor.mode() != ViewMode::Text {
             let block_command = match (key.code, key.modifiers) {

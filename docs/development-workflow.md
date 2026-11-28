@@ -61,7 +61,9 @@ output retains the original cursor positions and cell widths.
 `--record-history PATH` records command-line selection, Tab cycling, and
 restoration of a file at its previous Hex offset. It uses the same synthetic
 fixtures and preserves the original terminal output.
-All eleven PTY scenarios run in the existing native Unix CI jobs even without
+`--record-bookmarks PATH` records storing and restoring separate screen
+bookmarks in a synthetic fixture and verifies that the file remains unchanged.
+All twelve PTY scenarios run in the existing native Unix CI jobs even without
 recording options. The fixtures are generated. The terminal recordings cover
 [editing](evidence/native-editor.cast),
 [analysis](evidence/executable-analysis.cast),
@@ -70,7 +72,8 @@ recording options. The fixtures are generated. The terminal recordings cover
 [block workflow](evidence/block-workflow.cast),
 [native cursor](evidence/native-cursor.cast),
 [calculator](evidence/calculator.cast),
-[file selection](evidence/files.cast), and [file history](evidence/file-history.cast).
+[file selection](evidence/files.cast), [file history](evidence/file-history.cast),
+and [screen bookmarks](evidence/bookmarks.cast).
 Byte assertions, state assertions, and cleanup checks are the regression gate.
 
 The export scenario waits for the new destination to appear or for an

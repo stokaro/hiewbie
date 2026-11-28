@@ -92,6 +92,8 @@ impl<S: ByteSource> Ui<S> {
                 Paragraph::new(bar).style(PANEL),
                 Rect::new(area.right() - width, area.y, width, 1),
             );
+        } else if self.editor.mode() == ViewMode::Code {
+            self.render_code_title(frame, title);
         } else if !hex && !text {
             frame.render_widget(Paragraph::new(header).style(HEADER), title);
         }

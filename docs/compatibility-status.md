@@ -30,7 +30,7 @@ and the parent epic remain open.
 | UI-001 | Implemented | [A], [T], [P], [Observation]: Text/Hex/Code share the document and cursor; the observed original preserves position across Enter cycling. |
 | UI-002 | Partial | [T], [P], [Commands], [Reference], [Observation]: separate F4 choice/Enter cycle, edit restores, Shift+F7 and Code/header/profile bindings; full modifier and command matrix remains unverified. |
 | UI-003 | Partial | [T], [ACLI], [Hex observation]: Raw/PE Hex title and access states, VA/file-offset display, and changed-byte colors now have paired Windows evidence. Decoder profile, overrides, and full state coverage remain open. |
-| UI-004 | Partial | [A], [T]: cursor survives all three views; branch return restores position and interpretation; bookmarks and reference-specific per-view behavior pending. |
+| UI-004 | Partial | [A], [T]: the cursor survives all three views. Branch return restores position and interpretation. Screen bookmarks restore mode-specific viewport state [Bookmark observation]. Other per-view navigation behavior remains open. |
 | UI-005 | Partial | [T], [Observation]: view/edit/search/recovery and mode/header/profile dialogs resolve their own commands; the two-field search dialog has its own help and contextual bindings; block tracking, active-mark cancellation, scoped search, Write block, Calculator, and the file lists have tests. Transient modifier and other overlay details remain open. |
 | UI-006 | Partial | [T], [Commands], [Hex observation]: Hex uses the observed F-key label positions and dims unsupported commands. Contextual Help uses the observed blank bar and wide slots. History and the argument list have their own bars. Other dialog bars, modes, and modifier layers remain open. |
 | UI-007 | Implemented | [T], [P]: all currently implemented operations are keyboard-accessible. |
@@ -55,7 +55,7 @@ cover visiting, switching, and reopening files.
 | KEY-001 | Implemented | [C], [A], [SN], [Commands]: Stable IDs include source-byte restores, block selection/export, profiles, mappings, branches and separate symbol-target/record navigation. |
 | KEY-002 | Partial | [A], [T], [ACLI]: terminal dialogs, shortcuts and headless inspection use shared application commands; macro/browser callers pending. |
 | KEY-003 | Partial | [C], [A], [T], [ACLI], [Reference]: hexadecimal, decimal t, relative and dotted absolute-VA syntax reject overflow/unavailable mappings; original current-section-relative dotted interpretation remains open. |
-| KEY-004 | Partial | [A], [T]: shared position, bounded branch-return history an independent search resume point, and session history with mode/offset restoration; general navigation return and per-view bookmarks remain open. |
+| KEY-004 | Partial | [A], [T]: shared position, bounded branch-return history, an independent search resume point, file history, and eight screen bookmarks per view [Bookmark observation]. General navigation return remains open. |
 | KEY-005 | Partial | [C], [T], [P], [Reference], [Observation]: observed Hex input is nibble-oriented and F3 restores the current source byte then advances; buffer boundaries, Backspace, assembly, truncation and timestamps remain open. |
 | KEY-006 | Partial | [C], [T], [P], [Commands], [Files observation], [Files replay]: F3/F9, Files from view and startup, history and argument navigation, F4 mode selection and search area, F2 export, Shift+F7, header keys and Code view/edit collisions covered; F2 textual assembly and full reference scenarios pending. |
 | KEY-007 | Implemented | [T], [P]: Esc cancels search/dialog, discards edits, then exits view. |
@@ -182,7 +182,7 @@ cover visiting, switching, and reopening files.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| META-001 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
+| META-001 | Partial | [A], [T], [Bookmark observation], [Bookmark replay]: in-memory screen bookmarks are separate from navigation return. Persistent annotations, color ranges, and bookmark storage remain open. |
 | META-002 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | META-003 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 
@@ -299,6 +299,8 @@ cover visiting, switching, and reopening files.
 [Files replay]: evidence/files.cast
 [History observation]: evidence/hiew-8.63-windows-history.json
 [History replay]: evidence/file-history.cast
+[Bookmark observation]: evidence/hiew-8.63-windows-bookmarks.json
+[Bookmark replay]: evidence/bookmarks.cast
 [Text observation]: evidence/hiew-8.63-windows-text.json
 [Search replay]: evidence/search-repeat.cast
 [Recording]: evidence/executable-analysis.cast
