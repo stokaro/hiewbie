@@ -658,6 +658,35 @@ def native_cursor(binary: Path, directory: Path, *, record: bool) -> list[list]:
         return sanitized_events(session.events, str(path.parent.resolve()))
 
 
+def calculator(binary: Path, directory: Path, *, record: bool) -> list[list]:
+    path, mtime_ns = fixture(directory)
+    with PtySession(binary, path, "calculator preserves pending Hex input", record=record) as session:
+        def expect_input(data: bytes, label: str, *checks: bytes) -> None:
+            before = len(session.output)
+            session.send(data, label)
+            for code in checks:
+                if code not in session.output[before:]:
+                    session.fail(f"missing calculator output {code!r} after {label}")
+
+        session.send(F3, "Start a Hex overwrite")
+        session.send(b"A", "Type one pending hex digit")
+        expect_input(b"\x1b=", "Alt+= opens Calculator", b" Calculator ", b"\x1b[11;7H")
+        expect_input(b"1+2*3\r", "Evaluate the expression", b"\x1b[13;11H7", b"\x1b[14;72H111")
+        expect_input(b"\x1bOP", "F1 opens calculator help", b"[Calculator]", b"\x1b[?25l")
+        expect_input(ESC, "Restore the expression caret", b"\x1b[4 q", b"\x1b[11;12H")
+        expect_input(b"\x1b[5~1/0\r", "Page Up clears the expression before testing division by zero", b"Error:", b"Division", b"zero")
+        expect_input(ESC, "Return to the pending low nibble", b"\x1b[2;15H")
+        session.send(b"5", "Complete the pending byte")
+        session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
+        expect_input(b"\x0c", "Ctrl+L reopens Calculator and restores its result", b"Error:", b"Division", b"zero")
+        session.send(ESC, "Close Calculator")
+        session.send(ESC, "Discard the Hex edit")
+        session.send(ESC, "Exit without modifying the file", expect_exit=True)
+        session.finish()
+        session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
+        return sanitized_events(session.events, str(path.parent.resolve()))
+
+
 def discard_resize(binary: Path, directory: Path) -> None:
     path, mtime_ns = fixture(directory)
     with PtySession(binary, path, "discard and resize") as session:
@@ -890,6 +919,7 @@ def main() -> int:
     parser.add_argument("--record-search", type=Path, help="record the two-field search, backward repeat, and exact byte save")
     parser.add_argument("--record-block", type=Path, help="record reverse selection, scoped search, and raw block export")
     parser.add_argument("--record-cursor", type=Path, help="record native editing and search focus, Help, and mode selection")
+    parser.add_argument("--record-calculator", type=Path, help="record calculator focus, evaluation, errors, and return to Hex editing")
     options = parser.parse_args()
     if os.name != "posix":
         parser.error("Unix PTYs are required; Windows ConPTY needs a separate harness")
@@ -909,6 +939,8 @@ def main() -> int:
             print("PASS: reverse block, range-limited search, cancel, exact export and append")
             cursor_events = native_cursor(binary, root / "cursor", record=options.record_cursor is not None)
             print("PASS: native edit/search cursor shape, cell position, and default restoration")
+            calculator_events = calculator(binary, root / "calculator", record=options.record_calculator is not None)
+            print("PASS: calculator evaluation, Help, diagnostic, and restoration of pending Hex input")
             discard_resize(binary, root / "discard")
             print("PASS: narrow resize, 80x25 restoration, discard preserves bytes and mtime")
             read_only(binary, root / "readonly")
@@ -959,6 +991,14 @@ def main() -> int:
                 title="hiewbie native cursor: editing, Search, Help, and mode selection",
             )
             print(f"Cursor recording: {options.record_cursor}")
+        if options.record_calculator is not None:
+            write_recording(
+                options.record_calculator,
+                calculator_events,
+                title="hiewbie Calculator: evaluation, diagnostics, and return to Hex editing",
+                filename=FIXTURE_NAME,
+            )
+            print(f"Calculator recording: {options.record_calculator}")
         print("PASS: exact termios and alternate-screen/paste/cursor restoration in all sessions")
         return 0
     except (SmokeFailure, OSError, subprocess.SubprocessError) as error:

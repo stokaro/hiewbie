@@ -66,6 +66,8 @@ beyond 4 GiB, without loading the complete file into memory.
 | View | F8 / Ctrl+O | Executable headers; F5 entry, F6 regions, F4 fields, S slices |
 | Headers | F7 / F9 / N | Parsed imports / exports / all symbols; tables load on request |
 | Symbols | Enter / R | Follow target bytes / the exact metadata record |
+| View / Edit | Alt+= / Ctrl+L | Open the 64-bit Calculator |
+| Calculator | Enter / Insert / Page Up | Evaluate / toggle insertion / clear the expression |
 | View | Shift+F1 / Ctrl+A | Decoder profile, byte order and explicit raw base |
 | Code | Ctrl+F1 / Ctrl+B | Cycle x86 16/32/64 bitness |
 | Code, viewing | 1–9 / Backspace | Follow a displayed direct destination / return |

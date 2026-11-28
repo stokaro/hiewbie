@@ -2,6 +2,7 @@
 
 mod analysis;
 mod block;
+mod calculator;
 mod help;
 mod hex_view;
 mod render;
@@ -35,6 +36,7 @@ use ratatui::crossterm::{
 
 use analysis::{AnalysisDialog, AnalysisPage};
 use block::{BlockExportRequest, BlockWrite};
+use calculator::Calculator;
 use help::{Help, HelpTopic};
 use search::SearchDialog;
 
@@ -284,6 +286,7 @@ enum Dialog {
     Search(SearchDialog),
     SearchNotice(&'static str),
     BlockWrite(BlockWrite),
+    Calculator,
     Help(Help),
     Mode(ModeChoice),
     LineFeed(text_view::LineFeed),
@@ -304,6 +307,7 @@ struct Ui<S: ByteSource> {
     show_hex_message: bool,
     file_access: FileAccess,
     edit_format: Option<BinaryFormat>,
+    calculator: Calculator,
     dialog: Option<Dialog>,
     reopen_required: bool,
     export_in_progress: bool,
@@ -338,6 +342,7 @@ impl<S: ByteSource> Ui<S> {
             show_hex_message: false,
             file_access: FileAccess::Read,
             edit_format: None,
+            calculator: Calculator::default(),
             dialog: None,
             reopen_required: false,
             export_in_progress: false,
@@ -356,7 +361,7 @@ impl<S: ByteSource> Ui<S> {
     }
 
     fn dispatch(&mut self, command: Command) -> UiAction {
-        if self.pending_nibble.take().is_some() {
+        if command != Command::OpenCalculator && self.pending_nibble.take().is_some() {
             self.notice("Pending hex digit cancelled; no partial byte was applied");
         }
         match self.editor.dispatch(command) {
@@ -364,6 +369,11 @@ impl<S: ByteSource> Ui<S> {
             Ok(Effect::Save) => UiAction::Save,
             Ok(Effect::ExportBlock(range)) => {
                 self.dialog = Some(Dialog::BlockWrite(BlockWrite::new(range)));
+                UiAction::Continue
+            }
+            Ok(Effect::OpenCalculator) => {
+                self.calculator.reopen();
+                self.dialog = Some(Dialog::Calculator);
                 UiAction::Continue
             }
             Err(error) => {
@@ -374,7 +384,9 @@ impl<S: ByteSource> Ui<S> {
     }
 
     fn reject_paste(&mut self) {
-        self.pending_nibble = None;
+        if !matches!(self.dialog, Some(Dialog::Calculator)) {
+            self.pending_nibble = None;
+        }
         if self.reopen_required {
             return;
         }
@@ -426,6 +438,13 @@ impl<S: ByteSource> Ui<S> {
         }
         if self.dialog.is_some() {
             return self.dialog_key(key);
+        }
+        if matches!(
+            (key.code, key.modifiers),
+            (KeyCode::Char('='), KeyModifiers::ALT)
+        ) || is_control_char(key, 'l')
+        {
+            return self.dispatch(Command::OpenCalculator);
         }
         if key.code == KeyCode::F(1)
             && key.modifiers == KeyModifiers::SHIFT
@@ -550,6 +569,7 @@ impl<S: ByteSource> Ui<S> {
         match self.dialog.as_ref() {
             Some(Dialog::Input(_)) => true,
             Some(Dialog::Search(search)) => search.help.is_none(),
+            Some(Dialog::Calculator) => self.calculator.help.is_none(),
             Some(Dialog::BlockWrite(dialog)) => dialog.focus != block::BlockField::Format,
             None => self.editor.is_editing() && !self.editor.document().is_empty(),
             _ => false,
@@ -827,6 +847,10 @@ impl<S: ByteSource> Ui<S> {
             return UiAction::Continue;
         };
         let mut input = match dialog {
+            Dialog::Calculator => {
+                self.calculator_key(key);
+                return UiAction::Continue;
+            }
             Dialog::BlockWrite(dialog) => return self.block_write_key(dialog, key),
             Dialog::Search(search) => {
                 self.search_key(search, key);

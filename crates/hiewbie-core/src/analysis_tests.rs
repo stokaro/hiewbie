@@ -161,6 +161,22 @@ fn dotted_goto_and_unmapped_failure_preserve_the_cursor() {
 }
 
 #[test]
+fn calculator_reads_virtual_and_file_positions_from_current_metadata() {
+    let mut editor = editor(pe32());
+    editor
+        .dispatch(Command::Goto(FileOffset::new(0x200)))
+        .unwrap();
+    assert_eq!(editor.calculate("@o").unwrap(), 0x401000);
+    assert_eq!(editor.calculate("@O").unwrap(), 0x200);
+    editor
+        .document_mut()
+        .overwrite(FileOffset::new(0xB4), &0x500000u32.to_le_bytes())
+        .unwrap();
+    assert_eq!(editor.calculate("@o").unwrap(), 0x501000);
+    assert_eq!(editor.cursor().get(), 0x200);
+}
+
+#[test]
 fn edited_header_mapping_is_invalidated_for_undo_discard_and_save() {
     let mut editor = editor(pe32());
     editor.refresh_analysis();
