@@ -16,3 +16,9 @@
 # Python development helpers.
 __pycache__/
 *.py[cod]
+
+# Repository-owned agent skills override any user-level .agents ignore rule.
+!/.agents/
+!/.agents/skills/
+!/.agents/skills/hiew-ux/
+!/.agents/skills/hiew-ux/**

@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "observation_date": "2026-11-28",
+  "reference": {
+    "reported_version": "8.63",
+    "distribution_in_repository": false
+  },
+  "environment": {
+    "os": "Windows 11 22H2, x86-64",
+    "runtime": "isolated Windows Server Core LTSC 2022 container",
+    "terminal_cells": "80x25",
+    "console_transport": "interactive console"
+  },
+  "fixtures": [
+    {
+      "name": "probe.bin",
+      "provenance": "generated",
+      "description": "1024 bytes containing four repetitions of 00 through FF"
+    },
+    {
+      "name": "hiew32.exe",
+      "provenance": "owner-supplied reference distribution",
+      "use": "read-only PE presentation observation"
+    }
+  ],
+  "observed_scenarios": [
+    "raw Hex, Text, and 16-bit x86 Code views",
+    "F4 mode chooser and Enter mode cycle",
+    "contextual Help, Goto input, Search, and Calculator",
+    "Hex nibble editing, F3 restore, Escape discard, and F9 save",
+    "block selection and Write block form",
+    "startup file browser",
+    "PE summary and section table"
+  ],
+  "sanitized_specification": "../../.agents/skills/hiew-ux/references/observed-ux.md",
+  "raw_capture_committed": false
+}

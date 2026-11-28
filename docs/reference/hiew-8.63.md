@@ -5,9 +5,9 @@ Comparison date: **2026-11-28**. Audited hiewbie baseline:
 Implementation notes also incorporate the analysis merged in
 [`8d74d74`](https://github.com/stokaro/hiewbie/tree/8d74d74512c3ad659eee3cc92628e7f80b97962c)
 and its integration with these reference controls.
-This is a comparison of the supplied original documentation with hiewbie's
-source, followed by hiewbie regression tests. **The original application did
-not start in the available environment; there is no observed runtime parity.**
+This comparison combines the supplied original documentation, hiewbie source
+and regressions, and a later Windows runtime observation. The earlier Wine
+attempt remains recorded as a failed environment-specific launch.
 
 Related contracts: UI-001/002/004/005/011, KEY-003..008, EDIT-002..006,
 ADDR-001..006, SEARCH-001/002, META-001, MACRO-001/002, TEST-001/003/011.
@@ -17,28 +17,23 @@ ADDR-001..006, SEARCH-001/002, META-001, MACRO-001/002, TEST-001/003/011.
 The owner supplied a local Hiew distribution containing `hiew32.exe`, the
 English and Russian manuals, contextual help, and configuration. The manuals
 identify **8.63**, with a 2018-12-31 release entry. Static file inspection
-identifies the executable as PE32, i386, Windows console. Its running version
-and enabled edition have not been verified. The presence of `hiew32demo.txt`
-does not establish that the executable is the demo edition.
+identifies the executable as PE32, i386, Windows console. The running program
+reported Hiew 8.63; the enabled edition has not been verified. The presence of
+`hiew32demo.txt` does not establish that the executable is the demo edition.
 
-Sources in this report are paraphrased from these original files, decoded as
-CP866. Section names and original line numbers make the findings reproducible
-for an owner with the same distribution; the proprietary files are not included.
-
-| Source | SHA-256 |
-| --- | --- |
-| `hiew_en.txt` | `f05897d99a12a4220c0e2a7467751fc0f53dcc338d9e78ebc7b0bc4859e2de24` |
-| `hiew_ru.txt` | `837f03e31d3f9ace3bff21a62e5b73e4a138476426c735163ae0921f4bcd3716` |
-| `hiew8.hlp` | `5d6623cc927b04268145ff7a6d269f1b8908d75e025b8b49d1055449a8c2006e` |
-| `hiew8.ini` | `ae454b45a483e383f5bc70347a928cf371206643d34f93a8f46a3e71812f5f2d` |
+Sources in this report are paraphrased from the supplied executable, English and
+Russian manuals, contextual help, and configuration, with text decoded as CP866.
+Section names and original line numbers make the findings reproducible for an
+owner with the same distribution; the proprietary files and their fingerprints
+are not included.
 
 Evidence labels have distinct meanings:
 
 - **Documented**: a behavior described by the supplied author documentation.
 - **Implemented/tested**: a hiewbie behavior covered by its own tests; the PR's
   validation records the actual commands and host.
-- **Observed**: a behavior recorded while running the original. No scenario in
-  this report has this label yet.
+- **Observed**: a behavior recorded while running the named original executable
+  in the recorded Windows environment.
 - **Open**: a detail requiring a reference run, or an unimplemented parity gap.
 
 ### Runtime attempt
@@ -56,6 +51,23 @@ Exit status was 1. The generated 1,024-byte fixture remained unchanged. The
 runtime and input without distributing either binary. This establishes a local
 execution restriction, not an application defect or a Hiew/Wine incompatibility.
 
+### Windows runtime observation
+
+The supplied executable subsequently ran in a Windows 11 22H2 x86-64 environment
+through an isolated Windows Server Core LTSC 2022 container and an 80 by
+25 interactive console. The program identified itself as Hiew 8.63. Observation
+used a generated 1,024-byte raw fixture and the supplied executable as a read-only
+PE fixture. The original distribution and raw terminal capture remain outside
+the repository.
+
+Observed scenarios covered the Text, Hex, and 16-bit x86 Code views; F4 mode
+selection and Enter cycling; contextual Help, Goto, Search, and Calculator;
+Hex nibble editing, current-byte F3 restore, Escape discard, and F9 save; block
+selection and export form; startup file browser; and PE summary/section overlays.
+The sanitized [observation record](../evidence/hiew-8.63-windows-observation.json)
+and [UX skill](../../.agents/skills/hiew-ux/SKILL.md) preserve the environment,
+visible state transitions, implementation guidance, and remaining unknowns.
+
 ## Corrections to the existing editor
 
 These changes address existing M1 commands and coexist with the initial
@@ -67,7 +79,7 @@ The remaining analysis and parity requirements stay in
 | --- | --- | --- |
 | Edit Backspace | Moves left and leaves the edited byte changed | Restore the preceding byte from the transaction's source, then move there. A pending first hex digit is cancelled separately. Documented: `hiew8.hlp`, `[HexEdit]`, line 337. |
 | Edit F3 | Reports byte restore as unavailable | Restore the byte at the cursor to its source value, preserving other edits. Documented: `[HexEdit]`, line 323. |
-| View F4 | Shares Enter's immediate mode cycle | Hiew documents F4 as mode selection. Hiewbie implements an explicit Text/Hex/Code chooser using the shared `view.set-mode` command; Enter cycles all three. The chooser is a hiewbie design decision; the original F4 interaction remains unobserved. Sources: H `[Text]`, `[Hex]`, `[Code]`. |
+| View F4 | Shares Enter's immediate mode cycle | Hiewbie implements an explicit Text/Hex/Code chooser using the shared `view.set-mode` command; Enter cycles all three. Observed Hiew 8.63 opens a centered Text/Hex/Decode chooser with the current mode selected and F1-F4 shortcuts for Text/Hex/Decode/Next. |
 | View Shift+F7 | Rejected as an unsupported modified key | Invoke the same repeat-search path as Ctrl+Enter and Ctrl+R. Documented: `[Text]`, line 232; `[Hex]`, line 295. Original search continuation semantics remain a separate gap. |
 
 Restore is deliberately distinct from undo history. For example, change byte 0

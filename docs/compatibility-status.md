@@ -7,8 +7,8 @@ means the stated initial behavior exists with the linked regression evidence;
 **Partial** means only the recorded subset exists; **Planned** means no application
 implementation is claimed. Actual platform results belong to the identified
 commit's CI runs. No row is promoted to cross-platform **Verified** by configuration
-alone. A [versioned Hiew 8.63 documentation comparison][Reference] is recorded;
-the original failed to start, so no original-program runtime parity is claimed.
+alone. A [versioned Hiew 8.63 comparison][Reference] and selected Windows runtime
+[observations][Observation] are recorded; neither establishes full runtime parity.
 
 Current fixtures are generated in the linked tests: byte vectors, PE/ELF/Mach-O
 images, instruction encodings, temporary files, Unicode paths, sparse sources,
@@ -27,17 +27,17 @@ and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| UI-001 | Implemented | [A], [T], [P]: Text/Hex/Code share the document, cursor, and pending bytes; no observed original-runtime parity is claimed. |
-| UI-002 | Partial | [T], [P], [Commands], [Reference]: separate F4 choice/Enter cycle, edit restores, Shift+F7 and Code/header/profile bindings; full keymap and original runtime parity unverified. |
-| UI-003 | Partial | [T], [ACLI]: FO/VA context, mode, dirty state, effective decoder profile/backend and overrides are displayed; full reference/layout comparison pending. |
+| UI-001 | Implemented | [A], [T], [P], [Observation]: Text/Hex/Code share the document and cursor; the observed original preserves position across Enter cycling. |
+| UI-002 | Partial | [T], [P], [Commands], [Reference], [Observation]: separate F4 choice/Enter cycle, edit restores, Shift+F7 and Code/header/profile bindings; full modifier and command matrix remains unverified. |
+| UI-003 | Partial | [T], [ACLI], [Observation]: FO/VA context, mode, dirty state, effective decoder profile/backend and overrides are displayed; observed title/access tokens and pending-byte colors need complete comparison. |
 | UI-004 | Partial | [A], [T]: cursor survives all three views; branch return restores position and interpretation; bookmarks and reference-specific per-view behavior pending. |
-| UI-005 | Partial | [T]: view/edit/search/recovery and mode/header/profile dialogs resolve their own commands; block selections pending. |
-| UI-006 | Partial | [T], [Commands]: context-sensitive function bar and profile/bitness hints; complete modifier-aware reference behavior pending. |
+| UI-005 | Partial | [T], [Observation]: view/edit/search/recovery and mode/header/profile dialogs resolve their own commands; observed block-selection and nested-overlay details remain unimplemented. |
+| UI-006 | Partial | [T], [Commands], [Observation]: context-sensitive function bar and profile/bitness hints; the observed ten-slot bar, dialog bars, and transient Alt layer require complete parity. |
 | UI-007 | Implemented | [T], [P]: all currently implemented operations are keyboard-accessible. |
-| UI-008 | Partial | [T], [P]: 80-column cells, dynamic rows, resize; full reference comparison pending. |
-| UI-009 | Partial | [T]: blue/cyan default; accessible configurable themes pending. |
+| UI-008 | Partial | [T], [P], [Observation]: 80-column cells, dynamic rows, resize; the observed 80x25 title/content/function-bar geometry is recorded, with resize comparison pending. |
+| UI-009 | Partial | [T], [Observation]: blue/cyan default aligns with the observed palette; changed-byte, block, dialog, and accessible theme coverage remains pending. |
 | UI-010 | Partial | [T], [Commands]: Ctrl alternatives and keyboard header/profile dialogs; comprehensive command-menu and intercepted-key coverage pending. |
-| UI-011 | Partial | [T], [ST], [Input], [Commands], [Reference]: unavailable Open/textual assembly and symbol-table coverage gaps are explicit; original runtime observations pending. |
+| UI-011 | Partial | [T], [ST], [Input], [Commands], [Reference], [Observation]: visible deviations and unavailable commands are explicit; the observed runtime now covers primary views and dialogs, while the remaining matrix stays open. |
 | UI-012 | Partial | [T], [Commands]: contextual help and shared command inventory cover current analysis; key-event diagnostics and comprehensive command index UI pending. |
 | UI-013 | Implemented | [F], [D], [A], [T]: bounded viewport, metadata reads and per-row decoding; no eager whole-file disassembly or indexing. |
 | UI-014 | Implemented | [CLI], [P]: ordinary editing has no network/service dependency. |
@@ -51,7 +51,7 @@ and the parent epic remain open.
 | KEY-002 | Partial | [A], [T], [ACLI]: terminal dialogs, shortcuts and headless inspection use shared application commands; macro/browser callers pending. |
 | KEY-003 | Partial | [C], [A], [T], [ACLI], [Reference]: hexadecimal, decimal t, relative and dotted absolute-VA syntax reject overflow/unavailable mappings; original current-section-relative dotted interpretation remains open. |
 | KEY-004 | Partial | [A], [T]: shared position and bounded branch-return history across views; reference-specific navigation/bookmark comparison pending. |
-| KEY-005 | Partial | [C], [T], [P], [Reference]: F3/current and Backspace/previous source-byte restores; exact original nibble/buffer/cursor behavior, F2/assembly, F10/truncation and timestamps remain open. |
+| KEY-005 | Partial | [C], [T], [P], [Reference], [Observation]: observed Hex input is nibble-oriented and F3 restores the current source byte then advances; buffer boundaries, Backspace, assembly, truncation and timestamps remain open. |
 | KEY-006 | Partial | [C], [T], [P], [Commands]: F3/F9, F4 mode selection, Shift+F7, header keys and Code view/edit collisions covered; F2 textual assembly and full reference scenarios pending. |
 | KEY-007 | Implemented | [T], [P]: Esc cancels search/dialog, discards edits, then exits view. |
 | KEY-008 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
@@ -249,7 +249,7 @@ and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| TEST-001 | Implemented | [P], [Recording]: generated scenarios replay mode choice, source-byte restore, entry/VA goto, Code branch/return, byte edit and save through a real PTY; original runtime comparison remains blocked. |
+| TEST-001 | Implemented | [P], [Recording], [Observation]: generated scenarios replay mode choice, source-byte restore, entry/VA goto, Code branch/return, byte edit and save through a real PTY; selected original behavior is recorded, while automated differential replay remains pending. |
 | TEST-002 | Implemented | [N], [P]: discard checks expected bytes and mtime on generated ordinary files. |
 | TEST-003 | Implemented | [N], [P]: exact persisted byte changes; reopen via file reads. |
 | TEST-004 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
@@ -283,6 +283,7 @@ and the parent epic remain open.
 [Recording]: evidence/executable-analysis.cast
 [Storage]: adr/0001-document-storage.md
 [Input]: adr/0002-terminal-input.md
+[Observation]: evidence/hiew-8.63-windows-observation.json
 [Build]: adr/0003-build-targets.md
 [Analysis]: adr/0004-analysis-backends.md
 [Symbols]: adr/0005-symbol-navigation.md

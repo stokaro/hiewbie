@@ -28,10 +28,11 @@ Record the exact reference version, terminal, fixture, and observation date for 
 The compatibility ledger must identify evidence and intentional differences per requirement.
 Do not infer original behavior from another clone's implementation.
 
-The [8.63 reference audit][S12] adds a versioned bundled-documentation baseline
-and 25 differential scenarios. Its original-program startup attempt was blocked
-by the environment; no original behavior was observed. Keep that baseline
-separate from the newer official feature-page snapshot above.
+The [8.63 reference audit][S12] adds a versioned bundled-documentation baseline,
+25 differential scenarios, and a later Windows runtime observation of the primary
+views and selected workflows. Its earlier Wine startup attempt remains recorded
+as an environment-specific failure. Keep this versioned baseline separate from
+the newer official feature-page snapshot above.
 
 ### 1.1 Official baseline
 
