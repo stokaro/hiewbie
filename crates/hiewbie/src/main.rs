@@ -53,7 +53,7 @@ Examples:
   hiewbie --disassemble --raw --arch x86-64 --base 0x400000 code.bin
   hiewbie --disassemble --slice 1 --entry universal-macho
 
-View: Enter cycles Hex/Text/Code; F4 selects a mode; F3/Ctrl+E begins editing;
+View: Enter cycles Text/Hex/Code; F4 selects a mode; F3/Ctrl+E begins editing;
       F5/Ctrl+G goes to an offset; F7/Ctrl+F searches;
       Shift+F7, Ctrl+Enter, or Ctrl+R repeats the search.
 Code: F8/Ctrl+O shows headers; Shift+F1/Ctrl+A opens the analysis profile.

@@ -37,7 +37,7 @@ from it. The public core exports `COMMANDS` and `Command::id()` from
 | `navigate.code` | Signed `i32` row delta | Walk decoded rows forward, or retrace recent boundaries backward |
 | `analysis.resynchronize` | None | Start decoding at the selected byte and clear cached movement boundaries |
 | `view.set-mode` | `Hex`, `Text`, or `Code` | Select a view without changing bytes |
-| `view.cycle-mode` | None | Cycle Hex → Text → Code → Hex |
+| `view.cycle-mode` | None | Cycle Text → Hex → Code → Text |
 | `file.save` | None | Return a native-save effect; require edit mode and write capability |
 
 The native frontend owns help and input dialogs, key translation, current input
@@ -60,9 +60,26 @@ with an incomplete first hex digit only cancels that digit. Restores participate
 in undo/redo history without being aliases for undo. They use the transaction's
 source, rebased after each save.
 
+### Terminal focus
+
+F4 opens the mode chooser. Up and Down move the highlight and Enter selects.
+F1, F2, and F3 select Text, Hex, and Decode directly. F4 while the chooser is
+open cycles the view and closes the chooser. Contextual Help supports arrows,
+Page Up and Down, Home, and End. F1, Enter, or Esc closes it.
+
+A paired byte highlight marks the current byte while viewing. An underline
+marks the next Hex digit, ASCII byte, active search field, or Goto entry.
+On Windows, hiewbie requests the observed HIEW height of 12% and restores
+the console buffer's prior cursor size when the buffer supports native
+sizing. A buffer that keeps its old size and other terminals receive
+DECSCUSR underline and user-default reset requests. Terminal emulators
+control their presentation. Caret position and visibility are controlled
+independently.
+
 ### Search
 
-F7/Ctrl+F opens the search dialog. UTF-8 input folds ASCII A–Z and a–z.
+F7/Ctrl+F opens the search dialog. The field labeled ASCII accepts UTF-8 and
+folds ASCII A–Z and a–z.
 Other UTF-8 bytes and Hex input compare exactly.
 Tab or Up/Down converts the query to the other representation when possible.
 F2 switches between forward and backward scans. F5 in the dialog jumps to the
@@ -74,7 +91,10 @@ resume one byte beyond the last hit in the original scan direction, allowing
 overlapping matches. Cursor movement preserves that point. Ctrl+Home/End and
 a successful view Goto reset the resume point to the destination. Cancellation
 preserves the previous completed query and resume point. Searches stop at the
-boundary without wrapping, and a completed miss stays exhausted until reset.
+boundary without wrapping. Search shows an offset and a processing panel while
+pending. A miss opens an alert and leaves the query exhausted until reset.
+Enter or Esc dismisses the alert. Esc during a scan cancels it and opens an
+acknowledgment. Dismissing it leaves the original cursor and selection intact.
 Following an edit, repeat keeps the request and starts from the current cursor.
 
 F4 switches between the file and a completed block. A match must fit entirely

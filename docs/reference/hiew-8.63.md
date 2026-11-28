@@ -151,6 +151,19 @@ separate controlled observation confirmed F4 area selection and the first
 exact byte hit within a marked block. Wildcards
 and instruction search also remain open.
 
+### Search progress, mode chooser, and cursor
+
+On an 80×25 Windows console, a forward search for hex `FF` in a generated
+512 MiB zero-filled sparse file showed a small double-bordered processing
+panel. The title row displayed the scan offset and a shaded bar. Escape
+opened an abort alert, then dismissing it restored the original offset.
+This is separate from continuation and failed-match behavior. Pressing
+F4 twice from Hex opened the chooser and then selected Decode while closing
+the chooser, even when the highlight had moved to Text. Enter cycled Text,
+Hex, and Decode. The Windows console reported a 12% native cursor in Hex
+and ASCII editing, search, and Goto. The prior size and visibility returned
+on exit. [Sanitized observation and cell bounds](../evidence/hiew-8.63-windows-dialogs.json)
+
 ### Block marking, scoped search, and export
 
 A second 80×25 Windows console run used two independently generated files.

@@ -235,7 +235,7 @@ pub const COMMANDS: &[CommandInfo] = &[
     },
     CommandInfo {
         id: "view.cycle-mode",
-        description: "Cycle through Hex, Text, and Code views",
+        description: "Cycle through Text, Hex, and Code views",
     },
     CommandInfo {
         id: "file.save",
@@ -625,9 +625,9 @@ impl<S: ByteSource> Editor<S> {
             }
             Command::SetMode(mode) => self.set_mode(mode),
             Command::CycleMode => self.set_mode(match self.mode {
-                ViewMode::Hex => ViewMode::Text,
-                ViewMode::Text => ViewMode::Code,
-                ViewMode::Code => ViewMode::Hex,
+                ViewMode::Text => ViewMode::Hex,
+                ViewMode::Hex => ViewMode::Code,
+                ViewMode::Code => ViewMode::Text,
             }),
             Command::Save => {
                 self.require_editing()?;

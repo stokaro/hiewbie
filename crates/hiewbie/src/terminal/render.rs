@@ -4,10 +4,10 @@ use hiewbie_core::{
     ByteSource, FileOffset, MAX_CODE_ROWS, MAX_READ_BYTES, SearchDirection, ViewMode,
 };
 use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::layout::{Margin, Rect};
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
 use super::block::{BlockField, BlockWrite};
 use super::search::{SearchDialog, SearchField};
@@ -19,6 +19,12 @@ pub(super) const BASE: Style = Style::new().fg(Color::Gray).bg(Color::Blue);
 const ADDRESS: Style = Style::new().fg(Color::Cyan).bg(Color::Blue);
 const SELECTED: Style = Style::new().fg(Color::Black).bg(Color::Cyan);
 const MARK: Style = Style::new().fg(Color::Yellow).bg(Color::Magenta);
+const ADDRESS_COLUMNS: usize = 18;
+pub(super) const PANEL: Style = Style::new().fg(Color::Black).bg(Color::Gray);
+const HELP_PANEL: Style = Style::new().fg(Color::LightYellow).bg(Color::Green);
+const FOCUSED_ROW: Style = Style::new().fg(Color::White).bg(Color::Black);
+const ERROR_PANEL: Style = Style::new().fg(Color::LightYellow).bg(Color::Red);
+const ACTIVE_SEARCH_FIELD: Style = Style::new().fg(Color::White).bg(Color::Cyan);
 const ACTIVE: Style = Style::new().fg(Color::Black).bg(Color::Yellow);
 pub(super) const HEADER: Style = Style::new().fg(Color::Black).bg(Color::Cyan);
 
@@ -34,7 +40,34 @@ impl<S: ByteSource> Ui<S> {
         }
         frame.render_widget(Block::default().style(BASE), area);
         let header = format!(" hiewbie {} | {}", env!("CARGO_PKG_VERSION"), self.label);
-        frame.render_widget(Paragraph::new(header).style(HEADER), row(area, 0));
+        if self.editor.is_searching() {
+            let width = (area.width / 3).min(18);
+            let next = self.scan_position.unwrap_or(self.editor.cursor()).get();
+            let address = format!("{next:08X}│");
+            let address_width = (address.chars().count() as u16).min(area.width - width);
+            let title_width = area.width - width - address_width;
+            frame.render_widget(
+                Paragraph::new(header).style(HEADER),
+                Rect::new(area.x, area.y, title_width, 1),
+            );
+            frame.render_widget(
+                Paragraph::new(address).right_aligned().style(PANEL),
+                Rect::new(area.x + title_width, area.y, address_width, 1),
+            );
+            let len = self.editor.document().len().max(1);
+            let filled = (u128::from(next.min(len)) * u128::from(width) / u128::from(len)) as usize;
+            let bar = format!(
+                "{}{}",
+                "▓".repeat(filled),
+                "░".repeat(usize::from(width) - filled)
+            );
+            frame.render_widget(
+                Paragraph::new(bar).style(PANEL),
+                Rect::new(area.right() - width, area.y, width, 1),
+            );
+        } else {
+            frame.render_widget(Paragraph::new(header).style(HEADER), row(area, 0));
+        }
         self.update_viewport(area);
 
         if area.width < 23 || area.height < 5 {
@@ -114,10 +147,36 @@ impl<S: ByteSource> Ui<S> {
         }
         self.render_status_message(frame, row(area, area.height - 2));
         self.render_function_bar(frame, row(area, area.height - 1));
+        if self.editor.is_searching() {
+            let content = draw_dialog(
+                frame,
+                Rect::new(area.x, area.y, area.width, area.height.saturating_sub(6)),
+                29,
+                5,
+                Line::default(),
+                PANEL,
+                false,
+            );
+            if content.height != 0 {
+                frame.render_widget(
+                    Paragraph::new("Processing...").centered().style(PANEL),
+                    content,
+                );
+            }
+        }
         match self.dialog.as_ref() {
-            Some(Dialog::Help) => render_help(frame, area),
+            Some(Dialog::Help { selected }) => {
+                render_help(
+                    frame,
+                    area,
+                    self.editor.mode(),
+                    self.editor.is_editing(),
+                    *selected,
+                );
+            }
             Some(Dialog::Input(input)) => render_prompt(frame, area, input),
             Some(Dialog::Search(search)) => render_search(frame, area, search),
+            Some(Dialog::SearchNotice(message)) => render_search_notice(frame, area, message),
             Some(Dialog::BlockWrite(dialog)) => {
                 if !self.export_in_progress {
                     render_block_write(frame, area, dialog);
@@ -161,7 +220,7 @@ impl<S: ByteSource> Ui<S> {
             ViewMode::Text => (area.width as usize).saturating_sub(18).clamp(1, 256),
             ViewMode::Hex => [64, 32, 16, 8, 4, 2, 1]
                 .into_iter()
-                .find(|count| 20 + 3 * count + (count - 1) / 2 <= area.width as usize)
+                .find(|count| ascii_column(*count) + count <= area.width as usize)
                 .unwrap_or(1),
             ViewMode::Code => 1,
         };
@@ -238,18 +297,23 @@ impl<S: ByteSource> Ui<S> {
             } else {
                 BASE
             };
-            let mut spans = vec![
-                Span::styled(
-                    format!(
-                        "{:08X} {domain}{:016X} ",
-                        row.offset.get(),
-                        row.instruction.address.get()
-                    ),
-                    selected,
-                ),
-                Span::styled(format!("{branch} "), BASE.fg(Color::Yellow)),
-            ];
+            let location = format!(
+                "{:08X} {domain}{:016X} ",
+                row.offset.get(),
+                row.instruction.address.get()
+            );
+            let branch = format!("{branch} ");
             let encoded = row.instruction.bytes();
+            if index == 0 && !encoded.is_empty() && self.editing_caret_visible() {
+                let nibble = usize::from(
+                    self.entry_column == EntryColumn::Hex && self.pending_nibble.is_some(),
+                );
+                set_body_caret(frame, body, location.len() + branch.len() + nibble, 0);
+            }
+            let mut spans = vec![
+                Span::styled(location, selected),
+                Span::styled(branch, BASE.fg(Color::Yellow)),
+            ];
             let shortened = encoded.len() > 8;
             let display = &encoded[..encoded.len().min(if shortened { 7 } else { 8 })];
             for (column, byte) in display.iter().enumerate() {
@@ -313,6 +377,21 @@ impl<S: ByteSource> Ui<S> {
                 return;
             }
         };
+        if self.editing_caret_visible() {
+            let relative = self.editor.cursor().get().saturating_sub(self.top);
+            if relative < count as u64 {
+                let index = relative as usize % self.bytes_per_row;
+                let row = relative as usize / self.bytes_per_row;
+                let column = match (self.editor.mode(), self.entry_column) {
+                    (ViewMode::Text, _) => ADDRESS_COLUMNS + index,
+                    (_, EntryColumn::Ascii) => ascii_column(self.bytes_per_row) + index,
+                    (_, EntryColumn::Hex) => {
+                        hex_column(index) + usize::from(self.pending_nibble.is_some())
+                    }
+                };
+                set_body_caret(frame, body, column, row);
+            }
+        }
         let lines = bytes[..count]
             .chunks(self.bytes_per_row)
             .enumerate()
@@ -382,15 +461,31 @@ impl<S: ByteSource> Ui<S> {
     }
 
     fn render_function_bar(&self, frame: &mut Frame<'_>, area: Rect) {
+        let labels = if self.editor.is_searching() {
+            Some([""; 10])
+        } else {
+            match self.dialog.as_ref() {
+                Some(Dialog::Mode(_)) => {
+                    Some(["Text", "Hex", "Decode", "Next", "", "", "", "", "", ""])
+                }
+                Some(Dialog::Search(s)) if !s.help => {
+                    Some(["Help", "Direct", "", "Area", "GoLast", "", "", "", "", ""])
+                }
+                Some(Dialog::Help { .. } | Dialog::SearchNotice(_)) => Some([""; 10]),
+                Some(Dialog::Input(input)) if input.kind == PromptKind::Goto => Some([""; 10]),
+                _ => None,
+            }
+        };
+        if let Some(labels) = labels {
+            render_function_slots(frame, area, labels);
+            return;
+        }
         let contextual = if self.reopen_required {
             Some(" File replaced | Esc exits | Reopen before further edits ")
-        } else if self.editor.is_searching() {
-            Some(" Searching in bounded steps | Esc cancel ")
         } else if self.export_in_progress {
             Some(" Staging block output | Esc cancel ")
         } else {
             match self.dialog.as_ref() {
-                Some(Dialog::Help) => Some(" F1 / Enter / Esc close help "),
                 Some(Dialog::Analysis(dialog)) if dialog.page == super::AnalysisPage::Profiles => {
                     Some(
                         " 0..6 / Arrows select | Enter apply | L/B/E endian | R raw | V base | Esc ",
@@ -408,22 +503,10 @@ impl<S: ByteSource> Ui<S> {
                 Some(Dialog::Search(search)) if search.help => {
                     Some(" F1 / Enter / Esc close search help ")
                 }
-                Some(Dialog::Search(_))
-                    if self.editor.block_selection().is_some_and(|b| !b.is_marking) =>
-                {
-                    Some(
-                        " F1 Help  F2 Direct  F4 Area  F5 GoLast  Tab field  Enter find  Esc cancel ",
-                    )
-                }
-                Some(Dialog::Search(_)) => {
-                    Some(" F1 Help   F2 Direct   F5 GoLast   Tab field   Enter find   Esc cancel ")
-                }
-                Some(Dialog::Input(_)) => Some(" Enter goto | Ctrl+U clear | Esc cancel "),
-                Some(Dialog::Mode(_)) => Some(" Up/Down choose | Enter select | Esc cancel "),
                 Some(Dialog::BlockWrite(_)) => {
                     Some(" Tab field | Enter accept | Ctrl+U clear | Esc cancel ")
                 }
-                None => None,
+                _ => None,
             }
         };
         if let Some(text) = contextual {
@@ -449,21 +532,38 @@ impl<S: ByteSource> Ui<S> {
                 "Help", put, "Edit", "Mode", "Goto", "Refs-", "Search", "Header", "Open-", "--",
             ]
         };
-        let mut spans = Vec::with_capacity(20);
-        for (index, label) in labels.into_iter().enumerate() {
-            spans.push(Span::styled(
-                format!("{:>2}", index + 1),
-                BASE.fg(Color::Yellow).add_modifier(Modifier::BOLD),
-            ));
-            let available = !label.contains('-');
-            let style = if available {
-                HEADER
-            } else {
-                HEADER.fg(Color::DarkGray)
-            };
-            spans.push(Span::styled(format!("{label:<6}"), style));
-        }
-        frame.render_widget(Paragraph::new(Line::from(spans)).style(HEADER), area);
+        render_function_slots(frame, area, labels);
+    }
+}
+
+fn render_function_slots(frame: &mut Frame<'_>, area: Rect, labels: [&str; 10]) {
+    let mut spans = Vec::with_capacity(20);
+    for (index, label) in labels.into_iter().enumerate() {
+        spans.push(Span::styled(
+            format!("{:>2}", index + 1),
+            Style::new().fg(Color::Gray).bg(Color::Black),
+        ));
+        let style = if label.contains('-') {
+            HEADER.fg(Color::DarkGray)
+        } else {
+            HEADER
+        };
+        spans.push(Span::styled(format!("{label:<6}"), style));
+    }
+    frame.render_widget(Paragraph::new(Line::from(spans)).style(HEADER), area);
+}
+
+fn hex_column(index: usize) -> usize {
+    ADDRESS_COLUMNS + index * 2 + index / 2
+}
+
+fn ascii_column(bytes_per_row: usize) -> usize {
+    ADDRESS_COLUMNS + bytes_per_row * 2 + (bytes_per_row - 1) / 2 + 2
+}
+
+fn set_body_caret(frame: &mut Frame<'_>, area: Rect, column: usize, row: usize) {
+    if column < usize::from(area.width) && row < usize::from(area.height) {
+        frame.set_cursor_position((area.x + column as u16, area.y + row as u16));
     }
 }
 
@@ -496,140 +596,231 @@ pub(super) fn popup(area: Rect, width: u16, height: u16) -> Rect {
     )
 }
 
-fn render_help(frame: &mut Frame<'_>, area: Rect) {
-    let popup = popup(area, 80, 25);
-    let lines = [
-        "Hex, ASCII Text, and Code share one document and file cursor.",
-        "View  Enter cycle; F4 select mode; F3/Ctrl+E edit; Esc quit",
-        "      F5/Ctrl+G goto; F7/Ctrl+F search; F8/Ctrl+O headers",
-        "      Shift+F7 / Ctrl+Enter / Ctrl+R repeat (same direction, no wrap)",
-        "Code  1..9 direct branch; Backspace return; / resynchronize",
-        "      Up/Down instructions; Left/Right bytes; PgUp/PgDn pages",
-        "      Unknown backward boundaries use one byte/ISA alignment.",
-        "      Ctrl+F1/Ctrl+B x86 bitness; Shift+F1/Ctrl+A decoder",
-        "Profile 0 Auto; 1..3 x86 16/32/64; 4 ARM; 5 Thumb; 6 AArch64",
-        "      L/B/E little/big/automatic endian; R raw; V raw base",
-        "      Big-endian decode unsupported; raw bytes remain available.",
-        "Headers F5 entry; F6 regions; F7 imports; F9 exports; N symbols",
-        "Edit  F9/Ctrl+S save; Esc discard; Tab hex/ASCII; Ctrl+Z/Y undo/redo",
-        "      F3 restores current byte; Backspace restores previous byte.",
-        "      Two digits commit one byte; Backspace cancels a digit first.",
-        "      Code editing changes bytes; textual assembly is planned.",
-        "Goto  Hex default, decimal suffix t, +/- relative; .address is VA",
-        "      V: image VA; R: raw base address; F: unmapped file offset",
-        "Find  Tab hex/UTF-8 text; Esc cancels scan; Ctrl+Home/End file edges",
-        "Block * start/finish/clear; [ / ] endpoints; Alt+* resize",
-        "      Ctrl+*/Ctrl+K select all; F4 in Search toggles File/Block",
-        "      F2 exports a completed block; * in the offset field appends",
-        "Paste rejected. Global references and multi-file planned.",
-        "F9 in view means Open (planned), never Save. '-' means planned.",
-        "Legacy terminals may intercept keys; use the Ctrl alternatives.",
-        "Close help with F1, Enter, or Esc.",
-    ]
-    .into_iter()
-    .map(Line::raw)
-    .collect::<Vec<_>>();
-    frame.render_widget(Clear, popup);
+/// Draw an inset double frame with a shadow two columns right and one row down. Keep the
+/// function bar outside the surface, including on cramped terminals.
+pub(super) fn dialog_surface<'a>(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    width: u16,
+    height: u16,
+    title: impl Into<Line<'a>>,
+    style: Style,
+) -> Rect {
+    draw_dialog(frame, area, width, height, title.into(), style, true)
+}
+
+fn draw_dialog(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    width: u16,
+    height: u16,
+    title: Line<'_>,
+    style: Style,
+    show_close: bool,
+) -> Rect {
+    let available = Rect::new(area.x, area.y, area.width, area.height.saturating_sub(1));
+    let surface = popup(area, width, height.min(available.height));
+    let shadow = Rect::new(
+        surface.x.saturating_add(2),
+        surface.y.saturating_add(1),
+        surface.width,
+        surface.height,
+    )
+    .intersection(available);
+    frame.render_widget(Clear, shadow);
     frame.render_widget(
-        Paragraph::new(lines).style(HEADER).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" hiewbie help ")
-                .style(HEADER),
-        ),
-        popup,
+        Block::default().style(Style::new().bg(Color::Black)),
+        shadow,
     );
+    frame.render_widget(Clear, surface);
+    frame.render_widget(Block::default().style(style), surface);
+    if show_close && surface.width >= 3 && surface.height >= 5 {
+        frame.render_widget(
+            Paragraph::new("[x]").style(style.fg(Color::DarkGray)),
+            Rect::new(surface.right() - 3, surface.y, 3, 1),
+        );
+    }
+
+    let inset = surface.inner(Margin::new(
+        if surface.width >= 28 { 2 } else { 1 },
+        u16::from(surface.height >= 5),
+    ));
+    let border = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Double)
+        .title(title)
+        .style(style);
+    let content = border.inner(inset);
+    frame.render_widget(border, inset);
+    content
+}
+
+pub(super) const HELP_LINES: &[&str] = &[
+    "Hex, ASCII Text, and Code share one document and file cursor.",
+    "View  Enter cycle; F4 select mode; F3/Ctrl+E edit; Esc quit",
+    "      F5/Ctrl+G goto; F7/Ctrl+F search; F8/Ctrl+O headers",
+    "      Shift+F7 / Ctrl+Enter / Ctrl+R repeat (same direction, no wrap)",
+    "Code  1..9 direct branch; Backspace return; / resynchronize",
+    "      Up/Down instructions; Left/Right bytes; PgUp/PgDn pages",
+    "      Unknown backward boundaries use one byte/ISA alignment.",
+    "      Ctrl+F1/Ctrl+B x86 bitness; Shift+F1/Ctrl+A decoder",
+    "Profile 0 Auto; 1..3 x86 16/32/64; 4 ARM; 5 Thumb; 6 AArch64",
+    "      L/B/E little/big/automatic endian; R raw; V raw base",
+    "      Big-endian decode unsupported; raw bytes remain available.",
+    "Headers F5 entry; F6 regions; F7 imports; F9 exports; N symbols",
+    "Edit  F9/Ctrl+S save; Esc discard; Tab hex/ASCII; Ctrl+Z/Y undo/redo",
+    "      F3 restores current byte; Backspace restores previous byte.",
+    "      Two digits commit one byte; Backspace cancels a digit first.",
+    "      Code editing changes bytes; textual assembly is planned.",
+    "Goto  Hex default, decimal suffix t, +/- relative; .address is VA",
+    "      V: image VA; R: raw base address; F: unmapped file offset",
+    "Find  Tab hex/UTF-8 text; Esc cancels scan; Ctrl+Home/End file edges",
+    "Block * start/finish/clear; [ / ] endpoints; Alt+* resize",
+    "      Ctrl+*/Ctrl+K select all; F4 in Search toggles File/Block",
+    "      F2 exports a completed block; * in the offset field appends",
+    "Paste rejected. Global references and multi-file planned.",
+    "F9 in view means Open (planned), never Save. '-' means planned.",
+    "Legacy terminals may intercept keys; use the Ctrl alternatives.",
+    "Close help with F1, Enter, or Esc.",
+];
+
+fn render_help(frame: &mut Frame<'_>, area: Rect, mode: ViewMode, editing: bool, selected: usize) {
+    let suffix = if editing { " editing" } else { "" };
+    let content = dialog_surface(
+        frame,
+        area,
+        area.width.saturating_sub(2),
+        area.height.saturating_sub(2),
+        Line::from(format!("[{mode}{suffix}]")).centered(),
+        HELP_PANEL,
+    );
+    let height = usize::from(content.height);
+    let first = selected.saturating_sub(height.saturating_sub(1));
+    for (line, text) in HELP_LINES.iter().enumerate().skip(first).take(height) {
+        let style = if line == selected {
+            FOCUSED_ROW
+        } else {
+            HELP_PANEL
+        };
+        frame.render_widget(
+            Paragraph::new(*text).style(style),
+            row(content, (line - first) as u16),
+        );
+    }
 }
 
 fn render_mode_picker(frame: &mut Frame<'_>, area: Rect, selected: ModeChoice) {
-    let popup = popup(area, 34, 7);
-    let mut lines = [
-        (ModeChoice::Text, "Text"),
-        (ModeChoice::Hex, "Hex"),
-        (ModeChoice::Code, "Code"),
-    ]
-    .into_iter()
-    .map(|(choice, label)| {
-        let (marker, style) = if choice == selected {
-            (">", ACTIVE)
-        } else {
-            (" ", HEADER)
-        };
-        Line::styled(format!("{marker} {label}"), style)
-    })
-    .collect::<Vec<_>>();
-    lines.push(Line::raw(""));
-    lines.push(Line::raw("Enter selects; Esc cancels"));
-    frame.render_widget(Clear, popup);
-    frame.render_widget(
-        Paragraph::new(lines)
-            .style(HEADER)
-            .block(Block::default().borders(Borders::ALL).title(" View mode ")),
-        popup,
+    let content = dialog_surface(
+        frame,
+        area,
+        29,
+        7,
+        Line::from(" Select mode ").centered(),
+        HEADER,
     );
+    let content = content.inner(Margin::new(1, 0));
+    let selected: usize = match selected {
+        ModeChoice::Text => 0,
+        ModeChoice::Hex => 1,
+        ModeChoice::Code => 2,
+    };
+    let height = usize::from(content.height);
+    let first = selected.saturating_sub(height.saturating_sub(1));
+    for (line, label) in ["Text", "Hex", "Decode"]
+        .iter()
+        .enumerate()
+        .skip(first)
+        .take(height)
+    {
+        let style = if line == selected {
+            FOCUSED_ROW
+        } else {
+            HEADER.fg(Color::Blue)
+        };
+        let label_column = content.width.saturating_sub(5) / 2;
+        frame.render_widget(
+            Paragraph::new(format!(
+                "{:width$}{label}",
+                "",
+                width = usize::from(label_column)
+            ))
+            .style(style),
+            row(content, (line - first) as u16),
+        );
+    }
 }
 
 fn render_prompt(frame: &mut Frame<'_>, area: Rect, input: &InputDialog) {
-    let popup = popup(area, 74, 8);
-    let (title, hint) = match input.kind {
-        PromptKind::Goto => (
-            " Goto file offset or virtual address ",
-            "Hex default; decimal suffix t; +/- relative; .address maps a VA.",
-        ),
-        PromptKind::RawBase => (
-            " Raw virtual base ",
-            "Absolute hexadecimal or decimal suffix t. Enables raw address mapping.",
-        ),
-    };
-    // Display the tail of long input; all input is retained for validation.
-    let available = popup.width.saturating_sub(6) as usize;
-    let escaped = escaped_text(&input.input);
-    let tail = escaped
-        .chars()
-        .rev()
-        .take(available)
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect::<String>();
-    let lines = vec![
-        Line::raw(hint),
-        Line::raw(""),
-        Line::styled(
-            format!("> {tail}_"),
-            Style::new().fg(Color::Yellow).bg(Color::Blue),
-        ),
-        Line::raw(
-            input
-                .error
-                .as_deref()
-                .unwrap_or("Enter applies; Ctrl+U clears; Esc cancels"),
-        ),
-    ];
-    frame.render_widget(Clear, popup);
+    if input.kind == PromptKind::Goto {
+        let field = Rect::new(
+            area.x + 1,
+            area.y + 1,
+            area.width.saturating_sub(1).min(24),
+            1,
+        );
+        render_patterned_field(
+            frame,
+            field,
+            &input.input,
+            BASE.fg(Color::LightYellow),
+            true,
+        );
+        if let Some(error) = input.error.as_deref() {
+            frame.render_widget(Paragraph::new(error).style(PANEL), row(area, 2));
+        }
+        return;
+    }
+    let content = dialog_surface(frame, area, 66, 7, " Raw virtual base ", PANEL);
+    let label = " Base ";
+    let hint = "Absolute hexadecimal or decimal with suffix t.";
+    if content.width <= label.len() as u16 || content.height == 0 {
+        return;
+    }
+    let label_width = label.len() as u16;
+    frame.render_widget(Paragraph::new(label).style(PANEL), row(content, 0));
+    let field = Rect::new(
+        content.x + label_width,
+        content.y,
+        content.width - label_width,
+        1,
+    );
+    render_input_field(frame, field, &input.input, true);
+    if content.height > 1 {
+        frame.render_widget(
+            Paragraph::new(input.error.as_deref().unwrap_or(hint)).style(PANEL),
+            row(content, 1),
+        );
+    }
+}
+
+fn render_input_field(frame: &mut Frame<'_>, field: Rect, input: &str, active: bool) {
+    if field.width == 0 {
+        return;
+    }
+    let entry = escaped_text(input);
+    let tail = visible_tail(&entry, field.width.saturating_sub(u16::from(active)));
+    let style = if active { SELECTED } else { PANEL };
+    frame.render_widget(Paragraph::new(tail).style(style), field);
+    if active {
+        frame.set_cursor_position((field.x + Span::raw(tail).width() as u16, field.y));
+    }
+}
+
+fn render_search_notice(frame: &mut Frame<'_>, area: Rect, message: &str) {
+    let content = dialog_surface(frame, area, 48, 5, "", ERROR_PANEL);
+    let offset = content.height.saturating_sub(1) / 2;
     frame.render_widget(
-        Paragraph::new(lines)
-            .style(HEADER)
-            .wrap(Wrap { trim: false })
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(title)
-                    .style(HEADER),
-            ),
-        popup,
+        Paragraph::new(message).centered().style(ERROR_PANEL),
+        row(content, offset),
     );
 }
 
 fn render_search(frame: &mut Frame<'_>, area: Rect, search: &SearchDialog) {
-    // Keep the main function bar visible even on the smallest usable terminal.
-    let overlay = Rect::new(area.x, area.y, area.width, area.height - 1);
-    let popup = popup(overlay, 72, 7);
     let direction = match search.direction {
         SearchDirection::Forward => "Forward",
         SearchDirection::Backward => "Backward",
     };
-    let panel = Style::new().fg(Color::Black).bg(Color::Gray);
+    let panel = PANEL;
     let title = if search.help {
         " Search help ".into()
     } else {
@@ -638,15 +829,14 @@ fn render_search(frame: &mut Frame<'_>, area: Rect, search: &SearchDialog) {
         } else {
             "File"
         };
-        format!(" Search | {direction} | {scope} ")
+        let case = match search.field {
+            SearchField::Text => "noCase",
+            SearchField::Hex => "Case  ",
+        };
+        format!("══[{direction} •{scope} •{case}•Even]")
     };
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(title)
-        .style(panel);
-    let content = block.inner(popup);
-    frame.render_widget(Clear, popup);
-    frame.render_widget(block, popup);
+    let height = if search.help { 9 } else { 7 };
+    let content = dialog_surface(frame, area, 75, height, title, panel);
     if search.help {
         frame.render_widget(
             Paragraph::new(vec![
@@ -664,55 +854,65 @@ fn render_search(frame: &mut Frame<'_>, area: Rect, search: &SearchDialog) {
     let alternate = search
         .alternate_input()
         .unwrap_or_else(|_| "<unavailable>".into());
-    for (index, (field, label)) in [(SearchField::Text, "UTF-8 "), (SearchField::Hex, "Hex   ")]
-        .into_iter()
-        .enumerate()
-    {
-        if index as u16 >= content.height {
+    let hex_row = if content.height >= 3 { 2 } else { 1 };
+    for (index, field, label) in [
+        (0, SearchField::Text, " ASCII: "),
+        (hex_row, SearchField::Hex, "   Hex: "),
+    ] {
+        if index >= content.height {
             break;
         }
         let active = field == search.field;
         let input = if active { &search.input } else { &alternate };
-        let entry = escaped_text(input);
-        let field_width = content.width.saturating_sub(label.len() as u16);
-        let tail = visible_tail(&entry, field_width.saturating_sub(1));
-        let y = content.y + index as u16;
-        frame.render_widget(
-            Paragraph::new(label).style(panel),
-            row(content, index as u16),
-        );
-        let field_area = Rect::new(content.x + label.len() as u16, y, field_width, 1);
-        let field_style = if active { SELECTED } else { panel };
-        frame.render_widget(Paragraph::new(tail).style(field_style), field_area);
-        if active && field_width > 0 {
-            let cursor = Span::raw(tail).width() as u16;
-            frame.set_cursor_position((field_area.x + cursor, y));
-        }
+        let label_width = label.len() as u16;
+        frame.render_widget(Paragraph::new(label).style(panel), row(content, index));
+        let preferred_width = match field {
+            SearchField::Text => 20,
+            SearchField::Hex => 60,
+        };
+        let width = content
+            .width
+            .saturating_sub(label_width + 1)
+            .min(preferred_width);
+        let field = Rect::new(content.x + label_width, content.y + index, width, 1);
+        let style = if active { ACTIVE_SEARCH_FIELD } else { PANEL };
+        render_patterned_field(frame, field, input, style, active);
     }
 
-    if content.height >= 3 {
-        let hint = search.error.as_deref().unwrap_or(match search.field {
-            SearchField::Text => "UTF-8 matches with ASCII case folding.",
-            SearchField::Hex => "Hex matches exact bytes. Use two digits per byte.",
-        });
-        frame.render_widget(Paragraph::new(hint).style(panel), row(content, 2));
+    if let Some(error) = search.error.as_deref().filter(|_| content.height >= 3) {
+        frame.render_widget(Paragraph::new(error).style(panel), row(content, 1));
+    }
+}
+
+fn render_patterned_field(
+    frame: &mut Frame<'_>,
+    field: Rect,
+    input: &str,
+    style: Style,
+    active: bool,
+) {
+    if field.width == 0 {
+        return;
+    }
+    let entry = escaped_text(input);
+    let tail = visible_tail(&entry, field.width.saturating_sub(u16::from(active)));
+    let width = Span::raw(tail).width() as u16;
+    let fill = "░".repeat(usize::from(field.width - width));
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![Span::raw(tail), Span::raw(fill)])).style(style),
+        field,
+    );
+    if active {
+        frame.set_cursor_position((field.x + width, field.y));
     }
 }
 
 fn render_block_write(frame: &mut Frame<'_>, area: Rect, dialog: &BlockWrite) {
-    let overlay = Rect::new(area.x, area.y, area.width, area.height - 1);
-    let popup = popup(overlay, 68, 9);
-    let panel = Style::new().fg(Color::Black).bg(Color::Gray);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Write block ")
-        .style(panel);
-    let content = block.inner(popup);
+    let panel = PANEL;
+    let content = dialog_surface(frame, area, 68, 11, " Write block ", panel);
     let first = dialog.range.offset.get();
     let last = first + dialog.range.len - 1;
     let length = dialog.range.len;
-    frame.render_widget(Clear, popup);
-    frame.render_widget(block, popup);
     let lines = [
         format!("Block  {first:08X}–{last:08X}"),
         format!("Length {length:08X}/{length}"),

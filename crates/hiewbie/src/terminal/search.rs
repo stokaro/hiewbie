@@ -104,6 +104,7 @@ impl<S: ByteSource> Ui<S> {
                 (KeyCode::Enter, KeyModifiers::NONE) => match dialog.request() {
                     Ok(request) => {
                         self.editor.start_search(request);
+                        self.scan_position = None;
                         self.notice("Searching; Esc cancels");
                         return;
                     }
@@ -175,22 +176,32 @@ impl<S: ByteSource> Ui<S> {
 
     pub(super) fn repeat_search(&mut self) {
         match self.editor.repeat_search() {
-            SearchRepeat::Started => self.notice("Searching; Esc cancels"),
+            SearchRepeat::Started => {
+                self.scan_position = None;
+                self.notice("Searching; Esc cancels");
+            }
             SearchRepeat::NoQuery => self.notice("No previous search; F7/Ctrl+F opens search"),
-            SearchRepeat::Exhausted => self.notice("No further match; search does not wrap"),
+            SearchRepeat::Exhausted => {
+                self.notice("No further match; search does not wrap");
+                self.dialog = Some(Dialog::SearchNotice("Target not found"));
+            }
         }
     }
 
     pub(super) fn advance_search(&mut self) {
         match self.editor.step_search(SEARCH_STEP_BYTES) {
             Ok(Some(SearchProgress::Pending { next })) => {
+                self.scan_position = Some(next);
                 self.notice(format!("Scanning {:016X}; Esc cancels", next.get()));
             }
             Ok(Some(SearchProgress::Found(offset))) => self.notice(format!(
                 "Found at {:016X}; Shift+F7/Ctrl+R repeats",
                 offset.get()
             )),
-            Ok(Some(SearchProgress::NotFound)) => self.notice("No match; search does not wrap"),
+            Ok(Some(SearchProgress::NotFound)) => {
+                self.notice("No match; search does not wrap");
+                self.dialog = Some(Dialog::SearchNotice("Target not found"));
+            }
             Ok(None) => {}
             Err(error) => self.notice(format!("Search stopped: {error}")),
         }

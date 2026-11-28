@@ -17,6 +17,9 @@ inspected license files, and the native/core boundary are recorded in the
 | same-file | `1.0.6` | Unlicense OR MIT; the older manifest spells this `Unlicense/MIT`, and `COPYING` confirms the choice |
 | libc, Unix only | `0.2.191` | MIT OR Apache-2.0 |
 | winapi-util, Windows only | `0.1.11` | Unlicense OR MIT |
+| winconsole, Windows only | `0.11.1` | MIT OR Apache-2.0 |
+| rgb, through winconsole | `0.8.53` | MIT |
+| bytemuck, through rgb | `1.25.2` | Zlib OR Apache-2.0 OR MIT |
 | iced-x86, portable core | `1.22.0` | MIT |
 | yaxpeax-arm, portable core | `0.5.0` | 0BSD |
 | yaxpeax-arch, portable core | `0.3.3` | 0BSD |

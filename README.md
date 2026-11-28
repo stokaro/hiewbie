@@ -53,7 +53,7 @@ beyond 4 GiB, without loading the complete file into memory.
 
 | Context | Keys | Behavior |
 | --- | --- | --- |
-| View | Enter | Cycle Hex / Text / Code, keeping the file offset |
+| View | Enter | Cycle Text / Hex / Code, keeping the file offset |
 | View | F4 | Choose Text, Hex or Code; arrows select, Enter applies, Esc cancels |
 | View | F3 / Ctrl+E | Begin a pending overwrite transaction |
 | View | F5 / Ctrl+G | Goto: hex, decimal `t`, relative `+` / `-`, or absolute dotted VA |

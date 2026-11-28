@@ -575,7 +575,7 @@ fn shared_commands_enforce_edit_state_read_only_and_cursor_rules() {
     assert_eq!(editor.cursor(), offset(0));
     editor.dispatch(Command::Goto(offset(1))).unwrap();
     editor.dispatch(Command::CycleMode).unwrap();
-    assert_eq!(editor.mode(), ViewMode::Text);
+    assert_eq!(editor.mode(), ViewMode::Code);
     assert_eq!(editor.cursor(), offset(1));
     editor.dispatch(Command::BeginEdit).unwrap();
     editor.dispatch(Command::WriteByte(b'X')).unwrap();
