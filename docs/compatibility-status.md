@@ -118,7 +118,7 @@ cover visiting, switching, and reopening files.
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
 | ISA-001 | Partial | [D], [A], [ACLI]: iced-x86 1.22.0 decodes 16/32/64-bit modes with automatic raw x86-32, manual overrides, and a native Decode viewport [Decode observation]. Textual assembly remains planned. |
-| ISA-002 | Partial | [D], [x86 Decode coverage]: 58 exact scalar, x87, SIMD, and extension encodings exercise iced-x86 1.22.0 in 16/32/64-bit modes. The table records which samples worked in HIEW 8.63. A complete extension inventory and textual assembly remain open. |
+| ISA-002 | Partial | [D], [x86 Decode coverage]: 58 portable corpus rows and 31 additional 16-bit rows cover scalar, system, x87, SIMD, and extension encodings with iced-x86 1.22.0. Interactive 16-bit Decode follows the observed C4/C5/62 rejection boundaries. A complete extension inventory and textual assembly remain open. |
 | ISA-003 | Partial | [D], [A], [Analysis]: separate ARM/Thumb modes, strict decoding and direct mode exchange; precise ARMv6/revision filtering, IT-state propagation and big-endian instructions remain gaps. |
 | ISA-004 | Partial | [D], [A], [ACLI]: AArch64 decoding and checked direct targets independent of host CPU; textual assembly, SVE/SVE2 and complete extension coverage pending. |
 | ISA-005 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
@@ -126,7 +126,7 @@ cover visiting, switching, and reopening files.
 | ISA-007 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | ISA-008 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | ISA-009 | Implemented | [D], [T], [ACLI]: mode/bitness, endian, instruction lengths and backend version are reported; parsed CPU and explicit profile remain distinct. |
-| ISA-010 | Implemented | [D], [T], [ACLI]: Decoded, Unknown, InvalidForMode, Truncated, and Unsupported preserve raw bytes and guarantee progress for nonempty input. InvalidForMode covers recognized legacy-only opcodes in long mode. |
+| ISA-010 | Implemented | [D], [T], [ACLI]: Decoded, Unknown, InvalidForMode, InvalidEncoding, Truncated, and Unsupported preserve raw bytes and guarantee progress for nonempty input. InvalidForMode covers recognized legacy-only opcodes in long mode. InvalidEncoding records observed legacy ModR/M rejections in the interactive 16-bit profile. |
 | ISA-011 | Implemented | [A], [T], [ACLI]: unknown machines, malformed metadata and unsupported instruction order preserve raw viewing and byte editing. |
 | ISA-012 | Partial | [D], [A], [T], [P], [Decode operand observation]: Decode labels follow direct branches, mapped x86 data operands, and near indirect x86 targets whose complete pointer and destination have checked file mappings. Return supports ARM/Thumb mode exchange and Hex to Decode. Far and loader-resolved destinations remain open. |
 | ISA-013 | Partial | [A], [T], [Analysis], [Symbols], [Reference observations]: raw x86 near branches and selected mapped memory and literal operands are searchable in bounded steps. General references, loader symbol resolution and control-flow analysis remain open. |

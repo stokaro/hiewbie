@@ -116,8 +116,16 @@ pub enum DecodeStatus {
     Unknown,
     /// A recognized encoding is unavailable in the selected instruction mode.
     InvalidForMode,
+    /// Rejected by the selected compatibility decoder's encoding rules.
+    InvalidEncoding,
     Truncated,
     Unsupported,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct InstructionProfile {
+    pub mode: DecodeMode,
+    pub hiew_x86: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -155,6 +163,8 @@ pub struct DecodedInstruction {
     /// Direct near branches only. Indirect/far destinations remain unresolved.
     pub direct_branch: Option<BranchTarget>,
     pub address_operand: Option<AddressOperand>,
+    /// Width in file bytes of the encoded x86 memory displacement, if any.
+    pub x86_displacement_bytes: usize,
 }
 
 impl DecodedInstruction {
@@ -175,16 +185,34 @@ pub fn decode_one(
     mode: DecodeMode,
     endian: Endian,
 ) -> Option<DecodedInstruction> {
+    decode_in_profile(
+        bytes,
+        address,
+        InstructionProfile {
+            mode,
+            hiew_x86: false,
+        },
+        endian,
+    )
+}
+
+pub(crate) fn decode_in_profile(
+    bytes: &[u8],
+    address: VirtualAddress,
+    profile: InstructionProfile,
+    endian: Endian,
+) -> Option<DecodedInstruction> {
     if bytes.is_empty() {
         return None;
     }
+    let mode = profile.mode;
     let bytes = &bytes[..bytes.len().min(mode.max_instruction_len())];
     Some(if endian != Endian::Little {
         fallback(bytes, address, mode, DecodeStatus::Unsupported)
     } else {
         match mode {
             DecodeMode::X86_16 | DecodeMode::X86_32 | DecodeMode::X86_64 => {
-                x86::decode(bytes, address, mode)
+                x86::decode(bytes, address, profile)
             }
             DecodeMode::Arm | DecodeMode::Thumb => arm::decode_arm(bytes, address, mode),
             DecodeMode::Aarch64 => arm::decode_aarch64(bytes, address),
@@ -210,6 +238,7 @@ fn instruction(
         status,
         direct_branch,
         address_operand: None,
+        x86_displacement_bytes: 0,
     }
 }
 
@@ -232,6 +261,7 @@ fn fallback(
         DecodeStatus::Decoded => "",
         DecodeStatus::Unknown => " ; unknown to backend",
         DecodeStatus::InvalidForMode => " ; invalid in this instruction mode",
+        DecodeStatus::InvalidEncoding => " ; invalid encoding",
         DecodeStatus::Truncated => " ; truncated instruction",
         DecodeStatus::Unsupported => " ; unsupported instruction endianness",
     });

@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "observation_date": "2026-11-28",
+  "reference_version": "8.63",
+  "environment": {
+    "runtime": "x64 Windows Server Core LTSC 2022 console in a Hyper-V-isolated container",
+    "candidate": "GNU-target x64 build in the same console environment",
+    "input": "Win32 console key events",
+    "fixtures": "31 independently assembled LLVM MC 23.1.6 rows and hand-encoded boundary and displacement probes. Raw slots use 90 padding."
+  },
+  "legacy_boundaries": [
+    {"encoding": "C5F877", "shown_bytes": "C5", "text": "#UD(mod)"},
+    {"encoding": "C4E26D98CB", "shown_bytes": "C4", "text": "#UD(mod)"},
+    {"encoding": "62F164CA58CC", "shown_bytes": "62", "text": "#UD(mod)"},
+    {"encoding": "66C5F877", "shown_bytes": "66C5", "text": "#UD(mod)"},
+    {"encoding": "67C5F877", "shown_bytes": "67C5", "text": "#UD(mod)"},
+    {"encoding": "F3C5F877", "shown_bytes": "F3C5", "text": "#UD(mod)"},
+    {"encoding": "64C4E26D98CB", "shown_bytes": "64C4", "text": "#UD(mod)"},
+    {"encoding": "F0C4E26D98CB", "shown_bytes": "F0C4", "text": "#UD(lock)"},
+    {"encoding": "C400", "shown_bytes": "C400", "text": "les ax,[bx][si]"},
+    {"encoding": "C500", "shown_bytes": "C500", "text": "lds ax,[bx][si]"}
+  ],
+  "formatting": {
+    "x87": "FADD displays st(0),st(1) in the selected fixture. FLD displays its explicit stack operand.",
+    "repeat_and_lock": "F3-prefixed string examples show rep and a width-specific mnemonic. LOCK ADD shows a byte, word, or doubleword size tag in the operand color.",
+    "displacements": "Values below ten use a single digit. Larger magnitudes show a leading zero and the encoded field width. An encoded zero has its own [0] cell. Address-size overrides affect the displayed width of absolute memory operands."
+  },
+  "paired_checks": {
+    "matching_16_bit_rows": 85,
+    "matching_32_bit_rows": 8,
+    "comparison": "At the same 120-column terminal dimensions, the selected rows match opcode bytes, mnemonic and operand cells, and the colors on nonblank instruction cells."
+  },
+  "reference_search": {
+    "fixture_bytes": "C5F8770190C3",
+    "view": "16-bit Decode",
+    "target_offset": "5",
+    "matched_offset": "2",
+    "observed_row": "7701 ja 000000005 --↓1",
+    "comparison": "Both programs found the branch after the C5 rejection and the F8 row."
+  },
+  "limits": "The observations cover selected encodings. The original shows an LDS operand for a lone C5 at EOF. The candidate reports truncated input and preserves the raw byte. Newer-extension boundary differences in 32-bit and 64-bit Decode remain open."
+}

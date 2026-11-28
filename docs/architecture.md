@@ -173,6 +173,11 @@ generation and interpretation. It does not allocate a file-wide index or
 format every instruction. Terminal adapters use the same progress and
 cancellation path as byte searches.
 
+The terminal selects the HIEW x86 encoding rules when it creates an editor.
+The editor shares the resulting instruction boundaries between Decode rows,
+movement, and aligned reference scans. The portable disassembly path uses the
+backend's instruction interpretation directly.
+
 In mapped x86 Decode windows, checked memory and MOV literal operands can
 also share the bounded branch-label namespace. A near indirect instruction
 retains its encoded slot address. The analysis layer checks the complete

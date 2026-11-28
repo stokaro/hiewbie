@@ -387,6 +387,16 @@ impl<S: ByteSource> Editor<S> {
         }
     }
 
+    /// Use HIEW 8.63's x86 instruction boundaries for views and reference scans.
+    #[must_use]
+    pub fn with_hiew_x86_decode(mut self) -> Self {
+        self.analysis.hiew_x86 = true;
+        self.analysis.reset_code_window();
+        self.references.pending = None;
+        self.references.resume = None;
+        self
+    }
+
     #[must_use]
     pub const fn document(&self) -> &Document<S> {
         &self.document

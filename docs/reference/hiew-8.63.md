@@ -325,6 +325,13 @@ labels. Zero and Backspace returned from the data view to Decode.
 
 [Paired Windows operand observations](../evidence/hiew-8.63-windows-x86-operands.json)
 
+In the 16-bit view, the sampled register-only C4, C5, and 62 forms displayed
+`#UD(mod)`. The displayed row consumed the opcode and any legacy prefixes.
+The original resumed at the ModR/M byte. An aligned F6 scan found a branch
+that began in the resulting decode stream.
+
+[16-bit Windows observations](../evidence/hiew-8.63-windows-x86-16.json)
+
 ### x86 reference search
 
 On a generated raw x86-32 file, F6 searched from the beginning for the address

@@ -3,7 +3,9 @@
 use std::collections::VecDeque;
 
 use crate::formats::{self, Endian, Executable, Machine, VirtualAddress};
-use crate::instructions::{AddressOperand, DecodeMode, DecodedInstruction, decode_one};
+use crate::instructions::{
+    AddressOperand, DecodeMode, DecodedInstruction, InstructionProfile, decode_in_profile,
+};
 use crate::symbols::{self, SymbolTable};
 use crate::{ByteSource, Document, Error, FileOffset};
 
@@ -77,6 +79,7 @@ pub(crate) enum LocationKind {
 #[derive(Debug, Default)]
 pub(crate) struct Analysis {
     pub interpretation: Interpretation,
+    pub hiew_x86: bool,
     /// A navigation hint from parsed symbols, below an explicit user override.
     pub symbol_mode: Option<DecodeMode>,
     pub executable: Option<Executable>,
@@ -91,6 +94,13 @@ pub(crate) struct Analysis {
 }
 
 impl Analysis {
+    pub fn instruction_profile(&self, mode: DecodeMode) -> InstructionProfile {
+        InstructionProfile {
+            mode,
+            hiew_x86: self.hiew_x86,
+        }
+    }
+
     pub fn invalidate(&mut self) {
         self.symbol_mode = None;
         self.generation = None;
@@ -378,6 +388,7 @@ impl Analysis {
                 "select an instruction architecture; no supported ISA was inferred".into(),
             )
         })?;
+        let profile = self.instruction_profile(mode);
         let mut rows = Vec::with_capacity(limit);
         let mut offset = start;
         let mut branch_destinations = Vec::with_capacity(BRANCH_LABELS.len());
@@ -407,7 +418,8 @@ impl Analysis {
                 }
             }
             let count = document.read_at(offset, &mut buffer[..read_len])?;
-            let Some(mut instruction) = decode_one(&buffer[..count], address, mode, context.endian)
+            let Some(mut instruction) =
+                decode_in_profile(&buffer[..count], address, profile, context.endian)
             else {
                 break;
             };

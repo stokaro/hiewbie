@@ -1,0 +1,33 @@
+# LLVM MC 23.1.6 encodings in 16-byte, NOP-padded slots per group.
+# group, slot offset, family, input bytes, Intel assembly, portable text, HIEW bytes, HIEW row
+protected	0000	SYS	0F0100	sgdt [bx+si]	sgdt [bx+si]	0F0100	sgdt         [bx][si]
+protected	0010	SYS	0F02C3	lar ax,bx	lar ax,bx	0F02C3	lar          ax,bx
+protected	0020	SYS	0F01E0	smsw ax	smsw ax	0F01E0	smsw         ax
+protected	0030	SYS	0FA2	cpuid	cpuid	0FA2	cpuid
+protected	0040	SYS	0F31	rdtsc	rdtsc	0F31	rdtsc
+protected	0050	SYS	0F01F9	rdtscp	rdtscp	0F01F9	rdtscp
+protected	0060	SYS	0F34	sysenter	sysenter	0F34	sysenter
+protected	0070	SYS	0F0138	invlpg [bx+si]	invlpg [bx+si]	0F0138	invlpg       [bx][si]
+protected	0080	SYS	0F20C0	mov eax,cr0	mov eax,cr0	0F20C0	mov          eax,cr0
+protected	0090	SYS	0F01D0	xgetbv	xgetbv	0F01D0	xgetbv
+simd	0000	MMX	0FFCCA	paddb mm1,mm2	paddb mm1,mm2	0FFCCA	paddb        mm1,mm2
+simd	0010	3DNow!	0F0FCA9E	pfadd mm1,mm2	pfadd mm1,mm2	0F0FCA9E	pfadd        mm1,mm2
+simd	0020	SSE	0F28CA	movaps xmm1,xmm2	movaps xmm1,xmm2	0F28CA	movaps       xmm1,xmm2
+simd	0030	SSE2	660FD4CA	paddq xmm1,xmm2	paddq xmm1,xmm2	660FD4CA	paddq        xmm1,xmm2
+simd	0040	SSE3	F20F7CCA	haddps xmm1,xmm2	haddps xmm1,xmm2	F20F7CCA	haddps       xmm1,xmm2
+simd	0050	SSSE3	660F381CCA	pabsb xmm1,xmm2	pabsb xmm1,xmm2	660F381CCA	pabsb        xmm1,xmm2
+simd	0060	SSE4.1	660F3840CA	pmulld xmm1,xmm2	pmulld xmm1,xmm2	660F3840CA	pmulld       xmm1,xmm2
+simd	0070	SSE4.2	660F3A63CA00	pcmpistri xmm1,xmm2,0	pcmpistri xmm1,xmm2,0x0	660F3A63CA00	pcmpistri    xmm1,xmm2,0
+simd	0080	POPCNT	F30FB8C3	popcnt ax,bx	popcnt ax,bx	F30FB8C3	popcnt       ax,bx
+simd	0090	AES-NI	660F38DCCA	aesenc xmm1,xmm2	aesenc xmm1,xmm2	660F38DCCA	aesenc       xmm1,xmm2
+simd	00A0	PCLMULQDQ	660F3A44CA01	pclmulqdq xmm1,xmm2,1	pclmulhqlqdq xmm1,xmm2	660F3A44CA01	pclmulqdq    xmm1,xmm2,1
+simd	00B0	RDRAND	0FC7F0	rdrand ax	rdrand ax	0FC7F0	rdrand       ax
+simd	00C0	AVX	C5EC58CB	vaddps ymm1,ymm2,ymm3	vaddps ymm1,ymm2,ymm3	C5	#UD(mod)
+simd	00D0	FMA3	C4E26D98CB	vfmadd132ps ymm1,ymm2,ymm3	vfmadd132ps ymm1,ymm2,ymm3	C4	#UD(mod)
+integer	0000	BCD	D40A	aam 10	aam 0xa	D40A	aam
+integer	0010	BCD	27	daa	daa	27	daa
+integer	0020	x87	D97EFC	fnstcw [bp-4]	fnstcw [bp-0x4]	D97EFC	fnstcw       [bp][-4]
+integer	0030	x87	D8C1	fadd st,st(1)	fadd st,st(1)	D8C1	fadd         st(0),st(1)
+integer	0040	STRING	F3A7	repe cmpsw	repe cmpsw [si],[di]	F3A7	rep cmpsw
+integer	0050	LOCK	F0830701	lock add word ptr [bx],1	lock add word ptr [bx],0x1	F0830701	lock add     w,[bx],1
+integer	0060	SYSTEM	0F0B	ud2	ud2	0F0B	ud2

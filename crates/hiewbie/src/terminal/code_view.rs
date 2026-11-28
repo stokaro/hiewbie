@@ -205,6 +205,7 @@ fn instruction_spans(
             DecodeStatus::Decoded => unreachable!(),
             DecodeStatus::Unknown => "unknown: ",
             DecodeStatus::InvalidForMode => "invalid mode: ",
+            DecodeStatus::InvalidEncoding => "",
             DecodeStatus::Truncated => "truncated: ",
             DecodeStatus::Unsupported => "unsupported: ",
         };
@@ -213,55 +214,74 @@ fn instruction_spans(
             escaped_text(&instruction.text)
         ))];
     }
-    let (name, mut operands) = instruction
-        .text
-        .split_once(' ')
-        .unwrap_or((&instruction.text, ""));
     if !mode.is_some_and(DecodeMode::is_x86) {
         let mut spans = vec![Span::raw(escaped_text(&instruction.text))];
         append_branch_indicator(&mut spans, row);
         return spans;
     }
+    let text = instruction.text.as_str();
+    let mnemonic = text.strip_prefix("lock ").unwrap_or(text);
+    let lock = if mnemonic == text { "" } else { "lock " };
+    let (name, mut operands) = mnemonic.split_once(' ').unwrap_or((mnemonic, ""));
+    if matches!(name, "rep" | "repe" | "repne")
+        && let Some((operation, _)) = operands.split_once(' ')
+        && matches!(
+            operation,
+            "movsb"
+                | "movsw"
+                | "movsd"
+                | "movsq"
+                | "cmpsb"
+                | "cmpsw"
+                | "cmpsd"
+                | "cmpsq"
+                | "scasb"
+                | "scasw"
+                | "scasd"
+                | "scasq"
+        )
+    {
+        let prefix = if name == "repne" { name } else { "rep" };
+        return vec![Span::raw(format!("{prefix} {operation}"))];
+    }
+    let sized_operand = if name == "fld" {
+        operands = operands.strip_prefix("st,").unwrap_or(operands);
+        Some(operands)
+    } else if !lock.is_empty()
+        || (matches!(name, "jmp" | "call")
+            && matches!(
+                instruction.address_operand,
+                Some(AddressOperand::Indirect { .. })
+            ))
+    {
+        Some(operands)
+    } else {
+        None
+    };
+    let memory_size = sized_operand.and_then(|memory| {
+        [
+            ("byte ptr ", "b,"),
+            ("word ptr ", "w,"),
+            ("dword ptr ", "d,"),
+            ("qword ptr ", "q,"),
+            ("tbyte ptr ", "t,"),
+        ]
+        .into_iter()
+        .find_map(|(intel, hiew)| {
+            memory.strip_prefix(intel).map(|remaining| {
+                operands = remaining;
+                hiew
+            })
+        })
+    });
     let mut selector = None;
-    let mut memory_size = None;
     let (name, operands) = match name {
         "int3" => ("int", "3"),
         "ret" => ("retn", operands),
         "je" => ("jz", operands),
         "jne" => ("jnz", operands),
         "cmove" => ("cmovz", operands),
-        "rep" if operands.starts_with("movsb ") => ("rep movsb", ""),
-        "fld" => {
-            if let Some(memory) = operands.strip_prefix("st,") {
-                for (intel, hiew) in [("qword ptr ", "q,"), ("tbyte ptr ", "t,")] {
-                    if let Some(remaining) = memory.strip_prefix(intel) {
-                        memory_size = Some(hiew);
-                        operands = remaining;
-                        break;
-                    }
-                }
-            }
-            (name, operands)
-        }
-        "jmp" | "call"
-            if matches!(
-                instruction.address_operand,
-                Some(AddressOperand::Indirect { .. })
-            ) =>
-        {
-            for (intel, hiew) in [
-                ("word ptr ", "w,"),
-                ("dword ptr ", "d,"),
-                ("qword ptr ", "q,"),
-            ] {
-                if let Some(memory) = operands.strip_prefix(intel) {
-                    memory_size = Some(hiew);
-                    operands = memory;
-                    break;
-                }
-            }
-            (name, operands)
-        }
+        "aam" | "aad" if operands == "0xa" => (name, ""),
         "pclmullqlqdq" | "pclmulhqlqdq" | "pclmullqhqdq" | "pclmulhqhqdq" => {
             selector = instruction.bytes().last().copied();
             ("pclmulqdq", operands)
@@ -276,11 +296,11 @@ fn instruction_spans(
     };
     let mut spans = vec![Span::styled(
         if operands.is_empty() {
-            name.to_owned()
+            format!("{lock}{name}")
         } else if mapped && instruction.direct_branch.is_some() {
             format!("{name:<12}")
         } else {
-            format!("{name:<13}")
+            format!("{lock}{name:<width$}", width = 13 - lock.len())
         },
         mnemonic_style,
     )];
@@ -299,14 +319,18 @@ fn instruction_spans(
         if let Some(AddressOperand::Literal(address)) = row.operand
             && let Some((register, _)) = operands.split_once(',')
         {
-            spans.extend(operand_spans(register, mode));
+            spans.extend(operand_spans(register, mode, 0));
             spans.push(Span::raw(","));
             spans.push(Span::styled(
-                absolute_operand(address.get(), mode),
+                absolute_operand(address.get(), mode == Some(DecodeMode::X86_16)),
                 BYTE_BODY.fg(Color::LightGreen),
             ));
         } else {
-            spans.extend(operand_spans(operands, mode));
+            spans.extend(operand_spans(
+                operands,
+                mode,
+                instruction.x86_displacement_bytes,
+            ));
         }
         if let Some(selector) = selector {
             spans.push(Span::raw(","));
@@ -346,32 +370,42 @@ fn hex_literal(digits: &str) -> String {
     }
 }
 
-fn absolute_operand(address: u64, mode: Option<DecodeMode>) -> String {
-    if address == 0 {
-        "0".to_owned()
+fn absolute_operand(address: u64, short: bool) -> String {
+    if address < 10 {
+        address.to_string()
     } else if address > u64::from(u32::MAX) {
         address_digits(address, true)
-    } else if mode == Some(DecodeMode::X86_16) && address <= u64::from(u16::MAX) {
+    } else if short && address <= u64::from(u16::MAX) {
         format!("{address:05X}")
     } else {
         format!("{address:09X}")
     }
 }
 
-fn memory_operand(source: &str, mode: Option<DecodeMode>) -> String {
+fn memory_operand(source: &str, mode: Option<DecodeMode>, displacement_bytes: usize) -> String {
     if let Some(digits) = source.strip_prefix("0x")
         && let Ok(address) = u64::from_str_radix(digits, 16)
     {
-        return format!("[{}]", absolute_operand(address, mode));
+        let short = displacement_bytes == 2
+            || (displacement_bytes == 0 && mode == Some(DecodeMode::X86_16));
+        return format!("[{}]", absolute_operand(address, short));
     }
     let mut result = String::new();
     let mut negative = false;
+    let mut implicit_zero = displacement_bytes != 0;
     for term in source.split_inclusive(['+', '-']) {
         let sign = term.ends_with('-');
         let term = term.trim_end_matches(['+', '-']);
         if let Some(displacement) = term.strip_prefix("0x") {
+            implicit_zero = false;
             let sign = if negative { "-" } else { "" };
-            result.push_str(&format!("[{sign}{}]", hex_literal(displacement)));
+            let digits = displacement.to_ascii_uppercase();
+            if digits.len() == 1 && digits.as_bytes()[0].is_ascii_digit() {
+                result.push_str(&format!("[{sign}{digits}]"));
+            } else {
+                let width = displacement_bytes * 2;
+                result.push_str(&format!("[{sign}0{digits:0>width$}]"));
+            }
         } else if let Some((register, scale)) = term.split_once('*') {
             result.push_str(&format!("[{register}]*{scale}"));
         } else {
@@ -379,10 +413,17 @@ fn memory_operand(source: &str, mode: Option<DecodeMode>) -> String {
         }
         negative = sign;
     }
+    if implicit_zero {
+        result.push_str("[0]");
+    }
     result
 }
 
-fn operand_spans(operands: &str, mode: Option<DecodeMode>) -> Vec<Span<'static>> {
+fn operand_spans(
+    operands: &str,
+    mode: Option<DecodeMode>,
+    displacement_bytes: usize,
+) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     let mut source = operands;
     while !source.is_empty() {
@@ -393,9 +434,15 @@ fn operand_spans(operands: &str, mode: Option<DecodeMode>) -> Vec<Span<'static>>
         if let Some(memory) = source[segment.len()..].strip_prefix('[')
             && let Some(end) = memory.find(']')
         {
-            let address = memory_operand(&memory[..end], mode);
+            let address = memory_operand(&memory[..end], mode, displacement_bytes);
             spans.push(Span::styled(format!("{segment}{address}"), MEMORY));
             source = &memory[end + 1..];
+        } else if let Some((register, remaining)) = x87_register(source) {
+            spans.push(Span::styled(
+                register.to_owned(),
+                BYTE_BODY.fg(Color::Reset),
+            ));
+            source = remaining;
         } else if let Some(remaining) = source.strip_prefix("0x") {
             let end = remaining
                 .find(|value: char| !value.is_ascii_hexdigit())
@@ -437,4 +484,15 @@ fn operand_spans(operands: &str, mode: Option<DecodeMode>) -> Vec<Span<'static>>
         }
     }
     spans
+}
+
+fn x87_register(source: &str) -> Option<(&str, &str)> {
+    let tail = source.strip_prefix("st")?;
+    if matches!(tail.as_bytes(), [b'(', b'0'..=b'7', b')', ..]) {
+        Some(source.split_at(5))
+    } else if tail.is_empty() || tail.starts_with(',') {
+        Some(("st(0)", tail))
+    } else {
+        None
+    }
 }
