@@ -96,8 +96,10 @@ does not prove that the bytes are invalid for every CPU revision.
 The adapter currently accepts little-endian instruction interpretation only.
 An explicit big-endian interpretation produces `Unsupported` rows with the raw
 bytes preserved. Successful parsing of big-endian ELF or Mach-O metadata does not
-establish support for that image's instruction order. ARM BE8/BE32 and AArch64
-instruction order need separate handling from container data endianness.
+establish support for every machine's instruction order. A64 automatically
+selects little-endian instruction bytes independently of the executable's
+data byte order. Covering ARM BE8/BE32 remains separate work.
+[AArch64 Decode coverage](../aarch64-decode-coverage.md)
 
 Decoding may start at an unaligned byte address for deliberate resynchronization
 while inspecting a file. A recognized row does not assert that a CPU could execute
@@ -117,8 +119,9 @@ disassembler; no LLVM implementation was copied.
 ARM/Thumb architectural PC arithmetic wraps modulo 2^32 when the supplied
 starting address fits that address space. An out-of-domain starting address does
 not produce an invented target. AArch64 target arithmetic uses checked signed
-offsets in the `u64` address domain. File offsets and mappings always use checked
-arithmetic; architectural PC wrap is not file-position wrap.
+offsets in the `u64` address domain. ADR and literal references use the
+instruction VA, and ADRP uses its 4 KiB page. File offsets and mappings
+always use checked arithmetic.
 
 Code rows stop at a mapping discontinuity. Branch following redecodes the current
 logical bytes, resolves the target through the selected mapping, and then changes

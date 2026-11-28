@@ -8,6 +8,9 @@ use std::{
     process::{Command, Output, Stdio},
 };
 
+#[path = "../../../tests/fixtures/aarch64_images.rs"]
+mod aarch64_images;
+
 fn invoke(path: &Path, arguments: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_hiewbie"))
         .args(arguments)
@@ -271,4 +274,70 @@ fn executable_metadata_and_error_messages_do_not_inject_terminal_controls() {
         .unwrap();
     assert!(!output.status.success());
     assert!(!output.stderr.contains(&0x1b));
+}
+
+#[test]
+fn arm64_big_endian_elf_disassembly_uses_little_endian_code_and_checked_addresses() {
+    let temporary = tempfile::tempdir().unwrap();
+    let path = temporary.path().join("checked-be-arm64.elf");
+    fs::write(&path, aarch64_images::arm64_elf(true)).unwrap();
+
+    let disassembly = text(&invoke(&path, &["--disassemble", "--entry"]));
+    assert!(
+        disassembly.contains("Profile: aarch64; little-endian"),
+        "{disassembly}"
+    );
+    assert!(
+        disassembly.contains("Image data byte order: big-endian"),
+        "{disassembly}"
+    );
+    assert!(disassembly.contains("adr x0, 0x140002020"), "{disassembly}");
+    assert!(
+        disassembly.contains("adrp x1, 0x140002000"),
+        "{disassembly}"
+    );
+    assert!(disassembly.contains("ldr x3, 0x140002030"), "{disassembly}");
+
+    let headers = text(&invoke(&path, &["--headers"]));
+    assert!(headers.contains("64-bit; big-endian"), "{headers}");
+
+    let overridden = text(&invoke(
+        &path,
+        &["--disassemble", "--entry", "--endian", "big"],
+    ));
+    assert!(
+        overridden.contains("unsupported instruction endianness"),
+        "{overridden}"
+    );
+}
+
+#[test]
+fn arm64_macho_and_explicit_raw_mode_share_scalable_vector_decoding() {
+    let temporary = tempfile::tempdir().unwrap();
+    let path = temporary.path().join("generated-arm64.macho");
+    let mut image = macho(0x0100_000c);
+    image[0x100..0x108].copy_from_slice(&[0xe0, 0xe3, 0x98, 0x25, 0x40, 0x38, 0x21, 0x04]);
+    fs::write(&path, image).unwrap();
+    let mapped = text(&invoke(&path, &["--disassemble", "--entry"]));
+    assert!(mapped.contains("E0E39825  ptrue p0.s"), "{mapped}");
+    assert!(
+        mapped.contains("40382104  eor3 z0.d, z0.d, z1.d, z2.d"),
+        "{mapped}"
+    );
+    let raw = text(&invoke(
+        &path,
+        &[
+            "--disassemble",
+            "--raw",
+            "--arch",
+            "aarch64",
+            "--offset",
+            "100",
+        ],
+    ));
+    assert!(raw.contains("E0E39825  ptrue p0.s"), "{raw}");
+    assert!(
+        raw.contains("40382104  eor3 z0.d, z0.d, z1.d, z2.d"),
+        "{raw}"
+    );
 }

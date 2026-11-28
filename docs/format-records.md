@@ -174,7 +174,9 @@ symbol/import/export reconstruction remains outside this reader.
 
 ## Mach-O32, Mach-O64, and universal members
 
-The selected thin image is interpreted in its declared byte order and width.
+The selected thin image's metadata is interpreted in its declared data byte
+order and width. AArch64 instruction fetches remain little-endian in either
+container data order, independently of the format records.
 Fat32/fat64 descriptors retain explicit member selection and global file ranges;
 the host CPU does not choose a different member or thread-state layout.
 
@@ -262,6 +264,9 @@ Regression sources are:
 - [Shared command tests](../crates/hiewbie-core/src/structure_navigation_tests.rs):
   source/target separation, rejected target preservation, stale generation and
   slice selection, unbacked entries, and mixed ARM/Thumb entry behavior.
+- [Assembly symbol tests](../crates/hiewbie-core/src/symbol_navigation_tests.rs):
+  object-file cursor and symbol addresses must round-trip to their unique file
+  offsets before encoding; automatic and explicit raw address modes remain usable.
 - [Terminal tests](../crates/hiewbie/src/terminal/structure_tests.rs): keys,
   long-list/detail navigation, tiny screens, raw fallback, and refreshed fields.
 - [Native CLI tests](../crates/hiewbie/tests/structures_cli.rs): all output pages,

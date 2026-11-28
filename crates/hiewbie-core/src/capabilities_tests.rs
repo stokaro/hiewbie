@@ -57,12 +57,34 @@ fn decoder_descriptions_match_actual_compiled_backends_and_orders() {
 }
 
 #[test]
+fn x86_assembly_capabilities_link_to_working_portable_modes() {
+    for (id, mode) in [
+        ("assemble.x86-16", DecodeMode::X86_16),
+        ("assemble.x86-32", DecodeMode::X86_32),
+        ("assemble.x86-64", DecodeMode::X86_64),
+    ] {
+        let report = current();
+        let entry = report.require(id).unwrap();
+        assert_eq!(entry.category, Category::Assembly);
+        assert_eq!(entry.status, Status::Limited);
+        assert_eq!(entry.modes, [mode.to_string()]);
+        assert_eq!(entry.byte_orders, ["little"]);
+        let choices = crate::assembly::assemble_x86(
+            "nop",
+            mode,
+            Endian::Little,
+            VirtualAddress::new(0),
+            |_| None,
+        )
+        .unwrap();
+        assert_eq!(choices[0], [0x90]);
+    }
+}
+
+#[test]
 fn optional_backends_and_research_assembly_remain_explicitly_unavailable() {
     let report = current();
     for id in [
-        "assemble.x86-16",
-        "assemble.x86-32",
-        "assemble.x86-64",
         "assemble.arm",
         "assemble.thumb",
         "assemble.aarch64",

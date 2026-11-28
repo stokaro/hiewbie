@@ -1,0 +1,43 @@
+{
+  "reference": "HIEW 8.63 licensed Windows executable",
+  "host": "Windows Server Core LTSC 2022 x86-64, Hyper-V container, Win32 console key events, 100 columns by 30 rows",
+  "observation_date": "2026-11-28",
+  "scenario": "H20",
+  "fixture": {
+    "generation": "128 bytes of hexadecimal 90, assembled in the pending edit buffer and discarded",
+    "sha256_before_and_after": "12ed94d83afad4fa623c7903b33a52cb0f8580be5e01aab0d919993a39f39a57"
+  },
+  "far_fixture": {
+    "bytes": "FF 28 66 FF 28 FF 18 90 90 90 90 90",
+    "sha256_before_and_after": "767aa260021851fd5bf4c1e9aa70756165365b6bd5b2058d5a229e00563e7214",
+    "route": "Press Enter three times after opening the assembler. Each prefilled instruction reassembles in place and advances to the next row."
+  },
+  "route": "Open the generated file, cycle to Code with Enter twice, select bitness with Ctrl+F1 as needed, then F3 and F2. Replace the prefilled mnemonic with the sample text. Press Enter, inspect bytes and next address, then discard using Esc.",
+  "encodings": [
+    {"mode": 16, "address": "0", "text": "mov ax,10t", "bytes": "B8 0A 00"},
+    {"mode": 16, "address": "3", "text": "jmps 10", "bytes": "EB 0B"},
+    {"mode": 32, "address": "0", "text": "jmps 10", "bytes": "EB 0E"},
+    {"mode": 32, "address": "2", "text": "jmp 10", "bytes": "E9 09 00 00 00"},
+    {"mode": 32, "address": "0", "text": "jmp 10", "bytes": "E9 0B 00 00 00", "command_select": true},
+    {"mode": 32, "address": "1E", "text": "mov eax,10t", "bytes": "B8 0A 00 00 00"},
+    {"mode": 32, "address": "0", "text": "vaddps xmm1,xmm2,xmm3", "bytes": "C5 E8 58 CB"},
+    {"mode": 32, "address": "4", "text": "vaddps ymm1,ymm2,ymm3", "bytes": "C5 EC 58 CB"},
+    {"mode": 64, "address": "0", "text": "mov rax,1122334455667788", "bytes": "48 B8 88 77 66 55 44 33 22 11"},
+    {"mode": 64, "address": "0", "text": "mov rax,11223344`55667788", "bytes": "48 B8 88 77 66 55 44 33 22 11"},
+    {"mode": 32, "address": "0", "text": "jmpf f,[eax]", "bytes": "FF 28"},
+    {"mode": 32, "address": "2", "text": "jmpf d,[eax]", "bytes": "66 FF 28"},
+    {"mode": 32, "address": "5", "text": "callf f,[eax]", "bytes": "FF 18"}
+  ],
+  "nop_command_select": {
+    "16": ["90"],
+    "32_and_64": ["90", "6690", "0F1F00", "0F1F4000", "0F1F440000", "660F1F440000", "0F1F8000000000", "0F1F840000000000", "660F1F840000000000"]
+  },
+  "rejections": [
+    {"mode": 32, "text": "jmp short 10", "diagnostic": "Name not found"},
+    {"mode": 32, "text": "badopcode", "diagnostic": "Illegal instruction"},
+    {"mode": 32, "text": "jmpf [eax]", "diagnostic": "Illegal or mismatch size"},
+    {"mode": 32, "text": "jmpf fword [eax]", "diagnostic": "Name not found"},
+    {"mode": 32, "text": "jmpf dword [eax]", "diagnostic": "Name not found"}
+  ],
+  "scope": "Original-side samples of grammar and candidate bytes. Full assembler UI and transaction parity remain tracked in issue #78. No proprietary files or original screenshots are distributed."
+}

@@ -240,6 +240,11 @@ const X86: Backend<'static> = Backend {
     name: "iced-x86",
     version: "1.22.0",
 };
+const X86_ASSEMBLY_EVIDENCE: &[&str] = &[
+    "docs/x86-text-assembly.md",
+    "crates/hiewbie-core/src/assembly/tests.rs",
+];
+
 const ARM: Backend<'static> = Backend {
     name: "yaxpeax-arm",
     version: "0.5.0",
@@ -351,32 +356,41 @@ const BUILT_INS: &[Capability<'static>] = &[
     Capability {
         id: "assemble.x86-16",
         category: Category::Assembly,
-        status: Status::Unavailable,
-        backend: None,
-        modes: &[],
-        byte_orders: &[],
-        limitations: &["No production textual assembler; research probes do not enable editing."],
-        evidence: &["docs/adr/0006-text-assembler-selection.md"],
+        status: Status::Limited,
+        backend: Some(X86),
+        modes: &["x86-16"],
+        byte_orders: &["little"],
+        limitations: &[
+            "Portable single-instruction encoding. Interactive preview and patch transactions are pending.",
+            "The supported legacy forms are documented in the x86 assembly contract.",
+        ],
+        evidence: X86_ASSEMBLY_EVIDENCE,
     },
     Capability {
         id: "assemble.x86-32",
         category: Category::Assembly,
-        status: Status::Unavailable,
-        backend: None,
-        modes: &[],
-        byte_orders: &[],
-        limitations: &["No production textual assembler; research probes do not enable editing."],
-        evidence: &["docs/adr/0006-text-assembler-selection.md"],
+        status: Status::Limited,
+        backend: Some(X86),
+        modes: &["x86-32"],
+        byte_orders: &["little"],
+        limitations: &[
+            "Portable single-instruction encoding. Interactive preview and patch transactions are pending.",
+            "The supported legacy forms and baseline AVX are documented in the x86 assembly contract.",
+        ],
+        evidence: X86_ASSEMBLY_EVIDENCE,
     },
     Capability {
         id: "assemble.x86-64",
         category: Category::Assembly,
-        status: Status::Unavailable,
-        backend: None,
-        modes: &[],
-        byte_orders: &[],
-        limitations: &["No production textual assembler; research probes do not enable editing."],
-        evidence: &["docs/adr/0006-text-assembler-selection.md"],
+        status: Status::Limited,
+        backend: Some(X86),
+        modes: &["x86-64"],
+        byte_orders: &["little"],
+        limitations: &[
+            "Portable single-instruction encoding. Interactive preview and patch transactions are pending.",
+            "The supported legacy forms and baseline AVX are documented in the x86 assembly contract.",
+        ],
+        evidence: X86_ASSEMBLY_EVIDENCE,
     },
     Capability {
         id: "decode.aarch64",
@@ -386,12 +400,13 @@ const BUILT_INS: &[Capability<'static>] = &[
         modes: &["aarch64"],
         byte_orders: &["little"],
         limitations: &[
-            "Complete SVE/SVE2 and extension coverage is not qualified.",
-            "Big-endian instructions are unsupported.",
+            "In-tree BTI, selected SVE/SVE2 and SME mode forms supplement yaxpeax.",
+            "A64 instruction bytes are always little-endian, including in big-endian images.",
+            "Coverage of remaining SVE, SVE2, SME and other extensions is incomplete.",
         ],
         evidence: &[
-            "crates/hiewbie-core/src/instructions/tests.rs",
-            "docs/adr/0004-analysis-backends.md",
+            "crates/hiewbie-core/src/instructions/aarch64_tests.rs",
+            "docs/aarch64-decode-coverage.md",
         ],
     },
     Capability {
@@ -818,7 +833,7 @@ const BUILT_INS: &[Capability<'static>] = &[
         modes: &[],
         byte_orders: &[],
         limitations: &[
-            "Direct branch following is available through decoding; reference search is not implemented.",
+            "Decoded direct branches and file-backed A64 PC-relative operands support navigation. Reference search is pending.",
         ],
         evidence: &["crates/hiewbie-core/src/references.rs"],
     },

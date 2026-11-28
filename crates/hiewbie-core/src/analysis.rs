@@ -30,6 +30,7 @@ pub(crate) struct CodeWindow {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DecodeContext {
     pub mode: Option<DecodeMode>,
+    /// Instruction byte order. The executable retains its own data byte order.
     pub endian: Endian,
     pub base: VirtualAddress,
     pub overridden: bool,
@@ -196,18 +197,23 @@ impl Analysis {
             Machine::Thumb => Some(DecodeMode::Thumb),
             Machine::Other(_) => None,
         });
+        let mode = self
+            .interpretation
+            .mode
+            .or(self.symbol_mode)
+            .or(inferred)
+            .or_else(|| self.automatic_raw().then_some(DecodeMode::X86_32));
+        let endian = self.interpretation.endian.unwrap_or_else(|| {
+            if mode == Some(DecodeMode::Aarch64) {
+                // A64 fetches are always little-endian, including in BE ELF.
+                Endian::Little
+            } else {
+                parsed.map_or(Endian::Little, |image| image.endian)
+            }
+        });
         DecodeContext {
-            mode: self
-                .interpretation
-                .mode
-                .or(self.symbol_mode)
-                .or(inferred)
-                .or_else(|| self.automatic_raw().then_some(DecodeMode::X86_32)),
-            endian: self
-                .interpretation
-                .endian
-                .or(parsed.map(|image| image.endian))
-                .unwrap_or(Endian::Little),
+            mode,
+            endian,
             base: self
                 .interpretation
                 .base
@@ -459,7 +465,7 @@ impl Analysis {
             }
             let operand = instruction.address_operand.filter(|operand| {
                 mapped
-                    && self.executable.is_some()
+                    && (self.executable.is_some() || mode == DecodeMode::Aarch64)
                     && self
                         .operand_offset(operand.address(), document.len())
                         .is_ok()

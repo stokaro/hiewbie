@@ -3,6 +3,7 @@ use std::fmt;
 use crate::analysis::{
     Analysis, BRANCH_LABELS, CodeWindow, Location, LocationKind, analysis_error,
 };
+use crate::assembly::{self, AssemblyError};
 use crate::block::{BlockBoundary, BlockMark, BlockSelection};
 use crate::bookmark::{
     BOOKMARK_SLOTS, Bookmark, BookmarkCommand, BookmarkMark, BookmarkViewport, Bookmarks,
@@ -500,6 +501,73 @@ impl<S: ByteSource> Editor<S> {
     #[must_use]
     pub fn decode_context(&self) -> DecodeContext {
         self.analysis.context_at(self.document.generation())
+    }
+
+    /// Assemble at the current checked mapped or raw address without creating an edit.
+    /// Executable symbol tables are consulted on demand for names in the source.
+    pub fn assemble_at_cursor(&mut self, source: &str) -> Result<Vec<Vec<u8>>, Error> {
+        self.refresh_analysis();
+        let context = self.decode_context();
+        let mode = context
+            .mode
+            .ok_or(Error::Assembly(AssemblyError::UnsupportedProfile))?;
+        let (address, mapped) = self.analysis.address_at(self.cursor)?;
+        if !mapped || self.cursor.get() >= self.document.len() {
+            return Err(analysis_error(
+                "Current offset has no file-backed instruction address",
+            ));
+        }
+        // Object sections may share a virtual range while owning distinct file
+        // bytes. A forward mapping alone cannot identify the instruction's PC.
+        // Raw addresses already use checked base + offset arithmetic above.
+        if self.analysis.executable.is_some()
+            && self.analysis.operand_offset(address, self.document.len())? != self.cursor
+        {
+            return Err(analysis_error(
+                "Instruction address does not map back to the current offset",
+            ));
+        }
+        assembly::assemble_x86(source, mode, context.endian, address, |name| {
+            self.resolve_assembly_symbol(name)
+        })
+        .map_err(Error::Assembly)
+    }
+
+    fn resolve_assembly_symbol(&mut self, name: &str) -> Option<VirtualAddress> {
+        self.refresh_symbols();
+        let mut resolved = None;
+        for entry in self
+            .symbols()?
+            .entries
+            .iter()
+            .filter(|entry| entry.name == name)
+        {
+            let address = match entry.target {
+                SymbolTarget::Virtual(address) | SymbolTarget::ImportSlot(address) => address,
+                SymbolTarget::File(offset) => {
+                    let (address, true) = self.analysis.address_at(offset).ok()? else {
+                        continue;
+                    };
+                    if self
+                        .analysis
+                        .operand_offset(address, self.document.len())
+                        .ok()
+                        != Some(offset)
+                    {
+                        return None;
+                    }
+                    address
+                }
+                _ => continue,
+            };
+            if resolved
+                .replace(address)
+                .is_some_and(|previous| previous != address)
+            {
+                return None;
+            }
+        }
+        resolved
     }
 
     pub fn code_rows(&mut self, limit: usize) -> Result<Vec<CodeRow>, Error> {

@@ -6,6 +6,7 @@
 //! logical bytes and never executes inspected code.
 
 mod analysis;
+pub mod assembly;
 mod block;
 mod bookmark;
 pub mod calculator;
@@ -42,6 +43,10 @@ mod structure_navigation_tests;
 #[cfg(test)]
 #[path = "../../../tests/fixtures/symbol_images.rs"]
 mod symbol_fixtures;
+
+#[cfg(test)]
+#[path = "../../../tests/fixtures/macho_images.rs"]
+mod macho_fixtures;
 #[cfg(test)]
 mod symbol_navigation_tests;
 #[cfg(test)]

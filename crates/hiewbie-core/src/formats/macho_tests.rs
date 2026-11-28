@@ -3,8 +3,7 @@
 use super::*;
 use crate::MemorySource;
 
-#[path = "../../../../tests/fixtures/macho_images.rs"]
-mod fixtures;
+use crate::macho_fixtures as fixtures;
 
 use fixtures::{
     CONTENT, ENTRY, RELOCATIONS, SYMBOLS, header_size, object, put32, put64, section_at,

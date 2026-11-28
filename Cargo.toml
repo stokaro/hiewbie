@@ -16,7 +16,7 @@ tempfile = "=3.23.0"
 same-file = "=1.0.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-iced-x86 = { version = "=1.22.0", default-features = false, features = ["std", "decoder", "intel", "instr_info"] }
+iced-x86 = { version = "=1.22.0", default-features = false, features = ["std", "decoder", "encoder", "op_code_info", "intel", "instr_info"] }
 yaxpeax-arm = { version = "=0.5.0", default-features = false, features = ["std", "fmt", "non-exhaustive-enums"] }
 yaxpeax-arch = { version = "=0.3.3", default-features = false, features = ["std"] }
 
