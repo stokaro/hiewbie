@@ -69,9 +69,10 @@ effect. See [commands.md](../commands.md) for the actual inventory.
 The contextual function bar marks unavailable commands with a dash. The initial
 help dialog lists commands and fallbacks. The
 [Hiew 8.63 reference audit](../reference/hiew-8.63.md) derives expectations from
-the supplied author documentation. The original failed to start in the available
-environment, so its exact selector, nibble, edit-buffer, save-transition and
-modifier behavior remains unobserved. Search still uses literal case-sensitive
+the supplied author documentation and a later selected Windows runtime capture.
+That capture records the mode selector, nibble editing, F3 restore, Escape
+discard, F9 save, and a transient Alt command layer. Buffer boundaries and the
+complete modifier matrix remain unobserved. Search still uses literal case-sensitive
 bytes and cursor-based continuation, unlike the original's documented
 character-field case policy and independent last-match state.
 

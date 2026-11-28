@@ -1,0 +1,4 @@
+interface:
+  display_name: "HIEW UX Reference"
+  short_description: "Implement the observed HIEW terminal workflow"
+  default_prompt: "Use $hiew-ux to implement this hiewbie interface change against the observed HIEW 8.63 behavior."
