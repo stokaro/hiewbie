@@ -38,6 +38,14 @@ Path("process.json").write_text(json.dumps({
 tty.setraw(0)
 os.write(1, b"\\x1b[?1049h\\x1b[?2004h\\x1b[?25l")
 command = os.read(0, 1)
+if command in (b"c", b"w"):
+    os.write(1, b"Staging block output 8/8")
+    if command == b"c":
+        time.sleep(0.4)
+        temporary = Path("staged.bin")
+        temporary.write_bytes(b"ABCDABCD")
+        temporary.replace("extract.bin")
+    command = os.read(0, 1)
 if command == b"!":
     os.kill(os.getpid(), signal.SIGTERM)
 if command == b"s":
@@ -121,6 +129,31 @@ class PtyLifecycleTests(unittest.TestCase):
             self.assertEqual(session.poll_editor(), 7)
             with self.assertRaisesRegex(pty_smoke.SmokeFailure, "editor exit, received 7"):
                 session.finish()
+
+    def test_delayed_block_commit_outlives_quiet_output(self) -> None:
+        destination = self.directory / "extract.bin"
+        for existing in (False, True):
+            with self.subTest(existing=existing):
+                if existing:
+                    destination.write_bytes(b"ABCD")
+                with self.session() as session:
+                    session.send(b"c", "confirm delayed block commit", commit_path=destination)
+                    self.assertEqual(destination.read_bytes(), b"ABCDABCD")
+                    session.send(b"q", "exit after commit", expect_exit=True)
+                    session.finish()
+
+    def test_unreplaced_destination_cannot_satisfy_commit_wait(self) -> None:
+        destination = self.directory / "extract.bin"
+        destination.write_bytes(b"ABCD")
+        with self.session() as session:
+            with mock.patch.object(pty_smoke, "ACTION_SECONDS", 0.35):
+                with self.assertRaisesRegex(
+                    pty_smoke.SmokeFailure, "waiting for the committed file"
+                ):
+                    session.send(b"w", "stage without committing", commit_path=destination)
+            self.assertEqual(destination.read_bytes(), b"ABCD")
+            session.send(b"q", "exit after failed commit wait", expect_exit=True)
+            session.finish()
 
     def test_signal_exit_keeps_the_original_negative_returncode(self) -> None:
         with self.session() as session:

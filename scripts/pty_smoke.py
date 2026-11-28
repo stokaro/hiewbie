@@ -76,6 +76,13 @@ class SmokeFailure(RuntimeError):
     """A failed observable editor or terminal invariant."""
 
 
+def file_stat(path: Path) -> os.stat_result | None:
+    try:
+        return path.stat()
+    except FileNotFoundError:
+        return None
+
+
 def child_session() -> None:
     """Give the supervisor a controlling terminal and its own process group.
 
@@ -280,12 +287,19 @@ class PtySession:
                 return
         self.fail("startup deadline expired before terminal modes were acquired")
 
-    def settle(self, *, require_output: bool, expect_exit: bool = False) -> None:
+    def settle(
+        self,
+        *,
+        require_output: bool,
+        expect_exit: bool = False,
+        commit: tuple[Path, os.stat_result | None] | None = None,
+    ) -> None:
         """Drain responses to a batch, including delayed bare-Esc decoding.
 
         Ordinary actions settle after a quiet output window. An exit action
         must receive the editor's status from the supervisor, even after output
-        stops. Disk bytes and terminal state supply the semantic assertions.
+        stops. An action that writes a new destination or atomically replaces
+        one also waits for that filesystem change.
         """
         started = time.monotonic()
         deadline = min(self.deadline, started + ACTION_SECONDS)
@@ -308,9 +322,20 @@ class PtySession:
                 and now - last_output >= 0.08
                 and (received or not require_output)
             ):
-                return
+                if commit is None:
+                    return
+                path, previous = commit
+                current = file_stat(path)
+                if current is not None and (
+                    previous is None or not os.path.samestat(previous, current)
+                ):
+                    return
         if expect_exit:
             self.fail("action deadline expired while waiting for the editor's exit status")
+        if commit is not None:
+            self.fail(
+                f"action deadline expired while waiting for the committed file {commit[0].name}"
+            )
         self.fail("action deadline expired while waiting for terminal output to settle")
 
     def send(
@@ -320,11 +345,13 @@ class PtySession:
         *,
         require_output: bool = True,
         expect_exit: bool = False,
+        commit_path: Path | None = None,
     ) -> None:
         self.steps.append(label)
         self.event("m", label)
         if self.poll_editor() is not None:
             self.fail("cannot send input to an exited application")
+        commit = None if commit_path is None else (commit_path, file_stat(commit_path))
         deadline = min(self.deadline, time.monotonic() + ACTION_SECONDS)
         pending = memoryview(data)
         while pending:
@@ -337,7 +364,7 @@ class PtySession:
                 select.select([], [self.master], [], 0.025)
             except InterruptedError:
                 continue
-        self.settle(require_output=require_output, expect_exit=expect_exit)
+        self.settle(require_output=require_output, expect_exit=expect_exit, commit=commit)
 
     def set_size(self, width: int, height: int) -> None:
         fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack("HHHH", height, width, 0, 0))
@@ -574,8 +601,8 @@ def block_workflow(binary: Path, directory: Path, *, record: bool) -> list[list]
 
         session.send(F2 + b"extract.bin\r", "Enter a new output file")
         session.send(b"\r", "Confirm the default output offset zero")
-        session.send(b"\r", "Select raw bytes and write the block")
         output = directory / "extract.bin"
+        session.send(b"\r", "Select raw bytes and write the block", commit_path=output)
         block = bytes(expected[2:6])
         if output.read_bytes() != block:
             session.fail("new output does not contain exactly the selected block")
@@ -585,7 +612,7 @@ def block_workflow(binary: Path, directory: Path, *, record: bool) -> list[list]
         session.send(b"\r", "Stage confirmation for the existing output")
         if output.read_bytes() != block:
             session.fail("the output changed before explicit confirmation")
-        session.send(b"\r", "Confirm append and commit")
+        session.send(b"\r", "Confirm append and commit", commit_path=output)
         if output.read_bytes() != block * 2:
             session.fail("append changed or misplaced bytes in the existing output")
         session.expect_file(bytes(expected), mtime_ns=saved_mtime)
