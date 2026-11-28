@@ -513,6 +513,8 @@ def edit_save(binary: Path, directory: Path, *, record: bool) -> list[list]:
     path, mtime_ns = fixture(directory)
     with PtySession(binary, path, "edit/save and paste rejection", record=record) as session:
         session.send(F4, "F4: choose view without switching immediately")
+        if b"\x1b[6n" in session.output:
+            session.fail("full-screen startup queried the terminal cursor position")
         session.send(UP, "select Text in the mode menu")
         session.send(b"\r", "Enter: confirm Text view")
         session.send(b"\r", "Enter: return to Hex")
