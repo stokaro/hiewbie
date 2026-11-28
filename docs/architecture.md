@@ -54,7 +54,11 @@ platform boundaries appear. Do not create empty crates merely to match this tabl
 Current boundaries are `crates/hiewbie-core` (document, addresses, formats,
 instructions, commands and search),
 `crates/hiewbie` (native storage, CLI, Ratatui frontend), and `xtask` (checks and
-target builds). Selected engines are pure Rust and enter only the portable core.
+target builds). `fuzz/replay` is a development-only portable testing boundary:
+stable tests, coverage-guided fuzz targets and the isolated WASM export adapter
+share its invariant handlers and generated seeds. The application does not
+depend on these harnesses or libFuzzer.
+Selected engines are pure Rust and enter only the portable core.
 The diagram also contains planned consumers; it does not claim a browser UI.
 
 ## 3. Document and storage contracts
@@ -143,11 +147,18 @@ Selected terminal stack and remaining dependency candidates:
 
 | Area | Candidate | Decision to resolve |
 | --- | --- | --- |
-| Terminal | Ratatui 0.29.0 / Crossterm 0.28.1 selected | [Input ADR](adr/0002-terminal-input.md); enhanced keys and ConPTY remain gaps |
+| Terminal | Ratatui 0.30.2 / Crossterm 0.29.0 selected | [Input ADR](adr/0002-terminal-input.md); enhanced keys and ConPTY remain gaps |
 | x86 | iced-x86 1.22.0 selected | Bounded 16/32/64 decoder; text assembly and exhaustive extension coverage remain separate |
 | ARM families | yaxpeax-arm 0.5.0 / yaxpeax-arch 0.3.3 selected | Strict ARM/Thumb/AArch64 decoding; revision, extension, endian and IT-state gaps remain explicit |
 | Executable parsing | Focused bounded readers selected | PE/ELF/Mach-O headers and mappings; full symbols/sections/legacy interpretation remains incomplete |
-| Text assembly | LLVM MC, a permissive parser/backend, or evaluated Keystone integration | Syntax fidelity, footprint, licenses, all host targets and WASM |
+| Text assembly | In-tree bounded parser, iced-x86 1.22.0 encoder and asm-rs 0.2.0 AArch64 selected for implementation | [ADR 0006](adr/0006-text-assembler-selection.md); isolated probes are executable, production commands remain unavailable |
+
+The portable [capability registry](capabilities.md) reports the compiled backend
+set through one versioned schema. Native `--capabilities`, headless callers and
+build tooling share it; a future browser adapter can query the same API.
+Available, limited and unavailable entries remain distinct from build inspection
+or runtime evidence. Optional backend registration must preserve unavailable
+entries, reject conflicting claims and leave raw-byte operations usable.
 
 Keystone has GPLv2 terms and a FOSS exception; do not call it an MIT dependency.
 The exception and distribution obligations must be evaluated before choosing it.
@@ -221,6 +232,13 @@ Fuzz parsers, address arithmetic, decoder adapters, search patterns, and documen
 operations. A panic is a failure, including in a native dependency boundary.
 Compare architecture-neutral command results across hosts. Manual discovery is
 useful, but repetitive validation must be automated.
+
+The [fuzzing contract](fuzzing.md) separates routine deterministic seed replay
+from bounded coverage-guided campaigns. Stateful editor cases compare against an
+independent byte/history model and check rejected operations for mutation.
+Parser and decoder failures retain raw access. CI records the tested source and
+corpus identity, target, engine and resource budgets; a successful campaign is
+bounded evidence, not a proof that arbitrary input is defect-free.
 
 ## 8. Implementation sequence and exit criteria
 

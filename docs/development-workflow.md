@@ -12,9 +12,12 @@ unrelated refactors, speculative abstractions, and repeated context dumps.
 
 The workspace pins Rust 1.90.0. `cargo xtask check` validates the target manifest
 and runs `cargo fmt --all -- --check`, workspace Clippy with warnings denied,
-and locked workspace tests. `rust.yml` runs native and compile-only jobs derived
-from `build/targets.json`; inspect the identified commit's runs for actual
-results. The separate `agent-tooling.yml` workflow runs the CI helper's offline
+and locked workspace tests, including the portable fuzz corpus replay.
+`rust.yml` runs native and compile-only jobs derived from `build/targets.json`;
+native jobs retain artifact inspection and compiled-capability JSON. Inspect
+the identified commit's runs and report status for actual results; a retained
+inspection with unsupported metadata is not successful ABI verification.
+The separate `agent-tooling.yml` workflow runs the CI helper's offline
 regressions when that helper or its workflow changes.
 For documentation changes, review affected links, requirement references, and
 status claims; run `git diff --check` in a Git checkout. Do not create tooling
@@ -30,6 +33,40 @@ python3 -m unittest discover -s .agents/skills/gh-fix-ci/scripts -p 'test_*.py'
 mode with locked dependencies; the WebAssembly row builds only the core.
 `cargo xtask targets` prints the validated manifest. `package` and
 `verify-release` fail explicitly because release tooling is not implemented.
+
+`cargo xtask inspect --target TRIPLE --artifact PATH --commit FULL_SHA`
+records binary metadata without executing the artifact. It reports target/ABI
+mismatches, missing inspection tools and unavailable metadata explicitly.
+`cargo xtask validate-evidence --target TRIPLE --artifact PATH --commit FULL_SHA
+--evidence JSON` checks a producer's build/inspection/runtime bundle against
+the exact bytes, commit and selected baseline. The [build contract](build-and-release.md)
+defines the schema and remaining platform gates; this does not implement
+release packaging or publication.
+
+`hiewbie --capabilities` and `hiewbie --capabilities --json` report the compiled
+implementation catalog without opening a file or terminal. Runtime evidence
+and optional research probes remain separate from this report.
+
+## Bounded fuzz campaigns and portable replay
+
+Routine workspace tests execute the deterministic corpus against the same
+handlers used by libFuzzer. The separate `fuzz.yml` workflow runs bounded
+coverage-guided smoke campaigns for pull requests and longer scheduled campaigns.
+It preserves target, corpus, source and resource-limit metadata. Run the stable
+corpus directly with:
+
+```sh
+cargo run --locked --package hiewbie-fuzz-replay --bin replay
+```
+
+The [fuzzing guide](fuzzing.md) gives the pinned nightly/engine, exact reproduction
+and minimization commands, native/WASM replay, corpus provenance and budgets.
+LibFuzzer remains outside the application workspace dependency graph. WASM
+execution in Node exercises the portable handlers, not browser file/terminal
+integration. A campaign with no findings establishes only its recorded bounded
+run; retain a minimized generated regression for each discovered defect.
+
+## Native terminal regression checks
 
 Run the real Unix terminal scenarios after building the CLI:
 

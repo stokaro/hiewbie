@@ -3,6 +3,9 @@
 **/target/
 /dist/
 /coverage/
+/fuzz/results/
+/fuzz/libfuzzer/artifacts/
+/fuzz/libfuzzer/corpus/
 
 # Local temporary editor artifacts.
 *.swp

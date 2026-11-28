@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "nightly": "nightly-2025-09-18",
+  "cargo_fuzz": "0.12.0",
+  "libfuzzer_sys": "0.4.13",
+  "targets": ["formats_symbols", "decoder", "addresses", "search", "edit_commands"],
+  "max_input_bytes": 4096,
+  "input_timeout_seconds": 5,
+  "rss_limit_mb": 512,
+  "malloc_limit_mb": 64,
+  "seed": 20261128,
+  "pull_request_seconds_per_target": 20,
+  "scheduled_seconds_per_target": 300
+}

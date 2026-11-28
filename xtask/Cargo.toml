@@ -7,8 +7,13 @@ license.workspace = true
 publish = false
 
 [dependencies]
+hiewbie-core = { path = "../crates/hiewbie-core" }
 serde.workspace = true
 serde_json.workspace = true
+sha2 = "=0.10.9"
+
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.191"
 
 [lints]
 workspace = true

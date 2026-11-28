@@ -1,6 +1,6 @@
 # Build and release specification
 
-**Status: build foundation implemented; release distribution planned.** A pinned
+**Status: build and artifact-evidence foundation implemented; release distribution planned.** A pinned
 Rust workspace, native editor, `xtask`, and matrix-derived CI are present.
 [build/targets.json](../build/targets.json) records each required target's
 configured strategy and remaining blockers. Actual verification belongs to the
@@ -90,11 +90,15 @@ Implemented command surface:
 cargo xtask check
 cargo xtask build --target <rust-triple>
 cargo xtask targets
+cargo xtask inspect --target <triple> --artifact <path> --commit <full-sha>
+cargo xtask validate-evidence --target <triple> --artifact <path> --commit <full-sha> --evidence <json>
 ```
 
 The Cargo alias itself uses locked resolution. `check` validates the manifest,
-formatting, workspace Clippy with denied warnings, and workspace tests. `build`
-selects the declared package, release profile, lockfile, and explicit target.
+formatting, workspace Clippy with denied warnings, workspace tests, and the offline
+fuzz corpus replay. `build` selects the declared package, release profile, lockfile,
+explicit target, and reviewed `build.environment` values. The macOS rows apply
+`MACOSX_DEPLOYMENT_TARGET=11.0`; arbitrary environment injection is rejected.
 The WebAssembly target selects `hiewbie-core` only and emits a limitation notice.
 Toolchain and MSRV are 1.90.0 / 1.90; see [ADR 0003](adr/0003-build-targets.md).
 
@@ -152,22 +156,183 @@ route for hiewbie, preferably with fewer native dependencies than the GUI refere
 - Test architecture inspection and produce a runnable ARM64 smoke-test plan.
 - Record any unsupported backend explicitly instead of silently omitting functionality.
 
-## 7. Runtime baselines
+## 7. Runtime baselines and artifact evidence
 
-Choose and document minimum OS/runtime versions before publishing compatibility claims.
-The following are reference facts and starting points, not verified hiewbie minimums:
+### Selected release intent
 
-| Platform | Observed ArtCraft baseline | hiewbie requirement |
+Schema **2** of [build/targets.json](../build/targets.json) selects the following
+baselines. Selection is a requirement for future release builds, not a successful
+execution claim. Every checked-in target and supplemental artifact remains
+`evidence_status: pending`. Platform implementation stories and #98 own the
+remaining exact-artifact/minimum-runtime proof.
+
+| Targets | Selected runtime intent | Selected build inputs / remaining qualification |
 | --- | --- | --- |
-| macOS | GridCraft packaging sets deployment target 11.0 | Decide and test minimum OS for both architectures |
-| Linux x86_64/ARM64 | Ubuntu 22.04 build runners | Inspect linked ABI requirements and test an explicit minimum |
-| Linux RISC-V | Ubuntu 24.04; shared workflow sets glibc floor 2.39 | State actual glibc requirement or verify an improved baseline |
-| Windows | x64/ARM64 release runners, ARM64 verification on Windows 11 | Define supported OS and console/terminal combinations |
-| FreeBSD | Shared workflow defaults to 15.1-STABLE at inspected commit | Pin a supported guest/runtime baseline and test it |
-| Browser | WebAssembly application | Define browser/file/terminal capabilities and automated coverage |
+| Both macOS architectures | macOS **11.0** | Rust 1.90.0, Apple clang and macOS SDK; `MACOSX_DEPLOYMENT_TARGET=11.0` is applied by `xtask build` and derived CI settings. Exact Xcode/SDK versions belong to build evidence. |
+| Windows x64 MSVC | Windows **10 1809 / build 17763**; Server 2019 is the corresponding server API generation | MSVC tools from Visual Studio 2022 or newer and Windows SDK; record the exact toolset in build evidence. ConPTY interaction, imports and minimum-runtime evidence remain required. |
+| Windows ARM64 MSVC | Windows **11 / build 22000** | Native ARM64 MSVC toolchain, matching SDK, ConPTY and minimum-runtime evidence. |
+| Linux x64 / ARM64 GNU | Ubuntu **22.04**, kernel **5.15**, glibc **2.35** | Matching GNU development sysroot; exact package/image and linker versions recorded per build. |
+| Linux RISC-V GNU | Ubuntu **24.04**, kernel **6.8**, glibc **2.39** | GNU cross-linker and matching RISC-V sysroot remain #92. |
+| Both FreeBSD architectures | FreeBSD **14.5-RELEASE** | Matching clang/lld and sysroot. The x64 linked/runtime path remains #93; ARM64 matching Rust compiler/std provenance remains #91. |
+| Browser/WASM | Rust 1.90.0 default Wasm feature set plus DOM keyboard and local File/Blob import/download | Named minimum browser versions and a real browser frontend remain #95/#96. Core compilation is not a browser product. |
 
-Inspect linked libraries and packaging metadata for consistency with each declared
-baseline. A package dependency field alone is not evidence of runtime compatibility.
+The [Rust 1.90.0 platform table][Rust targets] gives compiler target floors;
+application dependencies and APIs can impose newer requirements. The chosen
+macOS floor applies to both universal inputs and follows the documented
+[deployment-target/SDK controls][Rust macOS]. The Windows floor accounts for
+[ConPTY availability][ConPTY] and the [MSVC toolchain contract][Rust Windows].
+The Linux selections use [Ubuntu 22.04 release facts][Ubuntu 22.04], the
+[24.04 kernel selection][Ubuntu 24.04 kernel] and its [glibc package][Ubuntu glibc].
+FreeBSD 14.5 is a selected release from the [release inventory][FreeBSD releases]
+and [support schedule][FreeBSD support]; Rust/std acquisition still follows the
+[pinned compiler's FreeBSD rules][Rust FreeBSD].
+
+The browser feature baseline is deliberately more specific than “WebAssembly
+1.0”: Rust 1.90.0 defaults include `multivalue`, `mutable-globals`,
+`reference-types`, `sign-ext`, `nontrapping-fptoint`, and `bulk-memory`
+([pinned target documentation][Rust WASM]). The planned frontend additionally
+needs DOM keyboard events and the [File/Blob/slice/read and blob-URL
+contracts][File API]. These feature requirements and the unresolved browser
+version qualification are stored in the manifest.
+
+Every target records compiler/MSRV, linker/sysroot selection, native-library
+requirements, input-provenance obligations, required runtime scenarios and source
+links. A pending sysroot digest or runner image does not become a pinned input
+merely because its description is present. Build producers record the actual
+versions and immutable input identities before claiming artifact evidence.
+
+### Capabilities and download metadata
+
+`cargo xtask targets` validates and emits the one operational target manifest.
+CI, packaging and any future download metadata consume that output; no download
+is advertised while no release archive exists. Validation preserves all ten
+required targets, Windows ZIP / Unix tar.gz formats, and the required universal
+macOS archive with both inputs. The specification's required matrix is retained
+as a regression contract.
+
+Capability profiles list **requirements**, including unfinished stories. Each ID
+is checked against the [shared production registry](capabilities.md), with
+decoding, text assembly, references, symbols, extensions and devices independently
+represented. Browser native-device unavailability is explicit. The application
+reports current implementation availability through `--capabilities [--json]`.
+Neither a capability requirement nor a usable compiled-core descriptor proves
+that a particular target artifact was built or executed. Per-artifact compiled
+and runtime-tested capability IDs belong in the records below; an unavailable
+or unknown implementation cannot be promoted by writing its ID into evidence.
+
+### Metadata inspection
+
+After building from an identified source commit, retain the exact executable and
+run (replace the placeholders with the actual target, path and full Git SHA):
+
+```sh
+cargo xtask inspect --target x86_64-unknown-linux-gnu --artifact target/release/hiewbie --commit FULL_40_CHARACTER_SHA > inspection.json
+```
+
+The command hashes the artifact with streaming SHA-256, reads checked binary
+headers and invokes an available metadata tool. It **never executes the supplied
+artifact** and never calls `ldd`.
+
+| Artifact | Current inspection hook | Scope and limits |
+| --- | --- | --- |
+| GNU Linux / FreeBSD ELF64 | `readelf` or `llvm-readelf` | Machine/type/OSABI, interpreter, DT_NEEDED and GLIBC version requirements. Linux and FreeBSD cannot qualify each other merely because the CPU matches. Static, sectionless or other-libc cases without recoverable ABI evidence remain unsupported. |
+| Thin macOS Mach-O | `otool -l` | Executable kind, CPU, macOS platform/deployment commands and dylib dependencies. iOS/tvOS/watchOS, conflicting deployment commands, and a higher deployment floor cannot qualify. Universal slice combination remains #94. |
+| Windows PE32+ | `llvm-readobj --file-headers --coff-imports` | Executable kind, machine, subsystem version and DLL imports. DLLs do not qualify as the CLI. PE metadata cannot itself prove MSVC provenance or minimum Windows API availability. |
+| WASM | Header recognition only | Feature/import inspection and a real browser producer remain #96; header recognition does not pass native inspection. |
+
+Tool output is bounded to **2 MiB** and each invocation to **20 seconds**. Errors
+and timeouts terminate the child. Missing tools, unsupported metadata and target
+mismatch have explicit JSON diagnostics and a failing exit status. An observed
+GLIBC or Mach-O deployment requirement above the selected floor also fails.
+`compatible-observed-metadata` means only that the inspected ABI fields fit;
+`unknown` retains unresolved minimum-runtime questions. Neither result means the
+program has run. PE and FreeBSD can have complete metadata inspection with an
+unknown minimum-runtime verdict.
+
+The report binds target, declared source commit, artifact size and digest to its
+baseline ID, parsed facts and bounded tool output. The artifact is hashed again
+after inspection to detect changes. SHA-256 identifies the bytes; the command's
+`--commit` argument is a **producer declaration**, not a proof that arbitrary
+bytes were compiled from that revision. Build evidence must originate from a
+controlled checkout of that exact commit, with its dirty-tree policy and actual
+compiler/linker/sysroot inputs recorded in the build log.
+
+### Attaching and validating evidence
+
+An artifact evidence envelope has this schema (all nested records carry the
+same full `identity` object):
+
+| Field / record | Required contents |
+| --- | --- |
+| Envelope | `schema_version: 1`, `identity`, `state`, optional `build`, `inspection`, `runtime` |
+| Identity | `target`, full lowercase `source_commit`, lowercase 64-digit `sha256`, exact `size` |
+| Build | `identity`, exact `compiler`, executed `command` array, `inputs` with `rustc`, `linker`, `sysroot` provenance, `compiled_capabilities`, `log_ref`, `passed` |
+| Inspection | The complete JSON object emitted by `xtask inspect`; do not reconstruct its parsed fields by hand |
+| Runtime | `identity`, `baseline_id`, `environment`, completed `checks`, `verified_capabilities`, `minimum_runtime_tested`, `log_ref`, `passed` |
+| Runtime environment | `class` (`native`, `virtual-machine`, `emulated`, `browser`), `system`, `machine`, numeric `versions`, exercised `features`, descriptive runner/VM/emulator/browser details |
+
+`state` is one of `proposed`, `built`, `inspected`, `runtime-verified`. Each
+successive state requires its corresponding successful results; absence of a
+result never becomes success. A newer-runner result can be attached while the
+state remains `inspected`, but cannot set `minimum_runtime_tested: true`. That
+flag requires every selected version component at the selected major/minor
+floor (patch suffixes are allowed) and the selected feature set. Thus running
+with glibc 2.40 does not prove the 2.35 minimum. Browser runtime records have an
+explicit browser class/version; full promotion remains blocked until #96
+supplies the currently missing Wasm inspection hook.
+
+A concrete pending envelope can be produced from an actual inspection without
+inventing build or runtime results:
+
+```python
+import json
+from pathlib import Path
+
+inspection = json.loads(Path("inspection.json").read_text())
+report = {
+    "schema_version": 1,
+    "identity": inspection["identity"],
+    "state": "proposed",
+    "build": None,
+    "inspection": inspection,
+    "runtime": None,
+}
+Path("artifact-evidence.json").write_text(json.dumps(report, indent=2) + "\n")
+```
+
+Attach actual build/runtime records from the named producers as available, then:
+
+```sh
+cargo xtask validate-evidence --target x86_64-unknown-linux-gnu --artifact target/release/hiewbie --commit FULL_40_CHARACTER_SHA --evidence artifact-evidence.json
+```
+
+Validation compares every record with the supplied artifact's actual digest,
+size, target and requested commit. It checks the baseline ID, compiler, scenario
+coverage, capability claims and minimum-runtime context. Recorded tool arguments
+are allowlisted; ABI fields are reparsed from the bounded raw output and checked
+against the structured fields and actual binary header. Altering a GLIBC floor
+in JSON while retaining different tool output is rejected. Failed, unsupported,
+stale or incomplete records cannot qualify a successful state.
+
+This is consistency validation for **trusted producer logs**, not cryptographic
+attestation or automatic authentication of a CI URL. It does not execute commands
+stored in JSON. The final release gate #98 still checks complete feature coverage,
+all exact packaged artifacts, universal inputs, notices, runtime environments and
+published inventory. The checked-in manifest stays pending rather than embedding
+stale success from one developer machine.
+
+[Rust targets]: https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support.md
+[Rust macOS]: https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support/apple-darwin.md
+[Rust Windows]: https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support/windows-msvc.md
+[Rust FreeBSD]: https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support/freebsd.md
+[Rust WASM]: https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support/wasm32-unknown-unknown.md
+[ConPTY]: https://learn.microsoft.com/en-us/windows/console/createpseudoconsole
+[Ubuntu 22.04]: https://discourse.ubuntu.com/t/jammy-jellyfish-release-notes/24668/1
+[Ubuntu 24.04 kernel]: https://discourse.ubuntu.com/t/introducing-kernel-6-8-for-the-24-04-noble-numbat-release/41958
+[Ubuntu glibc]: https://packages.ubuntu.com/noble/libc6
+[FreeBSD releases]: https://www.freebsd.org/releases/
+[FreeBSD support]: https://www.freebsd.org/security/
+[File API]: https://www.w3.org/TR/FileAPI/
 
 ## 8. Terminal-first release artifacts
 

@@ -1,0 +1,7 @@
+/results/
+/target/
+/libfuzzer/artifacts/
+/libfuzzer/corpus/
+/libfuzzer/coverage/
+/libfuzzer/target/
+/wasm/target/

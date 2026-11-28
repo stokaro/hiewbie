@@ -1,0 +1,93 @@
+name: Fuzz boundaries
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  guided:
+    name: Bounded libFuzzer with AddressSanitizer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: 2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check campaign failure and deadline handling
+        run: python3 -m unittest discover -s fuzz -p 'test_run.py' -v
+      - name: Install pinned fuzz tools and locked dependencies
+        run: |
+          rustup toolchain install 1.90.0 --profile minimal
+          rustup toolchain install nightly-2025-09-18 --profile minimal
+          cargo +1.90.0 install cargo-fuzz --version 0.12.0 --locked
+          cargo +1.90.0 fetch --locked
+          cargo +nightly-2025-09-18 fetch --locked --manifest-path fuzz/libfuzzer/Cargo.toml
+      - name: Run the bounded campaign
+        env:
+          FUZZ_EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$FUZZ_EVENT" = schedule ]; then
+            python3 fuzz/run.py --campaign
+          else
+            python3 fuzz/run.py
+          fi
+      - name: Retain exact corpus, crashes, budgets and logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-${{ github.sha }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            fuzz/results/manifest.json
+            fuzz/results/*.log
+            fuzz/results/corpus/**
+            fuzz/results/artifacts/**
+
+  portable:
+    name: Execute the portable corpus in WASM
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CARGO_TARGET_DIR: target/fuzz-wasm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the portable replay adapter
+        run: |
+          rustup toolchain install 1.90.0 --profile minimal --target wasm32-unknown-unknown
+          cargo +1.90.0 build --locked --release --manifest-path fuzz/wasm/Cargo.toml --target wasm32-unknown-unknown
+          cargo +1.90.0 run --locked --package hiewbie-fuzz-replay --bin replay -- --write-corpus target/fuzz-wasm/corpus
+      - name: Execute all five targets without host imports
+        run: |
+          node fuzz/check-wasm.mjs target/fuzz-wasm/wasm32-unknown-unknown/release/hiewbie_fuzz_wasm.wasm target/fuzz-wasm/corpus > target/fuzz-wasm/replay.json
+          cat target/fuzz-wasm/replay.json
+      - name: Retain portable execution evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-wasm-${{ github.sha }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            target/fuzz-wasm/replay.json
+            target/fuzz-wasm/corpus/**
+            target/fuzz-wasm/wasm32-unknown-unknown/release/hiewbie_fuzz_wasm.wasm

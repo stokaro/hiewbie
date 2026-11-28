@@ -1,5 +1,6 @@
 //! Native command-line entry point. File bytes and commands live in the shared core.
 
+mod capability_output;
 mod symbol_output;
 mod terminal;
 
@@ -27,6 +28,8 @@ Options:
       --symbols       Print at most 64 parsed symbols, imports, and exports
       --imports       Print at most 64 parsed imports
       --exports       Print at most 64 parsed exports
+      --capabilities  Report compiled features, backends, and limitations
+      --json          Emit capability schema v1 JSON (with --capabilities)
       --offset VALUE  Start at a file offset, or an absolute VA prefixed by .
       --entry         Start at the parsed entry point; conflicts with --offset
       --arch MODE     auto, x86-16, x86-32, x86-64, arm, thumb, or aarch64
@@ -40,9 +43,11 @@ Options:
 
 The dump/headers/disassemble/symbols/imports/exports modes are mutually exclusive.
 Raw/base interpretation cannot be combined with --slice.
+Capability reporting accepts no files or inspection options.
 
 Examples:
   hiewbie program.bin
+  hiewbie --capabilities --json
   hiewbie --read-only program.bin
   hiewbie --dump --offset 0x100 program.bin
   hiewbie --dump --offset 256t program.bin
@@ -112,6 +117,7 @@ struct Options {
 enum Invocation {
     Help,
     Version,
+    Capabilities { json: bool },
     Browse { read_only: bool },
     Run(Options),
 }
@@ -129,6 +135,8 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
     let mut raw = false;
     let mut slice = None;
     let mut positional_only = false;
+    let mut capabilities = false;
+    let mut json = false;
 
     while let Some(arg) = args.next() {
         if !positional_only {
@@ -139,6 +147,20 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
                 }
                 Some("--help" | "-h") => return Ok(Invocation::Help),
                 Some("--version" | "-V") => return Ok(Invocation::Version),
+                Some("--capabilities") => {
+                    if capabilities {
+                        return Err("--capabilities may be supplied only once".into());
+                    }
+                    capabilities = true;
+                    continue;
+                }
+                Some("--json") => {
+                    if json {
+                        return Err("--json may be supplied only once".into());
+                    }
+                    json = true;
+                    continue;
+                }
                 Some("--read-only" | "-r") => {
                     read_only = true;
                     continue;
@@ -244,6 +266,25 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
         paths.push(PathBuf::from(arg));
     }
 
+    if capabilities {
+        if !paths.is_empty()
+            || read_only
+            || output.is_some()
+            || entry
+            || offset.is_some()
+            || architecture.is_some()
+            || endian.is_some()
+            || base.is_some()
+            || raw
+            || slice.is_some()
+        {
+            return Err("--capabilities does not accept files or inspection options".into());
+        }
+        return Ok(Invocation::Capabilities { json });
+    }
+    if json {
+        return Err("--json requires --capabilities".into());
+    }
     if entry && offset.is_some() {
         return Err("--entry and --offset are mutually exclusive".into());
     }
@@ -602,6 +643,13 @@ fn main() -> ExitCode {
         Ok(Invocation::Version) => {
             println!("hiewbie {}", env!("CARGO_PKG_VERSION"));
             return ExitCode::SUCCESS;
+        }
+        Ok(Invocation::Capabilities { json }) => {
+            match capability_output::write(json, &mut io::stdout().lock()) {
+                Ok(()) => Ok(()),
+                Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+                Err(error) => Err(format!("cannot print capabilities: {error}")),
+            }
         }
         Ok(Invocation::Browse { read_only }) => run_terminal(None, read_only, Vec::new()),
         Ok(Invocation::Run(options)) => run(options),

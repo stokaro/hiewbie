@@ -9,6 +9,7 @@ mod analysis;
 mod block;
 mod bookmark;
 pub mod calculator;
+pub mod capabilities;
 mod command;
 mod document;
 mod error;

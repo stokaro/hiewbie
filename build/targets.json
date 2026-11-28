@@ -1,7 +1,7 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "toolchain_source": "rust-toolchain.toml",
-  "evidence_policy": "This manifest records required artifacts, configured checks, and remaining work. It does not assert that any build, runtime test, package, or release has succeeded. Evidence belongs to the identified commit's CI logs and release manifest. Compile checks do not produce linked executables or runtime evidence.",
+  "evidence_policy": "Runtime baselines and capability requirements are selected intent. All checked-in artifact evidence is pending. A compiled implementation descriptor is not per-target execution proof. External build, inspection and runtime records must match the exact target, source commit, artifact SHA-256, size and selected baseline; minimum-runtime verification is separate from a newer-runner test. No release or download is implied.",
   "targets": [
     {
       "triple": "aarch64-apple-darwin",
@@ -12,11 +12,65 @@
         "package": "hiewbie",
         "scope": "application",
         "rust_std": "rustup",
-        "prerequisites": "Native Apple Silicon macOS with the pinned Rust toolchain and Xcode command-line tools."
+        "prerequisites": "Native Apple Silicon macOS with the pinned Rust toolchain and Xcode command-line tools.",
+        "compiler": "1.90.0",
+        "msrv": "1.90",
+        "environment": {
+          "MACOSX_DEPLOYMENT_TARGET": "11.0"
+        },
+        "linker": "Apple clang/ld through the selected Xcode command-line tools",
+        "sysroot": "macOS SDK from Xcode; exact SDK path/version and digest recorded by the build producer",
+        "native_libraries": [
+          "Apple libSystem and actual load-command dependencies"
+        ],
+        "input_provenance": "Native CI runner supplies Xcode; exact compiler/linker/SDK identity must accompany each build record."
       },
-      "ci": { "mode": "native", "runner": "macos-15", "host": "aarch64-apple-darwin", "pty": true },
+      "ci": {
+        "mode": "native",
+        "runner": "macos-15",
+        "host": "aarch64-apple-darwin",
+        "pty": true
+      },
       "runtime_plan": "Run workspace tests, help/version, and Unix PTY editing/cleanup smoke on the named native runner. Retain CI logs per commit; minimum OS and complete terminal scenarios remain to be validated.",
-      "release_blockers": ["Packaging and checksums are not implemented.", "Minimum macOS release and universal CLI packaging are not validated."]
+      "release_blockers": [
+        "Packaging and checksums are not implemented.",
+        "Minimum macOS release and universal CLI packaging are not validated."
+      ],
+      "runtime": {
+        "id": "aarch64-apple-darwin-baseline-v1",
+        "minimum_versions": {
+          "os": "11.0"
+        },
+        "required_features": [],
+        "required_evidence": [
+          "build",
+          "binary-inspection",
+          "runtime",
+          "minimum-runtime"
+        ],
+        "runtime_checks": [
+          "startup",
+          "version",
+          "help",
+          "open",
+          "navigation",
+          "edit",
+          "save",
+          "reopen",
+          "cancel",
+          "terminal-cleanup"
+        ],
+        "sources": [
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support.md",
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support/apple-darwin.md"
+        ],
+        "system": "macos",
+        "machine": "aarch64",
+        "binary_format": "macho",
+        "selection_note": "Selected macOS 11.0 deployment baseline for both universal inputs. This is a conservative shared floor, not proof of execution on macOS 11.0; SDK/tool versions and minimum-runtime tests remain artifact evidence."
+      },
+      "capability_profile": "native",
+      "evidence_status": "pending"
     },
     {
       "triple": "x86_64-apple-darwin",
@@ -27,11 +81,65 @@
         "package": "hiewbie",
         "scope": "application",
         "rust_std": "rustup",
-        "prerequisites": "Native Intel macOS with the pinned Rust toolchain and Xcode command-line tools."
+        "prerequisites": "Native Intel macOS with the pinned Rust toolchain and Xcode command-line tools.",
+        "compiler": "1.90.0",
+        "msrv": "1.90",
+        "environment": {
+          "MACOSX_DEPLOYMENT_TARGET": "11.0"
+        },
+        "linker": "Apple clang/ld through the selected Xcode command-line tools",
+        "sysroot": "macOS SDK from Xcode; exact SDK path/version and digest recorded by the build producer",
+        "native_libraries": [
+          "Apple libSystem and actual load-command dependencies"
+        ],
+        "input_provenance": "Native CI runner supplies Xcode; exact compiler/linker/SDK identity must accompany each build record."
       },
-      "ci": { "mode": "native", "runner": "macos-15-intel", "host": "x86_64-apple-darwin", "pty": true },
+      "ci": {
+        "mode": "native",
+        "runner": "macos-15-intel",
+        "host": "x86_64-apple-darwin",
+        "pty": true
+      },
       "runtime_plan": "Run workspace tests, help/version, and Unix PTY editing/cleanup smoke on the named native runner. Do not substitute Apple Silicon cross-compilation or lipo inspection for Intel execution.",
-      "release_blockers": ["Packaging and checksums are not implemented.", "Minimum macOS release and universal CLI packaging are not validated."]
+      "release_blockers": [
+        "Packaging and checksums are not implemented.",
+        "Minimum macOS release and universal CLI packaging are not validated."
+      ],
+      "runtime": {
+        "id": "x86_64-apple-darwin-baseline-v1",
+        "minimum_versions": {
+          "os": "11.0"
+        },
+        "required_features": [],
+        "required_evidence": [
+          "build",
+          "binary-inspection",
+          "runtime",
+          "minimum-runtime"
+        ],
+        "runtime_checks": [
+          "startup",
+          "version",
+          "help",
+          "open",
+          "navigation",
+          "edit",
+          "save",
+          "reopen",
+          "cancel",
+          "terminal-cleanup"
+        ],
+        "sources": [
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support.md",
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support/apple-darwin.md"
+        ],
+        "system": "macos",
+        "machine": "x86_64",
+        "binary_format": "macho",
+        "selection_note": "Selected macOS 11.0 deployment baseline for both universal inputs. This is a conservative shared floor, not proof of execution on macOS 11.0; SDK/tool versions and minimum-runtime tests remain artifact evidence."
+      },
+      "capability_profile": "native",
+      "evidence_status": "pending"
     },
     {
       "triple": "x86_64-pc-windows-msvc",
@@ -42,11 +150,68 @@
         "package": "hiewbie",
         "scope": "application",
         "rust_std": "rustup",
-        "prerequisites": "Native Windows x64 with the pinned MSVC Rust toolchain, Visual Studio C++ build tools, and Windows SDK."
+        "prerequisites": "Native Windows x64 with the pinned MSVC Rust toolchain, Visual Studio C++ build tools, and Windows SDK.",
+        "compiler": "1.90.0",
+        "msrv": "1.90",
+        "environment": {},
+        "linker": "MSVC link.exe from Visual Studio 2022 or newer and Windows SDK; exact toolset recorded in build evidence",
+        "sysroot": "Matching x64/ARM64 Windows SDK; exact toolset/SDK versions recorded by build evidence",
+        "native_libraries": [
+          "Windows system DLL imports and MSVC/UCRT runtime requirements inspected per artifact"
+        ],
+        "input_provenance": "Native MSVC target required; record rustc host, VS toolset and SDK versions. PE alone does not prove MSVC rather than GNU provenance."
       },
-      "ci": { "mode": "native", "runner": "windows-2022", "host": "x86_64-pc-windows-msvc", "pty": false },
+      "ci": {
+        "mode": "native",
+        "runner": "windows-2022",
+        "host": "x86_64-pc-windows-msvc",
+        "pty": false
+      },
       "runtime_plan": "Run workspace tests and help/version on the named native runner. ConPTY startup, keyboard, resize, edit/save, and terminal restoration coverage remains required.",
-      "release_blockers": ["Packaging and checksums are not implemented.", "ConPTY interaction tests and supported Windows/console baselines are not validated."]
+      "release_blockers": [
+        "Packaging and checksums are not implemented.",
+        "ConPTY interaction tests and supported Windows/console baselines are not validated."
+      ],
+      "runtime": {
+        "id": "x86_64-pc-windows-msvc-baseline-v1",
+        "minimum_versions": {
+          "os": "10.0",
+          "build": "17763"
+        },
+        "required_features": [
+          "Windows console",
+          "ConPTY"
+        ],
+        "required_evidence": [
+          "build",
+          "binary-inspection",
+          "runtime",
+          "minimum-runtime"
+        ],
+        "runtime_checks": [
+          "startup",
+          "version",
+          "help",
+          "open",
+          "navigation",
+          "edit",
+          "save",
+          "reopen",
+          "cancel",
+          "terminal-cleanup"
+        ],
+        "sources": [
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support.md",
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support/windows-msvc.md",
+          "https://learn.microsoft.com/en-us/windows/console/createpseudoconsole"
+        ],
+        "system": "windows",
+        "machine": "x86_64",
+        "binary_format": "pe",
+        "selection_note": "Selected Windows 11 ARM64 or Windows 10 1809 x64 (Server 2019 equivalent API generation) for ConPTY. PE subsystem/import inspection alone cannot prove API availability or minimum-version execution; ConPTY and minimum-runtime tests remain pending."
+      },
+      "capability_profile": "native",
+      "evidence_status": "pending"
     },
     {
       "triple": "aarch64-pc-windows-msvc",
@@ -57,11 +222,68 @@
         "package": "hiewbie",
         "scope": "application",
         "rust_std": "rustup",
-        "prerequisites": "Native Windows ARM64 with the pinned ARM64-host MSVC Rust toolchain, Visual Studio ARM64 build tools, and Windows SDK."
+        "prerequisites": "Native Windows ARM64 with the pinned ARM64-host MSVC Rust toolchain, Visual Studio ARM64 build tools, and Windows SDK.",
+        "compiler": "1.90.0",
+        "msrv": "1.90",
+        "environment": {},
+        "linker": "MSVC link.exe from Visual Studio 2022 or newer and Windows SDK; exact toolset recorded in build evidence",
+        "sysroot": "Matching x64/ARM64 Windows SDK; exact toolset/SDK versions recorded by build evidence",
+        "native_libraries": [
+          "Windows system DLL imports and MSVC/UCRT runtime requirements inspected per artifact"
+        ],
+        "input_provenance": "Native MSVC target required; record rustc host, VS toolset and SDK versions. PE alone does not prove MSVC rather than GNU provenance."
       },
-      "ci": { "mode": "native", "runner": "windows-11-arm", "host": "aarch64-pc-windows-msvc", "pty": false },
+      "ci": {
+        "mode": "native",
+        "runner": "windows-11-arm",
+        "host": "aarch64-pc-windows-msvc",
+        "pty": false
+      },
       "runtime_plan": "Verify rustc's host is ARM64, then run workspace tests and help/version on the named native runner. ConPTY interaction and terminal restoration coverage remains required.",
-      "release_blockers": ["Packaging and checksums are not implemented.", "ConPTY interaction tests and supported Windows/console baselines are not validated."]
+      "release_blockers": [
+        "Packaging and checksums are not implemented.",
+        "ConPTY interaction tests and supported Windows/console baselines are not validated."
+      ],
+      "runtime": {
+        "id": "aarch64-pc-windows-msvc-baseline-v1",
+        "minimum_versions": {
+          "os": "11.0",
+          "build": "22000"
+        },
+        "required_features": [
+          "Windows console",
+          "ConPTY"
+        ],
+        "required_evidence": [
+          "build",
+          "binary-inspection",
+          "runtime",
+          "minimum-runtime"
+        ],
+        "runtime_checks": [
+          "startup",
+          "version",
+          "help",
+          "open",
+          "navigation",
+          "edit",
+          "save",
+          "reopen",
+          "cancel",
+          "terminal-cleanup"
+        ],
+        "sources": [
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support.md",
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support/windows-msvc.md",
+          "https://learn.microsoft.com/en-us/windows/console/createpseudoconsole"
+        ],
+        "system": "windows",
+        "machine": "aarch64",
+        "binary_format": "pe",
+        "selection_note": "Selected Windows 11 ARM64 or Windows 10 1809 x64 (Server 2019 equivalent API generation) for ConPTY. PE subsystem/import inspection alone cannot prove API availability or minimum-version execution; ConPTY and minimum-runtime tests remain pending."
+      },
+      "capability_profile": "native",
+      "evidence_status": "pending"
     },
     {
       "triple": "x86_64-unknown-linux-gnu",
@@ -72,11 +294,68 @@
         "package": "hiewbie",
         "scope": "application",
         "rust_std": "rustup",
-        "prerequisites": "Native GNU Linux x86_64 with the pinned Rust toolchain, system linker, and libc development files."
+        "prerequisites": "Native GNU Linux x86_64 with the pinned Rust toolchain, system linker, and libc development files.",
+        "compiler": "1.90.0",
+        "msrv": "1.90",
+        "environment": {},
+        "linker": "GNU system C linker from Ubuntu 22.04 build environment",
+        "sysroot": "Ubuntu 22.04 GNU libc development sysroot; exact package/image versions recorded by build evidence",
+        "native_libraries": [
+          "GNU libc",
+          "libgcc_s and other actual DT_NEEDED dependencies"
+        ],
+        "input_provenance": "Record linker --version, sysroot source/version/digest and rustc verbose output; runner label alone does not pin inputs."
       },
-      "ci": { "mode": "native", "runner": "ubuntu-22.04", "host": "x86_64-unknown-linux-gnu", "pty": true },
+      "ci": {
+        "mode": "native",
+        "runner": "ubuntu-22.04",
+        "host": "x86_64-unknown-linux-gnu",
+        "pty": true
+      },
       "runtime_plan": "Run workspace tests, help/version, and Unix PTY editing/cleanup smoke on the named native runner. Inspect release ABI requirements before claiming a minimum glibc or kernel.",
-      "release_blockers": ["Packaging and checksums are not implemented.", "Linked ABI requirements and minimum Linux/glibc baseline are not validated."]
+      "release_blockers": [
+        "Packaging and checksums are not implemented.",
+        "Linked ABI requirements and minimum Linux/glibc baseline are not validated."
+      ],
+      "runtime": {
+        "id": "x86_64-unknown-linux-gnu-baseline-v1",
+        "minimum_versions": {
+          "os": "22.04",
+          "kernel": "5.15",
+          "glibc": "2.35"
+        },
+        "required_features": [
+          "GNU ELF dynamic loader"
+        ],
+        "required_evidence": [
+          "build",
+          "binary-inspection",
+          "runtime",
+          "minimum-runtime"
+        ],
+        "runtime_checks": [
+          "startup",
+          "version",
+          "help",
+          "open",
+          "navigation",
+          "edit",
+          "save",
+          "reopen",
+          "cancel",
+          "terminal-cleanup"
+        ],
+        "sources": [
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support.md",
+          "https://discourse.ubuntu.com/t/jammy-jellyfish-release-notes/24668/1"
+        ],
+        "system": "linux",
+        "machine": "x86_64",
+        "binary_format": "elf",
+        "selection_note": "Selected Ubuntu 24.04 RISC-V or Ubuntu 22.04 x64/ARM64 GNU runtime floor. Required GLIBC symbol versions are inspected per artifact; a newer build host can exceed this floor and must not pass the baseline check."
+      },
+      "capability_profile": "native",
+      "evidence_status": "pending"
     },
     {
       "triple": "aarch64-unknown-linux-gnu",
@@ -87,11 +366,68 @@
         "package": "hiewbie",
         "scope": "application",
         "rust_std": "rustup",
-        "prerequisites": "Native GNU Linux ARM64 with the pinned Rust toolchain, system linker, and libc development files."
+        "prerequisites": "Native GNU Linux ARM64 with the pinned Rust toolchain, system linker, and libc development files.",
+        "compiler": "1.90.0",
+        "msrv": "1.90",
+        "environment": {},
+        "linker": "GNU system C linker from Ubuntu 22.04 build environment",
+        "sysroot": "Ubuntu 22.04 GNU libc development sysroot; exact package/image versions recorded by build evidence",
+        "native_libraries": [
+          "GNU libc",
+          "libgcc_s and other actual DT_NEEDED dependencies"
+        ],
+        "input_provenance": "Record linker --version, sysroot source/version/digest and rustc verbose output; runner label alone does not pin inputs."
       },
-      "ci": { "mode": "native", "runner": "ubuntu-22.04-arm", "host": "aarch64-unknown-linux-gnu", "pty": true },
+      "ci": {
+        "mode": "native",
+        "runner": "ubuntu-22.04-arm",
+        "host": "aarch64-unknown-linux-gnu",
+        "pty": true
+      },
       "runtime_plan": "Run workspace tests, help/version, and Unix PTY editing/cleanup smoke on the named native runner. Inspect release ABI requirements before claiming a minimum glibc or kernel.",
-      "release_blockers": ["Packaging and checksums are not implemented.", "Linked ABI requirements and minimum Linux/glibc baseline are not validated."]
+      "release_blockers": [
+        "Packaging and checksums are not implemented.",
+        "Linked ABI requirements and minimum Linux/glibc baseline are not validated."
+      ],
+      "runtime": {
+        "id": "aarch64-unknown-linux-gnu-baseline-v1",
+        "minimum_versions": {
+          "os": "22.04",
+          "kernel": "5.15",
+          "glibc": "2.35"
+        },
+        "required_features": [
+          "GNU ELF dynamic loader"
+        ],
+        "required_evidence": [
+          "build",
+          "binary-inspection",
+          "runtime",
+          "minimum-runtime"
+        ],
+        "runtime_checks": [
+          "startup",
+          "version",
+          "help",
+          "open",
+          "navigation",
+          "edit",
+          "save",
+          "reopen",
+          "cancel",
+          "terminal-cleanup"
+        ],
+        "sources": [
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support.md",
+          "https://discourse.ubuntu.com/t/jammy-jellyfish-release-notes/24668/1"
+        ],
+        "system": "linux",
+        "machine": "aarch64",
+        "binary_format": "elf",
+        "selection_note": "Selected Ubuntu 24.04 RISC-V or Ubuntu 22.04 x64/ARM64 GNU runtime floor. Required GLIBC symbol versions are inspected per artifact; a newer build host can exceed this floor and must not pass the baseline check."
+      },
+      "capability_profile": "native",
+      "evidence_status": "pending"
     },
     {
       "triple": "riscv64gc-unknown-linux-gnu",
@@ -102,11 +438,69 @@
         "package": "hiewbie",
         "scope": "application",
         "rust_std": "rustup",
-        "prerequisites": "Install the target with rustup. A release link also needs a RISC-V GNU linker and matching libc sysroot, configured through CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER. The CI cargo check leg does not link."
+        "prerequisites": "Install the target with rustup. A release link also needs a RISC-V GNU linker and matching libc sysroot, configured through CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER. The CI cargo check leg does not link.",
+        "compiler": "1.90.0",
+        "msrv": "1.90",
+        "environment": {},
+        "linker": "RISC-V GNU cross-linker selected under #92",
+        "sysroot": "Ubuntu 24.04 RISC-V GNU sysroot; exact package/image digests pending #92",
+        "native_libraries": [
+          "GNU libc",
+          "libgcc_s and other actual DT_NEEDED dependencies"
+        ],
+        "input_provenance": "Record linker --version, sysroot source/version/digest and rustc verbose output; runner label alone does not pin inputs."
       },
-      "ci": { "mode": "check", "runner": "ubuntu-24.04", "host": "x86_64-unknown-linux-gnu" },
+      "ci": {
+        "mode": "check",
+        "runner": "ubuntu-24.04",
+        "host": "x86_64-unknown-linux-gnu"
+      },
       "runtime_plan": "Add a pinned GNU cross-toolchain, inspect ELF machine and ABI, then exercise the editor on RISC-V hardware or an identified QEMU guest. Record emulated execution separately from native execution.",
-      "release_blockers": ["A reproducible linker/sysroot and linked release artifact are not configured.", "Runtime and PTY validation are not configured.", "Packaging, checksums, and minimum Linux/glibc baseline are not validated."]
+      "release_blockers": [
+        "A reproducible linker/sysroot and linked release artifact are not configured.",
+        "Runtime and PTY validation are not configured.",
+        "Packaging, checksums, and minimum Linux/glibc baseline are not validated."
+      ],
+      "runtime": {
+        "id": "riscv64gc-unknown-linux-gnu-baseline-v1",
+        "minimum_versions": {
+          "os": "24.04",
+          "kernel": "6.8",
+          "glibc": "2.39"
+        },
+        "required_features": [
+          "GNU ELF dynamic loader"
+        ],
+        "required_evidence": [
+          "build",
+          "binary-inspection",
+          "runtime",
+          "minimum-runtime"
+        ],
+        "runtime_checks": [
+          "startup",
+          "version",
+          "help",
+          "open",
+          "navigation",
+          "edit",
+          "save",
+          "reopen",
+          "cancel",
+          "terminal-cleanup"
+        ],
+        "sources": [
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support.md",
+          "https://packages.ubuntu.com/noble/libc6",
+          "https://discourse.ubuntu.com/t/introducing-kernel-6-8-for-the-24-04-noble-numbat-release/41958"
+        ],
+        "system": "linux",
+        "machine": "riscv64",
+        "binary_format": "elf",
+        "selection_note": "Selected Ubuntu 24.04 RISC-V or Ubuntu 22.04 x64/ARM64 GNU runtime floor. Required GLIBC symbol versions are inspected per artifact; a newer build host can exceed this floor and must not pass the baseline check."
+      },
+      "capability_profile": "native",
+      "evidence_status": "pending"
     },
     {
       "triple": "x86_64-unknown-freebsd",
@@ -117,11 +511,67 @@
         "package": "hiewbie",
         "scope": "application",
         "rust_std": "rustup",
-        "prerequisites": "Install the target with rustup for compile checks. A release link requires a matching FreeBSD sysroot and linker, or a native FreeBSD VM with the pinned toolchain."
+        "prerequisites": "Install the target with rustup for compile checks. A release link requires a matching FreeBSD sysroot and linker, or a native FreeBSD VM with the pinned toolchain.",
+        "compiler": "1.90.0",
+        "msrv": "1.90",
+        "environment": {},
+        "linker": "FreeBSD clang/lld matched to the selected 14.5 sysroot",
+        "sysroot": "FreeBSD 14.5-RELEASE matching architecture; exact image/archive digest pending platform implementation",
+        "native_libraries": [
+          "FreeBSD libc, libthr and actual DT_NEEDED dependencies"
+        ],
+        "input_provenance": "Pin FreeBSD image/sysroot digest; ARM64 additionally requires matching Rust 1.90.0 compiler/std provenance under #91."
       },
-      "ci": { "mode": "check", "runner": "ubuntu-24.04", "host": "x86_64-unknown-linux-gnu" },
+      "ci": {
+        "mode": "check",
+        "runner": "ubuntu-24.04",
+        "host": "x86_64-unknown-linux-gnu"
+      },
       "runtime_plan": "Pin a supported x86_64 FreeBSD VM image and Rust toolchain, build and inspect ELF architecture, then run workspace tests and PTY editing/cleanup scenarios inside the guest.",
-      "release_blockers": ["A pinned FreeBSD VM or cross sysroot and linked release artifact are not configured.", "Runtime and PTY validation are not configured.", "Packaging, checksums, and minimum FreeBSD release are not validated."]
+      "release_blockers": [
+        "A pinned FreeBSD VM or cross sysroot and linked release artifact are not configured.",
+        "Runtime and PTY validation are not configured.",
+        "Packaging, checksums, and minimum FreeBSD release are not validated."
+      ],
+      "runtime": {
+        "id": "x86_64-unknown-freebsd-baseline-v1",
+        "minimum_versions": {
+          "os": "14.5"
+        },
+        "required_features": [
+          "FreeBSD ELF ABI"
+        ],
+        "required_evidence": [
+          "build",
+          "binary-inspection",
+          "runtime",
+          "minimum-runtime"
+        ],
+        "runtime_checks": [
+          "startup",
+          "version",
+          "help",
+          "open",
+          "navigation",
+          "edit",
+          "save",
+          "reopen",
+          "cancel",
+          "terminal-cleanup"
+        ],
+        "sources": [
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support.md",
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support/freebsd.md",
+          "https://www.freebsd.org/releases/",
+          "https://www.freebsd.org/security/"
+        ],
+        "system": "freebsd",
+        "machine": "x86_64",
+        "binary_format": "elf",
+        "selection_note": "Selected FreeBSD 14.5-RELEASE guest/sysroot baseline for both CPUs. Compiler/std and exact image provenance remain unresolved for ARM64 (#91); linked x64/runtime evidence remains #93. This selection is not a successful build claim."
+      },
+      "capability_profile": "native",
+      "evidence_status": "pending"
     },
     {
       "triple": "aarch64-unknown-freebsd",
@@ -132,11 +582,66 @@
         "package": "hiewbie",
         "scope": "application",
         "rust_std": "not-distributed",
-        "prerequisites": "Rust 1.90.0 does not distribute this target's standard library. Supply a verified matching compiler/std from a pinned FreeBSD ports build, an ARM64 sysroot, and clang/lld, or separately review a toolchain upgrade."
+        "prerequisites": "Rust 1.90.0 does not distribute this target's standard library. Supply a verified matching compiler/std from a pinned FreeBSD ports build, an ARM64 sysroot, and clang/lld, or separately review a toolchain upgrade.",
+        "compiler": "1.90.0",
+        "msrv": "1.90",
+        "environment": {},
+        "linker": "FreeBSD clang/lld matched to the selected 14.5 sysroot",
+        "sysroot": "FreeBSD 14.5-RELEASE matching architecture; exact image/archive digest pending platform implementation",
+        "native_libraries": [
+          "FreeBSD libc, libthr and actual DT_NEEDED dependencies"
+        ],
+        "input_provenance": "Pin FreeBSD image/sysroot digest; ARM64 additionally requires matching Rust 1.90.0 compiler/std provenance under #91."
       },
-      "ci": { "mode": "blocked", "reason": "The pinned Rust 1.90.0 release does not distribute aarch64-unknown-freebsd std. Matching compiler/std packages, a pinned sysroot, and a runtime environment remain unresolved; no passing placeholder job is created." },
+      "ci": {
+        "mode": "blocked",
+        "reason": "The pinned Rust 1.90.0 release does not distribute aarch64-unknown-freebsd std. Matching compiler/std packages, a pinned sysroot, and a runtime environment remain unresolved; no passing placeholder job is created."
+      },
       "runtime_plan": "After compiler/std and sysroot provenance are fixed, link and inspect an ARM64 ELF executable, then run tests and PTY scenarios on ARM64 FreeBSD hardware or an explicitly identified ARM64 guest/emulator.",
-      "release_blockers": ["Matching pinned compiler and ARM64 standard library are unavailable through rustup 1.90.0.", "A verified FreeBSD ARM64 sysroot, linker setup, and runtime environment are not configured.", "Packaging, checksums, and minimum FreeBSD release are not validated."]
+      "release_blockers": [
+        "Matching pinned compiler and ARM64 standard library are unavailable through rustup 1.90.0.",
+        "A verified FreeBSD ARM64 sysroot, linker setup, and runtime environment are not configured.",
+        "Packaging, checksums, and minimum FreeBSD release are not validated."
+      ],
+      "runtime": {
+        "id": "aarch64-unknown-freebsd-baseline-v1",
+        "minimum_versions": {
+          "os": "14.5"
+        },
+        "required_features": [
+          "FreeBSD ELF ABI"
+        ],
+        "required_evidence": [
+          "build",
+          "binary-inspection",
+          "runtime",
+          "minimum-runtime"
+        ],
+        "runtime_checks": [
+          "startup",
+          "version",
+          "help",
+          "open",
+          "navigation",
+          "edit",
+          "save",
+          "reopen",
+          "cancel",
+          "terminal-cleanup"
+        ],
+        "sources": [
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support.md",
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support/freebsd.md",
+          "https://www.freebsd.org/releases/",
+          "https://www.freebsd.org/security/"
+        ],
+        "system": "freebsd",
+        "machine": "aarch64",
+        "binary_format": "elf",
+        "selection_note": "Selected FreeBSD 14.5-RELEASE guest/sysroot baseline for both CPUs. Compiler/std and exact image provenance remain unresolved for ARM64 (#91); linked x64/runtime evidence remains #93. This selection is not a successful build claim."
+      },
+      "capability_profile": "native",
+      "evidence_status": "pending"
     },
     {
       "triple": "wasm32-unknown-unknown",
@@ -147,11 +652,68 @@
         "package": "hiewbie-core",
         "scope": "portable-core",
         "rust_std": "rustup",
-        "prerequisites": "Install wasm32-unknown-unknown with rustup. Only hiewbie-core is compiled; the native terminal/storage adapter is excluded."
+        "prerequisites": "Install wasm32-unknown-unknown with rustup. Only hiewbie-core is compiled; the native terminal/storage adapter is excluded.",
+        "compiler": "1.90.0",
+        "msrv": "1.90",
+        "environment": {},
+        "linker": "rust-lld/wasm-ld supplied by Rust 1.90.0",
+        "sysroot": "Rust 1.90.0 wasm32-unknown-unknown standard library",
+        "native_libraries": [],
+        "input_provenance": "Pinned Rust distribution; no native C engine or host libraries. Browser assets and their provenance belong to #96/#97."
       },
-      "ci": { "mode": "check", "runner": "ubuntu-24.04", "host": "x86_64-unknown-linux-gnu" },
+      "ci": {
+        "mode": "check",
+        "runner": "ubuntu-24.04",
+        "host": "x86_64-unknown-linux-gnu"
+      },
       "runtime_plan": "Implement a browser terminal/storage adapter, then exercise local-file import, shared navigation/edit commands, and export in real browser tests. Core compilation supplies no browser runtime evidence.",
-      "release_blockers": ["The browser terminal/storage adapter and static-site archive are not implemented.", "Browser keyboard, import/edit/export, and capability tests are not configured.", "Packaging and checksums are not implemented."]
+      "release_blockers": [
+        "The browser terminal/storage adapter and static-site archive are not implemented.",
+        "Browser keyboard, import/edit/export, and capability tests are not configured.",
+        "Packaging and checksums are not implemented."
+      ],
+      "runtime": {
+        "id": "wasm32-unknown-unknown-baseline-v1",
+        "minimum_versions": {},
+        "required_features": [
+          "WebAssembly multivalue",
+          "WebAssembly mutable-globals",
+          "WebAssembly reference-types",
+          "WebAssembly sign-ext",
+          "WebAssembly nontrapping-fptoint",
+          "WebAssembly bulk-memory",
+          "DOM keyboard events",
+          "File/Blob/slice/read",
+          "Blob URL download"
+        ],
+        "required_evidence": [
+          "build",
+          "binary-inspection",
+          "runtime",
+          "minimum-runtime"
+        ],
+        "runtime_checks": [
+          "load-offline",
+          "import",
+          "navigation",
+          "edit",
+          "export",
+          "reimport",
+          "keyboard",
+          "resize"
+        ],
+        "sources": [
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support.md",
+          "https://github.com/rust-lang/rust/blob/1.90.0/src/doc/rustc/src/platform-support/wasm32-unknown-unknown.md",
+          "https://www.w3.org/TR/FileAPI/"
+        ],
+        "system": "browser",
+        "machine": "wasm32",
+        "binary_format": "wasm",
+        "selection_note": "Selected Rust 1.90.0 default Wasm feature set plus local File/Blob and DOM input/download contracts. Named minimum browser versions remain pending browser product qualification (#95/#96); core-only compilation or Node execution is not browser-runtime evidence."
+      },
+      "capability_profile": "browser",
+      "evidence_status": "pending"
     }
   ],
   "supplemental_artifacts": [
@@ -159,8 +721,100 @@
       "name": "macOS universal CLI",
       "required": true,
       "artifact_template": "hiewbie-{version}-universal-apple-darwin.tar.gz",
-      "inputs": ["aarch64-apple-darwin", "x86_64-apple-darwin"],
-      "blocker": "Combine validated architecture-specific executables with lipo, inspect both slices, and package licenses/checksums. Both native runtime legs remain independently required."
+      "inputs": [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin"
+      ],
+      "blocker": "Combine validated architecture-specific executables with lipo, inspect both slices, and package licenses/checksums. Both native runtime legs remain independently required.",
+      "required_evidence": [
+        "both-input-builds",
+        "both-slice-inspections",
+        "both-native-runtimes",
+        "both-minimum-runtimes",
+        "archive-verification"
+      ],
+      "evidence_status": "pending"
     }
-  ]
+  ],
+  "compiler": "1.90.0",
+  "msrv": "1.90",
+  "capability_profiles": {
+    "native": {
+      "required": [
+        "raw.read",
+        "raw.overwrite",
+        "format.raw",
+        "format.pe",
+        "format.elf",
+        "format.macho",
+        "format.fat-macho",
+        "decode.x86-16",
+        "decode.x86-32",
+        "decode.x86-64",
+        "decode.arm",
+        "decode.thumb",
+        "decode.aarch64",
+        "assemble.x86-16",
+        "assemble.x86-32",
+        "assemble.x86-64",
+        "assemble.aarch64",
+        "references.x86",
+        "references.arm",
+        "references.thumb",
+        "references.aarch64",
+        "symbols.pe",
+        "symbols.elf",
+        "symbols.macho",
+        "extensions.portable",
+        "devices.raw",
+        "format.mz",
+        "format.ne",
+        "format.le",
+        "format.lx",
+        "format.te",
+        "format.netware"
+      ],
+      "unavailable_on_target": [],
+      "note": "Required production capabilities include unfinished implementation stories. Current implementation availability is queried from the shared core registry; a requirement does not claim a backend is compiled or tested for an artifact."
+    },
+    "browser": {
+      "required": [
+        "raw.read",
+        "raw.overwrite",
+        "format.raw",
+        "format.pe",
+        "format.elf",
+        "format.macho",
+        "format.fat-macho",
+        "decode.x86-16",
+        "decode.x86-32",
+        "decode.x86-64",
+        "decode.arm",
+        "decode.thumb",
+        "decode.aarch64",
+        "assemble.x86-16",
+        "assemble.x86-32",
+        "assemble.x86-64",
+        "assemble.aarch64",
+        "references.x86",
+        "references.arm",
+        "references.thumb",
+        "references.aarch64",
+        "symbols.pe",
+        "symbols.elf",
+        "symbols.macho",
+        "extensions.portable",
+        "format.mz",
+        "format.ne",
+        "format.le",
+        "format.lx",
+        "format.te",
+        "format.netware"
+      ],
+      "unavailable_on_target": [
+        "devices.raw"
+      ],
+      "note": "The portable core has the same analysis requirements. Native raw devices are unavailable in the browser. Browser UI/import/export remain unimplemented; compiling the core does not deliver a browser application."
+    }
+  }
 }

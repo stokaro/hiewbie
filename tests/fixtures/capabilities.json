@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "known": [
+    { "id": "raw.read", "category": "raw", "status": "available" },
+    { "id": "raw.overwrite", "category": "raw", "status": "available" },
+    { "id": "decode.x86-64", "category": "decode", "status": "limited" },
+    { "id": "assemble.x86-64", "category": "assembly", "status": "unavailable" },
+    { "id": "decode.mips32", "category": "decode", "status": "unavailable" },
+    { "id": "decode.powerpc64", "category": "decode", "status": "unavailable" },
+    { "id": "decode.riscv64", "category": "decode", "status": "unavailable" },
+    { "id": "format.elf", "category": "format", "status": "limited" },
+    { "id": "symbols.elf", "category": "symbols", "status": "limited" },
+    { "id": "format.ne", "category": "format", "status": "unavailable" },
+    { "id": "extensions.portable", "category": "extensions", "status": "unavailable" },
+    { "id": "extensions.hem", "category": "extensions", "status": "unavailable" },
+    { "id": "devices.raw", "category": "devices", "status": "unavailable" }
+  ],
+  "absent": ["decode.not-registered", "assemble.everything"]
+}

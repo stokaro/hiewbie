@@ -8,6 +8,7 @@ repository.workspace = true
 description = "Portable bounded document and command model for hiewbie"
 
 [dependencies]
+serde.workspace = true
 iced-x86.workspace = true
 yaxpeax-arm.workspace = true
 yaxpeax-arch.workspace = true
