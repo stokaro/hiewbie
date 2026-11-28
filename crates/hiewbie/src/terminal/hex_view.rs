@@ -8,9 +8,9 @@ use ratatui::widgets::Paragraph;
 
 use super::{EntryColumn, FileAccess, Ui, render};
 
-pub(super) const HEX_BODY: Style = Style::new().fg(Color::LightCyan).bg(Color::Blue);
+pub(super) const BYTE_BODY: Style = Style::new().fg(Color::LightCyan).bg(Color::Blue);
 const SELECTED: Style = Style::new().fg(Color::Blue).bg(Color::Gray);
-const CHANGED: Style = HEX_BODY.fg(Color::LightYellow);
+const CHANGED: Style = BYTE_BODY.fg(Color::LightYellow);
 const SCROLLBAR: Style = Style::new().fg(Color::Green).bg(Color::Black);
 
 pub(super) struct HexLayout {
@@ -83,6 +83,39 @@ impl<S: ByteSource> Ui<S> {
             || self.editor.document().len().saturating_sub(1) > u64::from(u32::MAX)
             || address > u64::from(u32::MAX);
         let address = format!("{address_marker}{}", address_digits(address, wide));
+        let mode = match format {
+            Some(BinaryFormat::Pe32) => "PE",
+            Some(BinaryFormat::Pe64) => "PE+",
+            Some(BinaryFormat::Elf32 | BinaryFormat::Elf64) => "ELF",
+            Some(BinaryFormat::MachO32 | BinaryFormat::MachO64) => "M-O",
+            None => "",
+        };
+        let detail = format!("     {mode:>3}{address:>18}");
+        self.render_byte_title(frame, area, &address, &detail, mode);
+    }
+
+    pub(super) fn render_text_title(&self, frame: &mut Frame<'_>, area: Rect, scan: Option<u64>) {
+        let offset = scan.unwrap_or(self.editor.cursor().get());
+        let wide = self.editor.document().len().saturating_sub(1) > u64::from(u32::MAX);
+        let address = address_digits(offset, wide);
+        let column = self
+            .text
+            .horizontal()
+            .map_or_else(String::new, |column| column.to_string());
+        let address_width = address.len().max(13);
+        let column_width = 26 - address_width;
+        let detail = format!("{column:>column_width$}{address:>address_width$}");
+        self.render_byte_title(frame, area, &address, &detail, &column);
+    }
+
+    fn render_byte_title(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        address: &str,
+        detail: &str,
+        context: &str,
+    ) {
         let access = match self.file_access {
             FileAccess::Read => "FRO",
             FileAccess::Write => "FWO",
@@ -95,21 +128,14 @@ impl<S: ByteSource> Ui<S> {
         } else {
             "--------"
         };
-        let mode = match format {
-            Some(BinaryFormat::Pe32) => "PE",
-            Some(BinaryFormat::Pe64) => "PE+",
-            Some(BinaryFormat::Elf32 | BinaryFormat::Elf64) => "ELF",
-            Some(BinaryFormat::MachO32 | BinaryFormat::MachO64) => "M-O",
-            None => "",
-        };
         if area.width < 63 {
-            let title = format!(" {address} {access} {state} {mode}");
+            let title = format!(" {address} {access} {state} {context}");
             frame.render_widget(Paragraph::new(title).style(render::PANEL), area);
         } else {
             const STATUS_WIDTH: u16 = 58;
             let start = area.right() - STATUS_WIDTH;
             let caption = format!("hiewbie {}", env!("CARGO_PKG_VERSION"));
-            let status = format!("↓{access} {state}     {mode:>3}{address:>18}│{caption:<18}");
+            let status = format!("↓{access} {state}{detail}│{caption:<18}");
             frame.render_widget(Paragraph::new("").style(render::PANEL), area);
             frame.render_widget(
                 Paragraph::new(status).style(render::PANEL),
@@ -137,7 +163,7 @@ impl<S: ByteSource> Ui<S> {
         if self.reopen_required {
             frame.render_widget(
                 Paragraph::new("<file was replaced; exit and reopen to verify its saved state>")
-                    .style(HEX_BODY),
+                    .style(BYTE_BODY),
                 body,
             );
             return;
@@ -145,7 +171,7 @@ impl<S: ByteSource> Ui<S> {
         if length == 0 {
             let message = Rect::new(body.x + 1, body.y, body.width - 1, 1);
             frame.render_widget(
-                Paragraph::new("<empty file - overwrite requires existing bytes>").style(HEX_BODY),
+                Paragraph::new("<empty file - overwrite requires existing bytes>").style(BYTE_BODY),
                 message,
             );
             render_scrollbar(frame, body, 0, 0, 0);
@@ -162,7 +188,7 @@ impl<S: ByteSource> Ui<S> {
             Ok(count) => count,
             Err(error) => {
                 self.notice(format!("Read failed: {error}"));
-                frame.render_widget(Paragraph::new("<bytes unavailable>").style(HEX_BODY), body);
+                frame.render_widget(Paragraph::new("<bytes unavailable>").style(BYTE_BODY), body);
                 return;
             }
         };
@@ -189,7 +215,7 @@ impl<S: ByteSource> Ui<S> {
                 self.hex_line(offset, bytes, layout)
             })
             .collect::<Vec<_>>();
-        frame.render_widget(Paragraph::new(rows).style(HEX_BODY), body);
+        frame.render_widget(Paragraph::new(rows).style(BYTE_BODY), body);
         render_scrollbar(frame, body, self.top, length, wanted as u64);
     }
 
@@ -221,7 +247,7 @@ impl<S: ByteSource> Ui<S> {
                 // selection covers exactly the two digits and the glyph.
                 spans.push(Span::styled(
                     delimiter,
-                    if modified { style } else { HEX_BODY },
+                    if modified { style } else { BYTE_BODY },
                 ));
                 characters.push(Span::styled(pc_glyph(shown).to_string(), style));
             } else {
@@ -249,7 +275,7 @@ fn byte_style(
     } else if modified {
         CHANGED
     } else {
-        HEX_BODY
+        BYTE_BODY
     }
 }
 
@@ -279,15 +305,14 @@ fn render_scrollbar(frame: &mut Frame<'_>, body: Rect, top: u64, length: u64, pa
     } else {
         scale(top.saturating_add(page))
     };
+    draw_scrollbar(frame, body, start..end);
+}
+
+pub(super) fn draw_scrollbar(frame: &mut Frame<'_>, body: Rect, filled: std::ops::Range<u16>) {
+    let track = body.height.saturating_sub(3);
     let mut lines = Vec::with_capacity(usize::from(body.height));
     lines.push(Line::raw("↑"));
-    lines.extend((0..track).map(|row| {
-        Line::raw(if (start..end).contains(&row) {
-            "▓"
-        } else {
-            "░"
-        })
-    }));
+    lines.extend((0..track).map(|row| Line::raw(if filled.contains(&row) { "▓" } else { "░" })));
     lines.push(Line::raw("↓"));
     lines.push(Line::raw("▼"));
     frame.render_widget(
@@ -311,7 +336,7 @@ const EXTENDED_GLYPHS: [char; 128] = [
     '≥', '≤', '⌠', '⌡', '÷', '≈', '°', '∙', '·', '√', 'ⁿ', '²', '■', '\u{a0}',
 ];
 
-fn pc_glyph(byte: u8) -> char {
+pub(super) fn pc_glyph(byte: u8) -> char {
     match byte {
         0x00..=0x1F => CONTROL_GLYPHS[usize::from(byte)],
         0x20..=0x7E => char::from(byte),

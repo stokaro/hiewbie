@@ -88,6 +88,17 @@ always shows the full address. Its rows show the low eight hex digits below
 back to raw offsets. The title uses hiewbie's identity and the Hex function
 bar dims unsupported commands.
 
+### Text view
+
+Up and Down move the first visible row. Page Up and Page Down move one
+viewport. F2 toggles wrapping. With wrapping off, Left and Right scroll
+horizontally, and Home resets the column. These keys leave the byte offset
+unchanged. F6 selects CR/LF, CR, LF, or NULL (a zero byte). Function keys
+F1–F4 select a delimiter directly in that dialog. F6 advances to the next
+delimiter, arrows move the selection, Enter applies it, and Esc cancels.
+Ctrl+F6 toggles eight-column tab expansion. Text navigation retains byte
+offsets for Goto, Search, and mode changes. F8 translation tables are pending.
+
 ### Search
 
 F7/Ctrl+F opens the search dialog. The field labeled ASCII accepts UTF-8 and

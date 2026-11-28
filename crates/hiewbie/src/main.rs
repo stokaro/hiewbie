@@ -335,7 +335,7 @@ fn run(options: Options) -> Result<(), String> {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         return Err("interactive editing requires terminal input and output; use --dump, --headers, --disassemble, --symbols, --imports, or --exports for noninteractive inspection".into());
     }
-    terminal::run(editor).map_err(|error| format!("terminal error: {error}"))
+    terminal::run(editor, &options.path).map_err(|error| format!("terminal error: {error}"))
 }
 
 fn write_headers<S: ByteSource>(editor: &mut Editor<S>, output: &mut impl Write) -> io::Result<()> {

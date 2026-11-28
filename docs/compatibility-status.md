@@ -34,7 +34,7 @@ and the parent epic remain open.
 | UI-005 | Partial | [T], [Observation]: view/edit/search/recovery and mode/header/profile dialogs resolve their own commands; the two-field search dialog has its own help and contextual bindings; block tracking, active-mark cancellation, scoped search and Write block have tests. Transient modifier and other overlay details remain open. |
 | UI-006 | Partial | [T], [Commands], [Hex observation]: Hex uses the observed F-key label positions and dims unsupported commands. Dialog bars, other modes, and modifier layers remain open. |
 | UI-007 | Implemented | [T], [P]: all currently implemented operations are keyboard-accessible. |
-| UI-008 | Partial | [T], [P], [Hex observation], [Dialog observation]: Raw and PE Hex body cells, edit caret, and selected modal bounds have paired Windows evidence. Text, Code, Help content, and header fields still need paired validation. |
+| UI-008 | Partial | [T], [P], [Hex observation], [Dialog observation], [Text observation]: Raw and PE Hex, selected dialogs, and the single-byte Text body and line-feed picker have paired Windows evidence. Code, Help content, and header fields still need paired validation. |
 | UI-009 | Partial | [T], [Observation]: blue/cyan default aligns with the observed palette; block bytes use yellow on magenta. Search focus, modal alerts, and Help use state-specific colors. Complete palette and accessible theme coverage remain open. |
 | UI-010 | Partial | [T], [Commands]: Ctrl alternatives and keyboard header/profile dialogs; comprehensive command-menu and intercepted-key coverage pending. |
 | UI-011 | Partial | [T], [ST], [Input], [Commands], [Reference], [Observation]: visible deviations and unavailable commands are explicit; the observed runtime now covers primary views and dialogs, while the remaining matrix stays open. |
@@ -81,7 +81,7 @@ and the parent epic remain open.
 | EDIT-019 | Implemented | [N]: Unix executable permission test; special metadata is outside this save strategy. |
 | EDIT-020 | Partial | [C]: bounded sorted patch snapshots; display/export pending. |
 | EDIT-021 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| EDIT-022 | Partial | [T], [CLI], [D]: Text replaces nonprintable bytes with dots; Code retains undecodable raw bytes; Unicode document decoding pending. |
+| EDIT-022 | Partial | [T], [CLI], [D]: Text view renders CP437 controls and high bytes without changing the document. Code retains undecodable raw bytes. Unicode document decoding and encoding-aware Text editing remain pending. |
 
 ## ADDR
 
@@ -286,6 +286,7 @@ and the parent epic remain open.
 [Cursor replay]: evidence/native-cursor.cast
 [Dialog observation]: evidence/hiew-8.63-windows-dialogs.json
 [Hex observation]: evidence/hiew-8.63-windows-hex.json
+[Text observation]: evidence/hiew-8.63-windows-text.json
 [Search replay]: evidence/search-repeat.cast
 [Recording]: evidence/executable-analysis.cast
 [Storage]: adr/0001-document-storage.md
