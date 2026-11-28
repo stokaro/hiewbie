@@ -546,10 +546,15 @@ fn parse_metadata(metadata: &mut BinaryMetadata, output: &str) {
                     };
                     metadata.macho_platforms.push(platform);
                 }
-                if matches!(command, "LC_BUILD_VERSION" | "LC_VERSION_MIN_MACOSX")
-                    && let Some(value) = line
-                        .strip_prefix("minos ")
-                        .or_else(|| line.strip_prefix("version "))
+                // LC_BUILD_VERSION also contains tool/version records. Only
+                // minos is its deployment floor; version is the floor only in
+                // the legacy LC_VERSION_MIN_MACOSX command.
+                let minimum = match command {
+                    "LC_BUILD_VERSION" => line.strip_prefix("minos "),
+                    "LC_VERSION_MIN_MACOSX" => line.strip_prefix("version "),
+                    _ => None,
+                };
+                if let Some(value) = minimum
                     && version(value).is_some()
                 {
                     if metadata

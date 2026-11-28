@@ -115,6 +115,29 @@ fn macos_platform_deployment_and_executable_type_cannot_be_substituted() {
 }
 
 #[test]
+fn macos_build_tool_versions_do_not_override_the_deployment_minimum() {
+    let target = target("aarch64-apple-darwin");
+    // Generated metadata follows the failing macOS CI output shape. The LD
+    // tool version belongs to LC_BUILD_VERSION, but is not an OS minimum.
+    let output = "Load command 10\n      cmd LC_BUILD_VERSION\n  cmdsize 32\n platform 1\n    minos 11.0\n      sdk 15.5\n   ntools 1\n     tool 3\n  version 1167.5\nLoad command 11\n      cmd LC_SOURCE_VERSION\n  cmdsize 16\n  version 0.0\n";
+    let mut metadata = macho();
+    parse_metadata(&mut metadata, output);
+    assert_eq!(metadata.macos_minimum.as_deref(), Some("11.0"));
+    assert!(!metadata.conflicting_deployment_commands);
+    assert_eq!(
+        (assess(&metadata, &target).0, assess(&metadata, &target).1),
+        (
+            InspectionStatus::Complete,
+            BaselineVerdict::CompatibleObservedMetadata
+        )
+    );
+
+    parse_metadata(&mut metadata, "cmd LC_VERSION_MIN_MACOSX\nversion 12.0\n");
+    assert!(metadata.conflicting_deployment_commands);
+    assert_eq!(assess(&metadata, &target).0, InspectionStatus::Mismatch);
+}
+
+#[test]
 fn pe_header_imports_and_minimum_runtime_limits_are_explicit() {
     let mut bytes = vec![0; 256];
     bytes[..2].copy_from_slice(b"MZ");

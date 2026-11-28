@@ -118,8 +118,11 @@ jobs:
             fi
           fi
           mkdir -p target/evidence
-          cargo xtask inspect --target "$EXPECTED_HOST" --artifact "$artifact" \
-            --commit "$(git rev-parse HEAD)" > target/evidence/inspection.json
+          if ! cargo xtask inspect --target "$EXPECTED_HOST" --artifact "$artifact" \
+            --commit "$(git rev-parse HEAD)" > target/evidence/inspection.json; then
+            python3 -c 'import json; print("Inspection diagnostics:", json.load(open("target/evidence/inspection.json"))["diagnostics"])'
+            exit 1
+          fi
           "$artifact" --capabilities --json > target/evidence/compiled-capabilities.json
       - name: Retain artifact inspection metadata
         if: ${{ always() && (steps.inspection.outcome == 'success' || steps.inspection.outcome == 'failure') }}
