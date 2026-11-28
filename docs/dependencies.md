@@ -23,7 +23,7 @@ notices in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 
 The native editor enables only Ratatui's `crossterm` feature and disables
 Ratatui's default features. It uses `ratatui::crossterm`, so terminal input and
-the Ratatui backend share the same resolved Crossterm version. This selection
+the Ratatui backend share the same resolved Crossterm 0.29.0 instance. This selection
 does not establish runtime support for every required platform; the complete
 target and verification requirements remain in [build and release](build-and-release.md).
 
@@ -35,7 +35,7 @@ as exclusively MIT. Native dependency versions are exact manifest pins.
 
 | Package and API reference | Locked version | Purpose in hiewbie | Declared license and inspected package files |
 | --- | --- | --- | --- |
-| [ratatui](https://docs.rs/ratatui/0.29.0/ratatui/) | `0.29.0` | Terminal cells, widgets, bounded viewport rendering, and deterministic `TestBackend` tests | `MIT`; `LICENSE`, including Florian Dehau and The Ratatui Developers notices |
+| [ratatui](https://docs.rs/ratatui/0.30.2/ratatui/) | `0.30.2` | Terminal cells, widgets, bounded viewport rendering, and deterministic `TestBackend` tests | `MIT`; `LICENSE`, including Florian Dehau and The Ratatui Developers notices |
 | [tempfile](https://docs.rs/tempfile/3.23.0/tempfile/) | `3.23.0` | Sibling temporary files, replacement persistence, and generated test fixtures | `MIT OR Apache-2.0`; `LICENSE-MIT` and `LICENSE-APACHE`; MIT notice names Steven Allen |
 | [same-file](https://docs.rs/same-file/1.0.6/same_file/) | `1.0.6` | Compare opened-file identity with path identity before reads and replacement | Manifest spells the choice `Unlicense/MIT`; `COPYING` explicitly permits either license. Inspected `LICENSE-MIT` and `UNLICENSE`; MIT notice names Andrew Gallant |
 | [libc](https://docs.rs/libc/0.2.191/libc/) | `0.2.191` | `cfg(unix)` only: supplies `O_NONBLOCK` to avoid blocking while opening a path that may be a FIFO | `MIT OR Apache-2.0`; `LICENSE-MIT` and `LICENSE-APACHE`; MIT notice names The Rust Project Developers |
@@ -73,9 +73,16 @@ upstream encoder API does not provide a user-entered assembly command.
 
 | Package and API reference | Locked version | Relationship and purpose | Declared license and inspected package files |
 | --- | --- | --- | --- |
-| [crossterm](https://docs.rs/crossterm/0.28.1/crossterm/) | `0.28.1` | Transitive through Ratatui and used through its re-export for key events, paste handling, raw mode, cursor, and alternate-screen lifecycle | `MIT`; `LICENSE`, with the Timon notice |
+| [crossterm](https://docs.rs/crossterm/0.29.0/crossterm/) | `0.29.0` | Transitive through Ratatui and used through its re-export for key events, paste handling, raw mode, cursor, and alternate-screen lifecycle | `MIT`; `LICENSE`, with the Timon notice |
 | [serde](https://docs.rs/serde/1.0.229/serde/) | `1.0.229` | Direct `xtask` dependency with `derive`; typed target-manifest serialization and validation | `MIT OR Apache-2.0`; `LICENSE-MIT` and `LICENSE-APACHE` |
 | [serde_json](https://docs.rs/serde_json/1.0.154/serde_json/) | `1.0.154` | Direct `xtask` dependency; target-manifest JSON input and output | `MIT OR Apache-2.0`; `LICENSE-MIT` and `LICENSE-APACHE` |
+
+The split Ratatui core, Crossterm backend, and widget crates ship the
+same MIT notice as Ratatui. The layout package resolves `lru 0.18.5`
+through `ratatui-core`. The `lru` archive ships `LICENSE` under MIT with
+Jerome Froelich's notice. The locked version includes the fixes for
+[RUSTSEC-2026-0002](https://rustsec.org/advisories/RUSTSEC-2026-0002.html)
+and [RUSTSEC-2026-0253](https://rustsec.org/advisories/RUSTSEC-2026-0253.html).
 
 The workspace manifests allow the Serde `1.0` version line; the committed
 lockfile fixes the versions recorded here. Use locked dependency resolution for
@@ -89,8 +96,9 @@ the package root, which can differ from the repository root.
 
 | Package | Reported upstream revision |
 | --- | --- |
-| `ratatui 0.29.0` | [28732176e1adb4cddba45c2d6b2b27abf7a46f79](https://github.com/ratatui/ratatui/tree/28732176e1adb4cddba45c2d6b2b27abf7a46f79) |
-| `crossterm 0.28.1` | [492b764f9f132d302903ff6f2f55e96c1b8cd0ec](https://github.com/crossterm-rs/crossterm/tree/492b764f9f132d302903ff6f2f55e96c1b8cd0ec) |
+| `ratatui 0.30.2`, `ratatui-core 0.1.2`, `ratatui-crossterm 0.1.2`, `ratatui-widgets 0.3.2` | [e665c36cb14752a61cd777fbd06dbef8474f2add](https://github.com/ratatui/ratatui/tree/e665c36cb14752a61cd777fbd06dbef8474f2add) |
+| `crossterm 0.29.0` | [36d95b26a26e64b0f8c12edfe11f410a6d56a812](https://github.com/crossterm-rs/crossterm/tree/36d95b26a26e64b0f8c12edfe11f410a6d56a812) |
+| `lru 0.18.5` | [f1e972197053a6814e77b77afacb51f03fc03170](https://github.com/jeromefroe/lru-rs/tree/f1e972197053a6814e77b77afacb51f03fc03170) |
 | `tempfile 3.23.0` | [fe9f4a305b785abd1f4f912c8304bcc90024f695](https://github.com/Stebalien/tempfile/tree/fe9f4a305b785abd1f4f912c8304bcc90024f695) |
 | `same-file 1.0.6` | [5799cd323b8eefd17a089c950dac113f66c89c9e](https://github.com/BurntSushi/same-file/tree/5799cd323b8eefd17a089c950dac113f66c89c9e) |
 | `libc 0.2.191` | [ccc2ff4aaab962f7fde7b8edda7379c045b1ca12](https://github.com/rust-lang/libc/tree/ccc2ff4aaab962f7fde7b8edda7379c045b1ca12) |
@@ -133,7 +141,7 @@ the following distinctions, and the listed license texts were inspected:
 
 | Locked package | Declared license | Dependency path and inspected notices |
 | --- | --- | --- |
-| [foldhash 0.1.5](https://github.com/orlp/foldhash/tree/42461756c3760f9165c90d9626a49e36980a1e47) | `Zlib` | Ratatui → `lru` → `hashbrown` → `foldhash`; package `LICENSE` names Orson Peters and retains the Zlib origin, altered-source, and notice conditions |
+| [foldhash 0.2.0](https://github.com/orlp/foldhash/tree/8f878c636fda9c9e93384824ea45e06d03f009f5) | `Zlib` | Ratatui → `ratatui-core` → `lru` → `hashbrown` → `foldhash`; package `LICENSE` names Orson Peters and retains the Zlib origin, altered-source, and notice conditions |
 | [unicode-ident 1.0.27](https://github.com/dtolnay/unicode-ident/tree/c1ac3afb721f3cea6527bc2255340a04d0de3ca0) | `(MIT OR Apache-2.0) AND Unicode-3.0` | Procedural-macro parsing dependencies used by Ratatui and Serde derives; inspected `LICENSE-MIT`, `LICENSE-APACHE`, and `LICENSE-UNICODE`. Choosing MIT does not remove the additional Unicode-3.0 notice |
 | [ryu 1.0.23](https://github.com/dtolnay/ryu/tree/f0b52bb194befe6fd242154f2182fafd43a819b8) | `Apache-2.0 OR BSL-1.0` | Ratatui → `compact_str` → `ryu`; inspected `LICENSE-APACHE` and `LICENSE-BOOST`. This package does not offer an MIT option |
 
@@ -151,6 +159,7 @@ cargo metadata --locked --format-version 1
 cargo tree --locked -p hiewbie-core
 cargo tree --locked -p hiewbie
 cargo tree --locked -p xtask
+cargo tree --locked -i lru
 cargo tree --locked -i foldhash
 cargo tree --locked -i unicode-ident
 cargo tree --locked -i ryu

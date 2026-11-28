@@ -21,7 +21,7 @@ use hiewbie::file::{BlockExport, ExportProgress, FileSource, SaveError, save_doc
 use hiewbie_core::formats::{BinaryFormat, VirtualAddress};
 use hiewbie_core::{BlockBoundary, ByteSource, Command, Editor, Effect, FileOffset, ViewMode};
 use ratatui::Terminal;
-use ratatui::backend::CrosstermBackend;
+use ratatui::backend::{Backend, CrosstermBackend};
 use ratatui::crossterm::{
     cursor::{Hide, SetCursorStyle, Show},
     event::{
@@ -156,7 +156,9 @@ pub(crate) fn run(editor: Editor<FileSource>, path: &Path) -> io::Result<()> {
     let mut guard = TerminalGuard::enter()?;
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal: Terminal<CrosstermBackend<Stdout>> = Terminal::new(backend)?;
-    terminal.clear()?;
+    // Both buffers are empty. Clear the alternate screen without querying
+    // cursor position from terminals that cannot answer the report request.
+    terminal.backend_mut().clear()?;
     let mut redraw = true;
     let mut export: Option<BlockExport> = None;
 
