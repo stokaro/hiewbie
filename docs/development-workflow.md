@@ -53,17 +53,20 @@ edit, export cancellation, raw export, and confirmed append.
 `--record-cursor PATH` records native Hex and ASCII caret coordinates and
 shapes, restoration of pending Hex and Search input after Help, and the mode chooser.
 `--record-calculator PATH` records expression evaluation, Help, a diagnostic,
-and restoration of a pending Hex digit. All nine PTY scenarios run in the
-existing native Unix CI jobs even without recording options. The symbol fixture contains no external executable bytes. The
-checked-in [editing](evidence/native-editor.cast) and
-[analysis](evidence/executable-analysis.cast) recordings, together with the
+and restoration of a pending Hex digit.
+`--record-files PATH` records startup Files, the mask dialog, a directory
+change, reopening and canceling F9, and an exact byte save to the selected file.
+All ten PTY scenarios run in the existing native Unix CI jobs even without
+recording options. The fixtures are generated. The terminal recordings cover
+[editing](evidence/native-editor.cast),
+[analysis](evidence/executable-analysis.cast),
 [symbol navigation](evidence/symbol-navigation.cast),
-[search repeat](evidence/search-repeat.cast), and
+[search repeat](evidence/search-repeat.cast),
 [block workflow](evidence/block-workflow.cast),
-[native cursor](evidence/native-cursor.cast), and
-[calculator](evidence/calculator.cast) recordings, are evidence of those
-scenarios. Byte assertions, state assertions, and cleanup checks are the
-regression gate.
+[native cursor](evidence/native-cursor.cast),
+[calculator](evidence/calculator.cast), and
+[file selection](evidence/files.cast). Byte assertions, state assertions,
+and cleanup checks are the regression gate.
 
 The export scenario waits for the new destination to appear or for an
 existing destination to be atomically replaced, then checks every byte.

@@ -647,6 +647,7 @@ fn command_registry_contains_every_stable_command_once() {
         Command::ResyncCode,
         Command::SetMode(ViewMode::Hex),
         Command::CycleMode,
+        Command::BrowseFiles,
         Command::Save,
     ];
     assert_eq!(commands.len(), COMMANDS.len());
@@ -1106,4 +1107,24 @@ fn editor_retains_a_fixed_block_across_mode_and_edit_transactions() {
     assert_eq!(logical(editor.document_mut()), b"01234");
     editor.complete_save(MemorySource::new(vec![0]));
     assert!(editor.block_selection().is_none());
+}
+
+#[test]
+fn browsing_files_preserves_the_document_and_is_unavailable_during_editing() {
+    let mut editor = Editor::new(memory(b"abc"), false);
+    editor.dispatch(Command::Goto(offset(1))).unwrap();
+    assert_eq!(
+        editor.dispatch(Command::BrowseFiles).unwrap(),
+        Effect::BrowseFiles
+    );
+    assert_eq!(editor.cursor(), offset(1));
+    editor.dispatch(Command::BeginEdit).unwrap();
+    editor.dispatch(Command::WriteByte(b'X')).unwrap();
+    assert!(matches!(
+        editor.dispatch(Command::BrowseFiles),
+        Err(Error::EditingInProgress)
+    ));
+    assert!(editor.is_editing());
+    assert_eq!(logical(editor.document_mut()), b"aXc");
+    assert_eq!(editor.dispatch(Command::Save).unwrap(), Effect::Save);
 }

@@ -267,6 +267,7 @@ dependencies = [
  "ratatui",
  "same-file",
  "tempfile",
+ "time",
  "winapi-util",
  "winconsole",
 ]

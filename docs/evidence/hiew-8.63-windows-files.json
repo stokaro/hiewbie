@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "observation_date": "2026-11-28",
+  "reference_version": "8.63",
+  "environment": {
+    "runtime": "x64 Windows console in a Hyper-V-isolated Windows Server Core LTSC 2022 container",
+    "candidate": "GNU-target x64 Rust build running in the same container",
+    "time_zone": "Central Europe Standard Time",
+    "paired_terminal_sizes": ["80x25", "100x30"],
+    "fixtures": "Generated regular files and nested directories, including a hidden file and controlled NTFS modification dates"
+  },
+  "layout": {
+    "parent_directory_panel_bounds_zero_based": [[11, 2, 58, 21], [21, 2, 58, 26]],
+    "child_directory_panel_bounds_zero_based": [[12, 2, 56, 21], [22, 2, 56, 26]],
+    "frame": "Cyan panel, black inset double border, dark gray close marker, centered directory path, and a black shadow",
+    "table": "Name column with a 12-cell minimum, size or directory marker, four DOS attributes, date, and time",
+    "selection": "White on black, filling the selected table row",
+    "mask": "Centered footer label and a nested gray dialog with cyan shaded input"
+  },
+  "paired_checks": {
+    "directory_panel_frames": 30,
+    "matching_surface_geometry_glyphs_palette_and_selection": 30,
+    "matching_function_bar_glyphs": 30,
+    "matching_mask_caret_coordinates": 4,
+    "comparison": "The tested region covers the dialog body, borders, close marker and right shadow. The comparator normalizes the terminal's default black. It compares the filter both on opening and on reopening.",
+    "coverage": "Open F9, move selection, traverse into and out of a directory, dismiss and restore selection, toggle hidden files, sort by name, reverse, apply a wildcard and dismiss the mask"
+  },
+  "timestamp_examples": [
+    {
+      "utc_write_time": "2025-07-09T12:34:39Z",
+      "display": "09-07-2025 12:34:20"
+    },
+    {
+      "utc_write_time": "2026-01-10T13:45:59Z",
+      "display": "10-01-2026 14:46:00"
+    }
+  ],
+  "limits": "One Windows time zone. The paired frames exclude initial startup, other sort modes, mouse gestures, file history, advanced masks, and the text of contextual Help."
+}

@@ -43,6 +43,9 @@ and the parent epic remain open.
 | UI-014 | Implemented | [CLI], [P]: ordinary editing has no network/service dependency. |
 | UI-015 | Partial | [P], [Input]: acquired-mode guard and normal exit; ConPTY/signal/failure matrix pending. |
 
+The native Files panel has separate [Windows observations][Files observation]
+and a [PTY replay][Files replay] of the startup and F9 workflow.
+
 ## KEY
 
 | Requirement | Status | Evidence and remaining difference |
@@ -52,7 +55,7 @@ and the parent epic remain open.
 | KEY-003 | Partial | [C], [A], [T], [ACLI], [Reference]: hexadecimal, decimal t, relative and dotted absolute-VA syntax reject overflow/unavailable mappings; original current-section-relative dotted interpretation remains open. |
 | KEY-004 | Partial | [A], [T]: shared position, bounded branch-return history and a search resume point independent of ordinary movement; general navigation return and per-view bookmarks remain open. |
 | KEY-005 | Partial | [C], [T], [P], [Reference], [Observation]: observed Hex input is nibble-oriented and F3 restores the current source byte then advances; buffer boundaries, Backspace, assembly, truncation and timestamps remain open. |
-| KEY-006 | Partial | [C], [T], [P], [Commands]: F3/F9, F4 mode selection and search area, F2 export, Shift+F7, header keys and Code view/edit collisions covered; F2 textual assembly and full reference scenarios pending. |
+| KEY-006 | Partial | [C], [T], [P], [Commands], [Files observation], [Files replay]: F3/F9, Files from view and startup, F4 mode selection and search area, F2 export, Shift+F7, header keys and Code view/edit collisions covered; F2 textual assembly and full reference scenarios pending. |
 | KEY-007 | Implemented | [T], [P]: Esc cancels search/dialog, discards edits, then exits view. |
 | KEY-008 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 
@@ -290,6 +293,8 @@ and the parent epic remain open.
 [Dialog observation]: evidence/hiew-8.63-windows-dialogs.json
 [Hex observation]: evidence/hiew-8.63-windows-hex.json
 [Help observation]: evidence/hiew-8.63-windows-help.json
+[Files observation]: evidence/hiew-8.63-windows-files.json
+[Files replay]: evidence/files.cast
 [Text observation]: evidence/hiew-8.63-windows-text.json
 [Search replay]: evidence/search-repeat.cast
 [Recording]: evidence/executable-analysis.cast

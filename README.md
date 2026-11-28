@@ -63,6 +63,9 @@ beyond 4 GiB, without loading the complete file into memory.
 | Hex / Code view | `*` / `[` / `]` | Start, finish, or clear a block / first byte / last byte |
 | Hex / Code view | Alt+`*` / Ctrl+`*` or Ctrl+K | Move the marked endpoint / select the whole file |
 | Completed block | F2 | Write raw bytes to a file. Confirm its path, offset, and format. Use `*` as the offset to append |
+| View | F9 | Browse and open a file |
+| Files | Arrows / Enter / Esc | Select / open a directory or file / cancel |
+| Files | F2 / F3–F8 / F10 | Toggle hidden entries / sort and reverse / set a filename mask |
 | View | F8 / Ctrl+O | Executable headers; F5 entry, F6 regions, F4 fields, S slices |
 | Headers | F7 / F9 / N | Parsed imports / exports / all symbols; tables load on request |
 | Symbols | Enter / R | Follow target bytes / the exact metadata record |
@@ -83,8 +86,9 @@ beyond 4 GiB, without loading the complete file into memory.
 | Any view | Ctrl+Home / Ctrl+End | Move to the first / last byte |
 | Context | F1 / Esc | Help / cancel the active operation before exiting |
 
-F9 in **view** retains HIEW's Open meaning and reports it as planned; it is not
-reassigned to Save. In headers F9 opens parsed exports. Text displays
+Run `hiewbie` without a filename to browse the working directory. F9 opens
+the same browser from a view, saves in edit mode, and opens parsed exports
+in headers. Text displays
 printable ASCII bytes, not a decoded
 Unicode document. A single pending hex digit never changes a byte. Bracketed
 paste is recognized and rejected. macOS function keys may require Fn; the Ctrl

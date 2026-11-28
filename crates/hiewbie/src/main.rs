@@ -17,7 +17,7 @@ use hiewbie_core::{ByteSource, Command, Document, Editor, FileOffset, parse_virt
 
 const HELP: &str = "hiewbie - a HIEW-inspired terminal hex editor and binary inspector
 
-Usage: hiewbie [OPTIONS] <FILE>
+Usage: hiewbie [OPTIONS] [FILE]
 
 Options:
   -r, --read-only      Inspect without allowing an edit transaction
@@ -53,7 +53,8 @@ Examples:
   hiewbie --disassemble --raw --arch x86-64 --base 0x400000 code.bin
   hiewbie --disassemble --slice 1 --entry universal-macho
 
-View: Enter cycles Text/Hex/Code; F4 selects a mode; F3/Ctrl+E begins editing;
+Start without a file to open the file browser.
+View: F9 opens the file browser; Enter cycles Text/Hex/Code; F4 selects a mode; F3/Ctrl+E begins editing;
       F5/Ctrl+G goes to an offset; F7/Ctrl+F searches;
       Shift+F7, Ctrl+Enter, or Ctrl+R repeats the search.
 Code: F8/Ctrl+O shows headers; Shift+F1/Ctrl+A opens the analysis profile.
@@ -70,7 +71,7 @@ F1 opens help. Esc exits from view mode. Bracketed paste is rejected.
 
 PE/ELF/Mach-O inspection covers headers, load mappings, and selected symbol tables.
 Symbols are loaded on request; coverage notes identify unparsed loader metadata.
-Relocations, textual assembly, blocks, and multiple files remain planned.
+Relocations, textual assembly, and multiple command-line files remain planned.
 Big-endian instruction decoding is explicitly unsupported.
 ";
 
@@ -106,6 +107,7 @@ struct Options {
 enum Invocation {
     Help,
     Version,
+    Browse { read_only: bool },
     Run(Options),
 }
 
@@ -245,8 +247,22 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
     if slice.is_some() && (raw || base.is_some()) {
         return Err("--slice cannot be combined with --raw or --base".into());
     }
+    let Some(path) = path else {
+        if output.is_some()
+            || entry
+            || offset.is_some()
+            || architecture.is_some()
+            || endian.is_some()
+            || base.is_some()
+            || raw
+            || slice.is_some()
+        {
+            return Err("a file is required for inspection and startup position options".into());
+        }
+        return Ok(Invocation::Browse { read_only });
+    };
     Ok(Invocation::Run(Options {
-        path: path.ok_or("a file is required; use --help for usage")?,
+        path,
         read_only,
         output: output.unwrap_or(OutputMode::Interactive),
         offset,
@@ -332,10 +348,17 @@ fn run(options: Options) -> Result<(), String> {
             Err(error) => Err(format!("cannot print inspection: {error}")),
         };
     }
+    run_terminal(Some((editor, &options.path)), options.read_only)
+}
+
+fn run_terminal(
+    start: Option<(Editor<FileSource>, &std::path::Path)>,
+    read_only: bool,
+) -> Result<(), String> {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         return Err("interactive editing requires terminal input and output; use --dump, --headers, --disassemble, --symbols, --imports, or --exports for noninteractive inspection".into());
     }
-    terminal::run(editor, &options.path).map_err(|error| format!("terminal error: {error}"))
+    terminal::run(start, read_only).map_err(|error| format!("terminal error: {error}"))
 }
 
 fn write_headers<S: ByteSource>(editor: &mut Editor<S>, output: &mut impl Write) -> io::Result<()> {
@@ -566,6 +589,7 @@ fn main() -> ExitCode {
             println!("hiewbie {}", env!("CARGO_PKG_VERSION"));
             return ExitCode::SUCCESS;
         }
+        Ok(Invocation::Browse { read_only }) => run_terminal(None, read_only),
         Ok(Invocation::Run(options)) => run(options),
         Err(error) => Err(error),
     };
@@ -591,8 +615,15 @@ mod tests {
     fn cli_help_version_and_invalid_invocations() {
         assert_eq!(args(&["--help"]).unwrap(), Invocation::Help);
         assert_eq!(args(&["--version"]).unwrap(), Invocation::Version);
+        assert_eq!(args(&[]).unwrap(), Invocation::Browse { read_only: false });
+        assert_eq!(
+            args(&["-r"]).unwrap(),
+            Invocation::Browse { read_only: true }
+        );
         for invalid in [
-            &[][..],
+            &["--dump"][..],
+            &["--entry"],
+            &["--offset", "12"],
             &["a", "b"],
             &["--bad"],
             &["--offset"],

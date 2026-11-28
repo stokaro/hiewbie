@@ -7,6 +7,7 @@ from it. The public core exports `COMMANDS` and `Command::id()` from
 
 | Stable core ID | Arguments | Behavior |
 | --- | --- | --- |
+| `file.browse` | None | Request the native file browser while viewing |
 | `edit.begin` | None | Enter edit mode unless readonly |
 | `edit.discard` | None | Discard the active overlay/history and leave edit mode |
 | `edit.write-byte` | `u8` | Overwrite at the cursor and advance, clamped at EOF |
@@ -51,7 +52,7 @@ shared `parse_virtual_address` accepts full-width absolute addresses and rejects
 relative expressions. No macro/remote protocol compatibility is implied by this list.
 
 The [README key table](../README.md#current-controls) lists physical bindings.
-F9 retains different view/edit meanings; edit F2 assembly and F10 truncate remain
+F9 browses in view and saves in edit mode. Edit F2 assembly and F10 truncate remain
 explicitly unavailable. F4 opens a chooser for Text, Hex and Code, while Enter
 cycles all three views. Code editing writes bytes through the same transaction
 as Hex and Text; it does not accept assembly text.
@@ -60,6 +61,26 @@ Edit F3 and Backspace use the shared source-byte restore commands. Backspace
 with an incomplete first hex digit only cancels that digit. Restores participate
 in undo/redo history without being aliases for undo. They use the transaction's
 source, rebased after each save.
+
+### File browser
+
+Start without a filename or press F9 in a file view. The browser starts in
+the working directory. Use arrows, Page Up, Page Down, Home, and End to
+select a row. Enter on a directory lists it. Enter on a different file opens it in
+Text at offset zero. Enter on `..` returns to its parent and highlights the
+previous directory. Esc returns to the current document and retains the
+browser's directory, selection, sort, and mask for the next F9.
+
+F2 toggles hidden entries. F3 through F7 select name, extension,
+modification time, size, or filesystem listing order. F8 reverses the
+active sort. Alt+F4 reloads the current directory. F10 edits the filename mask with `*` and `?` wildcards
+while keeping directories available. F1 describes the browser keys.
+`--read-only` applies to every file opened by the session.
+
+The browser bounds each directory scan at 16,384 entries and marks a
+truncated listing with `+`. It passes the native path to the same file
+adapter used at startup. File history, argument lists, and per-file view
+restoration remain open.
 
 ### Terminal focus
 

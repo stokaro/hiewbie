@@ -15,6 +15,8 @@ const SELECTED: Style = Style::new().fg(Color::White).bg(Color::Black);
 
 #[derive(Clone, Copy, Debug)]
 pub(super) enum HelpTopic {
+    Files,
+    FileFilter,
     View(ViewMode),
     Edit(ViewMode),
     Search,
@@ -24,6 +26,8 @@ pub(super) enum HelpTopic {
 impl HelpTopic {
     fn title(self) -> &'static str {
         match self {
+            Self::Files => "[FileList]",
+            Self::FileFilter => "[GetStringPattern]",
             Self::View(ViewMode::Text) => "[Text]",
             Self::View(ViewMode::Hex) => "[Hex]",
             Self::View(ViewMode::Code) => "[Code]",
@@ -37,6 +41,8 @@ impl HelpTopic {
 
     fn sections(self) -> [&'static [Entry]; 3] {
         match self {
+            Self::Files => [FILE_PICKER, &[], &[]],
+            Self::FileFilter => [FILE_FILTER, &[], &[]],
             Self::View(ViewMode::Text) => [TEXT, TEXT_MORE, VIEW_FALLBACKS],
             Self::View(ViewMode::Hex) => [HEX, HEX_MORE, VIEW_FALLBACKS],
             Self::View(ViewMode::Code) => [CODE, CODE_MORE, VIEW_FALLBACKS],
@@ -225,7 +231,7 @@ const MODE: Entry = function("F4", "Mode", "Choose a view");
 const GOTO: Entry = function("F5", "Goto", "Open the address prompt");
 const SEARCH: Entry = function("F7", "Search", "Open the pattern prompt");
 const HEADER: Entry = function("F8", "Header", "Inspect the executable");
-const FILES: Entry = function("F9", "Files", "Browse files (planned)");
+const FILES: Entry = function("F9", "Files", "Browse files");
 const QUIT: Entry = function(
     "F10",
     "Quit",
@@ -513,6 +519,48 @@ const CODE_EDIT: &[Entry] = &[
     FIRST_BYTE,
     LAST_BYTE,
     RESTORE_PREVIOUS,
+];
+
+const FILE_PICKER: &[Entry] = &[
+    function("F2", "Hidden", "Show or hide hidden entries"),
+    function("F3", "Name", "Sort by filename"),
+    function("F4", "Exten", "Sort by file extension"),
+    function("F5", "Time", "Sort by modification time"),
+    function("F6", "Size", "Sort by number of bytes"),
+    function("F7", "Unsort", "Use filesystem listing order"),
+    function("F8", "Revers", "Reverse the active sort"),
+    function("F9", "Files", "Show file history (planned)"),
+    function("F10", "Filter", "Set a filename mask"),
+    function("Alt-F1", "Drive", "Choose a drive (planned)"),
+    function("Alt-F2", "Drive", "Choose a drive (planned)"),
+    function("Alt-F3", "Device", "Choose a device (planned)"),
+    function("Alt-F4", "ReRead", "Reload the current directory"),
+    function("Ctrl-F1", "Store1", "Store the first path (planned)"),
+    key("Ctrl-F2", "Recall the first path (planned)"),
+    function("Ctrl-F3", "Store2", "Store the second path (planned)"),
+    key("Ctrl-F4", "Recall the second path (planned)"),
+    key("Enter", "Open the selected file or directory"),
+    key("Escape", "Leave the file list"),
+    key("Up / Down", "Move one row"),
+    key("PgUp / PgDn", "Move by a page"),
+    key("Home / End", "Select the first or last row"),
+];
+
+const FILE_FILTER: &[Entry] = &[
+    key("Enter", "Apply the filename mask"),
+    key("Escape", "Cancel the mask change"),
+    key("PgUp", "Clear the field"),
+    key("PgDn", "Recall mask history (planned)"),
+    key("Insert", "Toggle overwrite or insert"),
+    key("Ctrl-End, Alt-X", "Erase from the caret to the end"),
+    key("Shift-Insert", "Paste from the clipboard (planned)"),
+    section(14, "Wildcard symbols"),
+    key("?", "Match one character"),
+    key("*", "Match any number of characters"),
+    key("{ABC}", "Match one member of a set (planned)"),
+    key("{A-C}", "Match one member of a range (planned)"),
+    key("{!ABC}", "Match outside a set (planned)"),
+    key("!", "Negate a mask (planned)"),
 ];
 
 const FIND: &[Entry] = &[

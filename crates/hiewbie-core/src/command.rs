@@ -63,6 +63,7 @@ pub enum Command {
     ResyncCode,
     SetMode(ViewMode),
     CycleMode,
+    BrowseFiles,
     Save,
 }
 
@@ -103,6 +104,7 @@ impl Command {
             Self::ResyncCode => "analysis.resynchronize",
             Self::SetMode(_) => "view.set-mode",
             Self::CycleMode => "view.cycle-mode",
+            Self::BrowseFiles => "file.browse",
             Self::Save => "file.save",
         }
     }
@@ -245,6 +247,10 @@ pub const COMMANDS: &[CommandInfo] = &[
         description: "Cycle through Text, Hex, and Code views",
     },
     CommandInfo {
+        id: "file.browse",
+        description: "Open the file selection dialog from view mode",
+    },
+    CommandInfo {
         id: "file.save",
         description: "Request persistence of the active edit transaction",
     },
@@ -254,6 +260,7 @@ pub const COMMANDS: &[CommandInfo] = &[
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Effect {
     None,
+    BrowseFiles,
     Save,
     ExportBlock(FileRange),
     OpenCalculator,
@@ -655,6 +662,12 @@ impl<S: ByteSource> Editor<S> {
                 ViewMode::Hex => ViewMode::Code,
                 ViewMode::Code => ViewMode::Text,
             }),
+            Command::BrowseFiles => {
+                if self.editing {
+                    return Err(Error::EditingInProgress);
+                }
+                return Ok(Effect::BrowseFiles);
+            }
             Command::Save => {
                 self.require_editing()?;
                 return Ok(Effect::Save);

@@ -255,6 +255,31 @@ defaults. The 8.63 release notes limit UTF-8 handling to one- and two-byte
 sequences; hiewbie should not adopt that old limitation. Complete Unicode
 display remains planned; existing UTF-8 input and Unicode paths stay supported.
 
+### File listing
+
+In a view, F9 opens the current working directory. If the opened file is in
+that directory, the browser highlights its filename. Enter on a directory
+shows its contents, and Enter on `..` returns to the parent and highlights
+the child. Esc restores the previous view. Reopening F9 restores the
+browser's directory and selection. In the observed run, opening a different
+regular file started Text at offset zero.
+
+The panel uses an inset cyan double border, a centered directory path,
+and a white-on-black highlight. It sizes the name column to the longest
+entry with a 12-cell minimum. The other columns show DOS attributes,
+size, date, and time. Filename masks appear at the bottom border. F2
+shows hidden entries. F8 reverses an active sort. F10 opens a shaded field
+with a native caret and filters files while leaving directories visible.
+
+With controlled NTFS timestamps in the Windows test zone, winter times
+used the local standard offset and summer times subtracted the daylight
+advance from that same offset. Odd seconds round upward and the displayed
+seconds field uses the resulting two-second DOS units. This includes
+minute rollover at 59 seconds. Behavior in other Windows time zones
+remains unverified.
+
+[Paired Windows observations](../evidence/hiew-8.63-windows-files.json)
+
 ### Navigation state is richer than a single cursor
 
 Original bookmarks preserve eight screen states independently for each mode.
