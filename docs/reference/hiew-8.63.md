@@ -64,9 +64,11 @@ Observed scenarios covered the Text, Hex, and 16-bit x86 Code views; F4 mode
 selection and Enter cycling; contextual Help, Goto, Search, and Calculator;
 Hex nibble editing, current-byte F3 restore, Escape discard, and F9 save; block
 selection and export form; startup file browser; and PE summary/section overlays.
-The sanitized [observation record](../evidence/hiew-8.63-windows-observation.json)
-and [UX skill](../../.agents/skills/hiew-ux/SKILL.md) preserve the environment,
-visible state transitions, implementation guidance, and remaining unknowns.
+The sanitized [observation record](../evidence/hiew-8.63-windows-observation.json),
+[UX skill](../../.agents/skills/hiew-ux/SKILL.md), and
+[acceptance matrix](../../.agents/skills/hiew-ux/references/acceptance-matrix.md)
+preserve the environment, visible state transitions, implementation guidance,
+and explicit gates for remaining unknowns.
 
 ## Corrections to the existing editor
 
@@ -243,9 +245,11 @@ I = `hiew8.ini`.
 ## Repeatable reference capture
 
 Run the original locally on Windows or another environment that actually starts
-it. Record executable hash/version/edition, OS and terminal, configuration hash,
-fixture bytes/hash, actions, resulting cells/bytes and pass/fail/open status.
-Keep failures and timeouts distinct from observed results.
+it. Record the reported version/edition, sanitized OS and terminal class,
+configuration settings relevant to behavior, generated fixture recipe, actions,
+resulting cells/bytes, and pass/fail/open status. Do not publish proprietary-file
+fingerprints or local environment identifiers. Keep failures and timeouts
+distinct from observed results.
 
 The author documents `/Oh=0` (Hex at offset zero), `/Ot=END`, `/Oc=OEP`, separate
 `/INI=` and `/SAV=` paths, `/MACRO0=` startup playback and Alt-P screen export.

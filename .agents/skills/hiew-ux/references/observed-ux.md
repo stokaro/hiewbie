@@ -212,6 +212,9 @@ Escape return path.
 
 ## Open observations
 
+The executable acceptance criteria and evidence required to close these gaps are
+tracked in [acceptance-matrix.md](acceptance-matrix.md).
+
 - Exact semantics of `FRO`, `FWO`, and `FUO` beyond the observed transitions.
 - Wide and narrow terminal reflow, resize while a dialog is active, and Unicode
   console behavior outside CP437-style glyphs.

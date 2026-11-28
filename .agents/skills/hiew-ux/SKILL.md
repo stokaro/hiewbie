@@ -11,9 +11,12 @@ editing feedback, block selection, file selection, or executable-header workflow
 Before changing behavior, read the relevant requirements in
 [`docs/compatibility.md`](../../../docs/compatibility.md), frontend design in
 [`docs/architecture.md`](../../../docs/architecture.md), and the observed UX in
-[`references/observed-ux.md`](references/observed-ux.md). Read only the relevant
-scenarios in [`docs/reference/hiew-8.63.md`](../../../docs/reference/hiew-8.63.md)
-when command semantics or remaining unknowns matter.
+[`references/observed-ux.md`](references/observed-ux.md). When planning parity,
+closing a gap, or reviewing a compatibility claim, also read the applicable rows
+in [`references/acceptance-matrix.md`](references/acceptance-matrix.md). Read only
+the relevant scenarios in
+[`docs/reference/hiew-8.63.md`](../../../docs/reference/hiew-8.63.md) when command
+semantics or remaining unknowns matter.
 
 Treat the observed runtime as behavioral evidence for HIEW 8.63 on the recorded
 Windows console. Preserve the command model and information hierarchy while
