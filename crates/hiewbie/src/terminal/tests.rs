@@ -305,7 +305,7 @@ fn help_and_paste_cannot_execute_or_discard_edits() {
     key(&mut ui, KeyCode::F(3));
     type_text(&mut ui, "44");
     key(&mut ui, KeyCode::F(1));
-    assert!(screen(&mut ui, 80, 25).contains("[Hex editing]"));
+    assert!(screen(&mut ui, 80, 25).contains("[HexEdit]"));
     key(&mut ui, KeyCode::Esc);
     assert!(ui.editor.is_editing());
     assert_eq!(bytes(&mut ui), b"DBC");
@@ -315,6 +315,122 @@ fn help_and_paste_cannot_execute_or_discard_edits() {
     assert!(ui.editor.is_editing());
     assert_eq!(bytes(&mut ui), b"DBC");
     assert!(ui.message.contains("Paste rejected"));
+}
+
+#[test]
+fn help_matches_the_hex_console_geometry_and_pages_without_dispatching_commands() {
+    use ratatui::style::Color;
+
+    let mut ui = ui(b"ABCD");
+    key(&mut ui, KeyCode::Right);
+    key(&mut ui, KeyCode::F(1));
+
+    let mut terminal = Terminal::new(TestBackend::new(80, 25)).unwrap();
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    let cells = terminal.backend().buffer();
+    assert_eq!(cells[(4, 2)].bg, Color::Green);
+    assert_eq!(cells[(73, 2)].symbol(), "[");
+    assert_eq!(cells[(6, 3)].symbol(), "╔");
+    assert_eq!(cells[(6, 3)].fg, Color::Black);
+    assert_eq!(cells[(73, 3)].symbol(), "╗");
+    assert_eq!(cells[(37, 3)].symbol(), "[");
+    assert_eq!(cells[(9, 4)].symbol(), "E");
+    assert_eq!(cells[(27, 4)].symbol(), "-");
+    assert_eq!(cells[(7, 4)].bg, Color::Green);
+    assert_eq!(cells[(8, 4)].bg, Color::Black);
+    assert_eq!(cells[(71, 4)].bg, Color::Black);
+    assert_eq!(cells[(72, 4)].bg, Color::Green);
+    assert_eq!(cells[(9, 4)].fg, Color::White);
+    assert_eq!(cells[(9, 5)].fg, Color::LightYellow);
+    assert_eq!(cells[(6, 21)].symbol(), "╚");
+    assert_eq!(cells[(77, 23)].bg, Color::Black);
+    assert_eq!(cells[(2, 24)].symbol(), " ");
+    assert_eq!(cells[(2, 24)].bg, Color::Cyan);
+
+    let initial = screen(&mut ui, 80, 25);
+    assert!(
+        initial
+            .lines()
+            .nth(20)
+            .unwrap()
+            .contains("F8       - Header")
+    );
+    key(&mut ui, KeyCode::F(1));
+    assert_eq!(screen(&mut ui, 80, 25), initial);
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::PageDown);
+    let paged = screen(&mut ui, 80, 25);
+    assert!(paged.lines().nth(4).unwrap().contains("F9       - Files"));
+    assert!(paged.lines().nth(20).unwrap().contains("Ctrl-F5  - Base"));
+    key(&mut ui, KeyCode::PageUp);
+    assert_eq!(screen(&mut ui, 80, 25), initial);
+    key(&mut ui, KeyCode::Down);
+    key(&mut ui, KeyCode::Enter);
+    assert!(ui.dialog.is_none());
+    assert_eq!(ui.editor.cursor(), FileOffset::new(1));
+    assert_eq!(ui.editor.mode(), ViewMode::Hex);
+    assert_eq!(bytes(&mut ui), b"ABCD");
+    assert!(!ui.editor.document().is_dirty());
+}
+
+#[test]
+fn help_restores_the_pending_edit_caret_and_keeps_search_modal() {
+    let mut ui = ui(b"ABCD");
+    key(&mut ui, KeyCode::F(3));
+    key(&mut ui, KeyCode::Char('A'));
+    assert_eq!(ui.pending_nibble, Some(10));
+    assert_eq!(bytes(&mut ui), b"ABCD");
+    key(&mut ui, KeyCode::F(1));
+    assert!(!ui.has_input_caret());
+    assert!(screen(&mut ui, 132, 50).contains("[HexEdit]"));
+    key(&mut ui, KeyCode::End);
+    assert!(screen(&mut ui, 55, 12).contains("Backspace"));
+    key(&mut ui, KeyCode::Enter);
+    assert!(ui.has_input_caret());
+    assert_eq!(ui.pending_nibble, Some(10));
+    assert_eq!(ui.editor.cursor(), FileOffset::new(0));
+    key(&mut ui, KeyCode::Esc);
+
+    key(&mut ui, KeyCode::F(7));
+    type_text(&mut ui, "41 42");
+    let prompt = screen(&mut ui, 80, 25);
+    key(&mut ui, KeyCode::F(1));
+    assert!(!ui.has_input_caret());
+    let help = screen(&mut ui, 80, 25);
+    assert!(help.lines().nth(4).unwrap().contains("[FindEdit]"));
+    assert!(help.lines().nth(5).unwrap().contains("F2       - Direct"));
+    assert!(help.lines().nth(19).unwrap().contains("Shift-Insert"));
+    key(&mut ui, KeyCode::F(2));
+    key(&mut ui, KeyCode::F(1));
+    assert_eq!(screen(&mut ui, 80, 25), help);
+    key(&mut ui, KeyCode::Enter);
+    assert_eq!(screen(&mut ui, 80, 25), prompt);
+    assert!(ui.has_input_caret());
+    assert!(!ui.editor.is_searching());
+    assert!(!ui.editor.document().is_dirty());
+    assert_eq!(bytes(&mut ui), b"ABCD");
+}
+
+#[test]
+fn code_help_keeps_distinct_view_and_edit_entries_on_wide_consoles() {
+    let mut ui = ui(&[0x90; 64]);
+    ui.dispatch(Command::SetMode(ViewMode::Code));
+    key(&mut ui, KeyCode::F(1));
+    let wide = screen(&mut ui, 132, 50);
+    assert!(wide.lines().nth(3).unwrap().contains("[Code]"));
+    assert!(wide.lines().nth(21).unwrap().contains("F6       - Refer"));
+    assert!(wide.lines().nth(45).unwrap().contains("Ctrl-F7  - Other"));
+    assert!(wide.lines().last().unwrap().ends_with(&"▒".repeat(36)));
+    key(&mut ui, KeyCode::Esc);
+    key(&mut ui, KeyCode::F(3));
+    key(&mut ui, KeyCode::F(1));
+    let edit = screen(&mut ui, 80, 25);
+    assert!(edit.lines().nth(4).unwrap().contains("[CodeEdit]"));
+    assert!(edit.lines().nth(5).unwrap().contains("Discard"));
+    assert!(edit.lines().nth(8).unwrap().contains("F2       - Asm"));
+    key(&mut ui, KeyCode::Esc);
+    assert!(ui.editor.is_editing());
+    assert_eq!(bytes(&mut ui), [0x90; 64]);
 }
 
 #[test]
@@ -1436,8 +1552,11 @@ fn picker_keys_and_help_select_without_moving_the_file_cursor() {
     key(&mut ui, KeyCode::Esc);
     key(&mut ui, KeyCode::F(1));
     assert!(screen(&mut ui, 55, 12).contains("[Text]"));
+    let help = screen(&mut ui, 80, 25);
+    assert!(help.contains("F2       - Wrap   - Toggle line wrapping"));
+    assert!(help.contains("F6       - LnFeed - Choose the line delimiter"));
     key(&mut ui, KeyCode::End);
-    assert!(screen(&mut ui, 55, 12).contains("Close help with F1"));
+    assert!(screen(&mut ui, 55, 12).contains("Exit this view"));
     key(&mut ui, KeyCode::Esc);
     assert!(ui.dialog.is_none());
     assert_eq!(ui.editor.cursor(), FileOffset::new(1));

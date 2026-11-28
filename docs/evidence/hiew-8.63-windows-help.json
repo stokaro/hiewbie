@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "observation_date": "2026-11-28",
+  "reference_version": "8.63",
+  "environment": {
+    "runtime": "x64 Windows console in an isolated Windows Server Core LTSC 2022 container",
+    "candidate": "GNU-target x64 build running in the same Windows environment",
+    "paired_terminal_sizes": ["80x25", "106x34", "132x50"],
+    "fixtures": "Generated 4 KiB binary, mixed control bytes and CRLF, and plain DOS text"
+  },
+  "panel_rectangles_zero_based": {
+    "80x25": {
+      "Text_Hex_Code_HexEdit": [4, 2, 72, 21],
+      "CodeEdit_FindEdit": [4, 3, 72, 19]
+    },
+    "106x34": {
+      "FindEdit": [4, 8, 98, 19]
+    },
+    "132x50": {
+      "Text_Hex_Code": [4, 2, 124, 46],
+      "HexEdit": [4, 14, 124, 22]
+    }
+  },
+  "layout": {
+    "frame": "Black double lines on green with a centered context title",
+    "frame_inset_columns_rows": [2, 1],
+    "selection_columns_at_80_inclusive": [8, 71],
+    "first_text_column": 9,
+    "row_colors": "Yellow on green, with the selected row in white on black",
+    "close_marker": "Dark gray [x] in the upper-right corner",
+    "shadow_offset_columns_rows": [2, 1],
+    "function_bar": "Numbered slots with empty labels. Wider consoles show F11 and F12 when they fit, then shaded filler."
+  },
+  "interaction": {
+    "PageDown": "Select the bottom of the next page",
+    "PageUp": "Select the top of the previous page",
+    "Escape_Enter": "Dismiss Help without invoking the highlighted action",
+    "F1_inside_Help": "Leave Help open at the same row",
+    "caret": "The edit or Search caret disappears while Help is open and returns on dismissal."
+  },
+  "paired_checks": {
+    "frames": 39,
+    "matching_panel_bounds": 39,
+    "matching_border_close_marker_and_context_title": 39,
+    "matching_selection_extent_and_screen_row": 39,
+    "matching_palette_and_shadow_samples": 39,
+    "matching_function_bar_glyphs": 39,
+    "coverage": "Text, Hex, Code, HexEdit, CodeEdit, FindEdit, and list movement",
+    "limits": "Descriptions use independent wording, and the candidate Help catalog covers a subset of the original. The surrounding view and mouse behavior were outside the comparison. The reference refused the 52x17 console."
+  }
+}
