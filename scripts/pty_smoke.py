@@ -629,6 +629,66 @@ def analyze_edit_save(binary: Path, directory: Path, *, record: bool) -> list[li
         return sanitized_events(session.events, str(path.parent.resolve()))
 
 
+def symbol_fixture_bytes() -> bytes:
+    """Add ordinary imports and exports to the independently generated PE."""
+    data = bytearray(pe_fixture_bytes())
+    data.extend(bytes(0x800 - len(data)))
+    struct.pack_into("<I", data, 0x190, 0x600)
+    struct.pack_into("<I", data, 0x198, 0x600)
+    struct.pack_into("<I", data, 0x104, 16)
+    struct.pack_into("<IIII", data, 0x108, 0x1200, 0x100, 0x1100, 40)
+    struct.pack_into("<I", data, 0x300, 0x1140)
+    struct.pack_into("<II", data, 0x30C, 0x1180, 0x1160)
+    struct.pack_into("<Q", data, 0x340, 0x11A0)
+    struct.pack_into("<Q", data, 0x360, 0x11A0)
+    data[0x380:0x389] = b"demo.dll\0"
+    data[0x3A2:0x3AB] = b"external\0"
+    struct.pack_into("<IIIIIII", data, 0x40C, 0x1280, 1, 2, 1, 0x1240, 0x1250, 0x1258)
+    struct.pack_into("<II", data, 0x440, 0x1000, 0x1290)
+    struct.pack_into("<I", data, 0x450, 0x1260)
+    data[0x460:0x46D] = b"entry_symbol\0"
+    data[0x480:0x487] = b"sample\0"
+    data[0x490:0x49E] = b"other.forward\0"
+    return bytes(data)
+
+
+def symbols_edit_save(binary: Path, directory: Path, *, record: bool) -> list[list]:
+    directory.mkdir()
+    path = directory / "symbols.exe"
+    original = symbol_fixture_bytes()
+    path.write_bytes(original)
+    with PtySession(binary, path, "symbol targets and metadata records", record=record) as session:
+        session.send(F8, "F8: open headers")
+        session.send(F7, "Header F7: load ordinary imports")
+        session.send(b"\r", "Enter: follow the import pointer slot at file 360")
+        session.send(F3, "F3: edit the pointer slot bytes")
+        session.send(b"A1", "Change only the first IAT slot byte")
+        session.expect_file(original)
+        session.send(F9, "F9: save the pointer slot change")
+        expected = bytearray(original)
+        expected[0x360] = 0xA1
+        session.expect_file(bytes(expected))
+        session.send(F8 + F9, "Headers then F9: refresh exports after save")
+        session.send(b"\r", "Enter: follow named export at file 200")
+        session.send(F3 + b"CC", "Patch the export's code byte")
+        session.send(F9, "F9: save the exact export target byte")
+        expected[0x200] = 0xCC
+        session.expect_file(bytes(expected))
+        session.send(F8 + F9 + DOWN, "Select forwarded export, which has no local target")
+        session.send(b"\r", "Enter refuses the unresolved destination and keeps the dialog")
+        session.send(b"r", "R: follow its export address-table record at file 444")
+        session.send(F3 + b"91", "Change only the forwarded export record's first byte")
+        session.send(F9, "F9: save ordinary metadata bytes without rebuilding")
+        expected[0x444] = 0x91
+        session.expect_file(bytes(expected))
+        session.send(F8 + b"n", "N: inspect every parsed symbol after record edit")
+        session.send(ESC, "Escape: close the symbol dialog")
+        session.send(ESC, "Escape: exit the editor", allow_exit=True)
+        session.finish()
+        session.expect_file(bytes(expected))
+        return sanitized_events(session.events, str(path.parent.resolve()))
+
+
 def sanitized_events(events: list[list], directory: str) -> list[list]:
     """Redact the generated directory even when a read splits the path.
 
@@ -704,6 +764,7 @@ def main() -> int:
     parser.add_argument("--binary", type=Path, required=True, help="built native hiewbie executable")
     parser.add_argument("--record", type=Path, help="write a successful asciicast v2 recording")
     parser.add_argument("--record-analysis", type=Path, help="record PE headers, Code, branch/return, virtual goto, and byte save")
+    parser.add_argument("--record-symbols", type=Path, help="record import/export target and metadata navigation with exact byte saves")
     options = parser.parse_args()
     if os.name != "posix":
         parser.error("Unix PTYs are required; Windows ConPTY needs a separate harness")
@@ -725,6 +786,8 @@ def main() -> int:
             print("PASS: read-only edit/save refusal preserves bytes and mtime")
             analysis_events = analyze_edit_save(binary, root / "analysis", record=options.record_analysis is not None)
             print("PASS: PE headers/entry, Code, branch/return, virtual goto, exact byte save")
+            symbol_events = symbols_edit_save(binary, root / "symbols", record=options.record_symbols is not None)
+            print("PASS: import slot, export target, unresolved forwarder, metadata record, exact byte saves")
         if options.record is not None:
             write_recording(options.record, events)
             print(f"Recording: {options.record}")
@@ -736,6 +799,14 @@ def main() -> int:
                 filename="analysis.exe",
             )
             print(f"Analysis recording: {options.record_analysis}")
+        if options.record_symbols is not None:
+            write_recording(
+                options.record_symbols,
+                symbol_events,
+                title="hiewbie symbols: imports, exports, metadata records, exact byte saves",
+                filename="symbols.exe",
+            )
+            print(f"Symbol recording: {options.record_symbols}")
         print("PASS: exact termios and alternate-screen/paste/cursor restoration in all sessions")
         return 0
     except (SmokeFailure, OSError, subprocess.SubprocessError) as error:

@@ -627,6 +627,8 @@ fn command_registry_contains_every_stable_command_once() {
         Command::GotoVirtual(crate::formats::VirtualAddress::new(0)),
         Command::GotoEntry,
         Command::GotoRegion(0),
+        Command::GotoSymbol(0),
+        Command::GotoSymbolRecord(0),
         Command::SelectSlice(0),
         Command::SetDecodeMode(None),
         Command::SetEndian(None),

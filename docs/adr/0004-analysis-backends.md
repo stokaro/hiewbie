@@ -43,6 +43,11 @@ source is copied, patched, or vendored.
 Focused readers establish the minimum metadata needed for headers, mapped
 addresses, entry navigation, and code interpretation:
 
+This table describes the eager `formats` layer selected by this decision.
+[ADR 0005](0005-symbol-navigation.md) subsequently adds separate, lazy
+symbol/import/export readers; opening an image still performs only the header
+and mapping work below.
+
 | Container | Implemented scope | Remaining limits |
 | --- | --- | --- |
 | PE32 / PE32+ | DOS and PE identification, COFF and optional headers, section descriptors, preferred image base, entry RVA, and file-backed mappings | Data-directory bounds are checked, but imports, exports, relocations, and other directory contents are not interpreted. DOS MZ, NE, LE, and LX remain outside this reader's supported scope |

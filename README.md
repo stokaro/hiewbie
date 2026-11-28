@@ -5,8 +5,9 @@ Native macOS use is a first-class goal.
 
 **Status: native byte editing and initial executable analysis.** Text/Hex/Code,
 PE/ELF/Mach-O headers and load mappings, x86/ARM-family decoding, direct branch
-navigation, literal search, overwrite transactions, undo/redo and explicit save
-are implemented. Full symbols/imports/exports, textual assembly, advanced/legacy
+navigation, selected symbol/import/export tables, literal search, overwrite
+transactions, undo/redo and explicit save are implemented. Complete loader
+metadata, textual assembly, advanced/legacy
 parity, browser UI and release packages remain planned. See the
 [compatibility ledger](docs/compatibility-status.md).
 
@@ -35,6 +36,8 @@ noninteractive inspection are also available:
 cargo run --locked --package hiewbie -- --read-only path/to/file.bin
 cargo run --locked --package hiewbie -- --dump --offset 0x100 path/to/file.bin
 cargo run --locked --package hiewbie -- --headers path/to/program
+cargo run --locked --package hiewbie -- --imports path/to/program.exe
+cargo run --locked --package hiewbie -- --symbols --slice 1 path/to/universal-macho
 cargo run --locked --package hiewbie -- --disassemble --entry path/to/program
 cargo run --locked --package hiewbie -- --disassemble --arch x86-64 --base 0x1000 raw.bin
 cargo xtask check
@@ -57,6 +60,8 @@ beyond 4 GiB, without loading the complete file into memory.
 | View | F7 / Ctrl+F | Literal hex-byte or UTF-8 text search; Tab selects input type |
 | View | Shift+F7 / Ctrl+Enter / Ctrl+R | Repeat search forward, without wrapping |
 | View | F8 / Ctrl+O | Executable headers; F5 entry, F6 regions, F4 fields, S slices |
+| Headers | F7 / F9 / N | Parsed imports / exports / all symbols; tables load on request |
+| Symbols | Enter / R | Follow target bytes / the exact metadata record |
 | View | Shift+F1 / Ctrl+A | Decoder profile, byte order and explicit raw base |
 | Code | Ctrl+F1 / Ctrl+B | Cycle x86 16/32/64 bitness |
 | Code, viewing | 1–9 / Backspace | Follow a displayed direct destination / return |
@@ -73,7 +78,7 @@ beyond 4 GiB, without loading the complete file into memory.
 | Context | F1 / Esc | Help / cancel the active operation before exiting |
 
 F9 in **view** retains HIEW's Open meaning and reports it as planned; it is not
-reassigned to Save. In headers F9 reports the planned exports view. Text displays
+reassigned to Save. In headers F9 opens parsed exports. Text displays
 printable ASCII bytes, not a decoded
 Unicode document. A single pending hex digit never changes a byte. Bracketed
 paste is recognized and rejected. macOS function keys may require Fn; the Ctrl
@@ -114,9 +119,9 @@ file offsets. Unmapped or zero-fill virtual destinations are rejected.
 
 | Input | Current interpretation |
 | --- | --- |
-| PE32 / PE32+ | Numeric headers, sections, preferred image base and entry |
-| ELF32 / ELF64 | Numeric headers and loadable program segments in either data byte order |
-| Mach-O32 / Mach-O64 | Header/load-command fields, segments and standard `LC_MAIN` entry |
+| PE32 / PE32+ | Headers, mappings, entry, ordinary name/ordinal imports and exports, explicit forwarders |
+| ELF32 / ELF64 | Headers, load segments and section-backed `SYMTAB`/`DYNSYM` in either byte order |
+| Mach-O32 / Mach-O64 | Headers, segments, `LC_MAIN` entry and `LC_SYMTAB`/nlist in either byte order |
 | Universal Mach-O | Fat32/fat64 tables, explicit `--slice N` or header-dialog selection; indices start at zero |
 
 The first fat slice is the default, independent of the computer's CPU. Invalid
@@ -126,15 +131,32 @@ save invalidate dependent results. Selecting a field or region navigates to its
 actual backing bytes and never rebuilds the executable.
 
 `--headers` prints at most 64 fields, regions and slices per category;
-`--disassemble` prints at most 32 rows. `--arch`, `--endian`, `--raw` and `--base`
+`--disassemble` prints at most 32 rows. `--symbols`, `--imports` and `--exports`
+print at most 64 entries and every coverage note. These six output modes are
+mutually exclusive. `--arch`, `--endian`, `--raw` and `--base`
 are explicit interpretation controls. Setting a base selects raw addressing;
 it cannot be combined with slice selection. Code editing remains byte editing,
 without textual assembly. Unknown/truncated instructions retain their bytes.
 
+Symbol tables load only when requested and have separate read, entry and text
+budgets. Their results follow logical byte edits, undo, restore, discard, save
+and selected Mach-O slice. A table error leaves headers, Code and raw access
+available. Enter follows a definition's backed bytes or a PE import's IAT pointer
+slot; it does not resolve an external function. R opens the source metadata
+record, including unresolved names, forwarders and definitions without file
+bytes. Names are escaped before terminal or CLI output.
+
+Coverage is deliberately explicit: PE delay imports and bound-only reconstruction,
+ELF sectionless dynamic lookup, symbol versions and GOT/PLT relocations, and
+Mach-O export tries, dyld binding streams and chained fixups remain open. Parsed
+Mach-O nlist exports do not establish the complete runtime export inventory.
+See [symbol interpretation and bounds](docs/adr/0005-symbol-navigation.md) and
+the [automated symbol-navigation recording](docs/evidence/symbol-navigation.cast).
+
 Instruction decoding currently accepts little-endian interpretations. Explicit
 big-endian configurations report unsupported; format data endianness does not
 establish instruction-order support. ARM version filtering, ARMv7 NEON, SVE/SVE2,
-Thumb IT-state propagation, indirect/far branch resolution and full symbol or
+Thumb IT-state propagation, indirect/far branch resolution and complete symbol or
 reference analysis remain gaps. See the [analysis decision and bounds](docs/adr/0004-analysis-backends.md)
 and the [recorded PE analysis workflow](docs/evidence/executable-analysis.cast).
 

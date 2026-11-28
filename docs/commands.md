@@ -19,6 +19,8 @@ from it. The public core exports `COMMANDS` and `Command::id()` from
 | `navigate.virtual` | `VirtualAddress` | Map an absolute VA to a file-backed byte; reject missing, ambiguous, or zero-fill mappings |
 | `navigate.entry` | None | Follow the selected executable's entry point |
 | `navigate.region` | Zero-based region index | Follow a PE section or ELF/Mach-O segment to its first backed byte |
+| `navigate.symbol` | Global zero-based parsed entry index | Follow a definition's backed byte or a PE import pointer slot; reject unresolved targets |
+| `navigate.symbol-record` | Global zero-based parsed entry index | Follow the exact interpreted source record, including unresolved entries |
 | `analysis.select-slice` | Zero-based slice index | Select a fat Mach-O image and refresh its interpretation |
 | `analysis.set-architecture` | Optional `DecodeMode` | Select x86-16/32/64, ARM, Thumb, or AArch64; `None` restores inferred architecture |
 | `analysis.set-endian` | Optional `Endian` | Override or restore inferred instruction endianness |
@@ -62,7 +64,21 @@ and literal text matching still differ from the original documentation; see the
 F8/Ctrl+O opens executable metadata. F5 follows the entry point; F6 lists PE
 sections or ELF/Mach-O segments; F4 lists numeric header fields; S lists fat
 Mach-O slices. Enter follows the selected backed range or selects a slice.
-Header F7/F9 imports/exports remain explicit unavailable commands.
+F7 lists parsed imports, F9 exports, and N all parsed entries. These pages load
+symbols lazily. Enter dispatches `navigate.symbol`; R dispatches
+`navigate.symbol-record`. Filtered rows retain their global entry indices, which
+are tied to the current document generation and selected image. Indices are not
+persistent identifiers across edits or slice changes. A PE import destination is
+the IAT pointer slot, not executable code in another module. Unsupported loader
+tables appear in coverage notes; an empty parsed list does not establish the
+absence of runtime imports/exports. `--symbols`, `--imports` and `--exports`
+provide bounded headless equivalents and print every note.
+
+ARM/Thumb symbol metadata supplies an advisory decoder hint below an explicit
+user profile. Successful absolute/entry/region/record navigation, byte-generation
+changes and slice selection clear it; failure leaves the context unchanged.
+Branch return restores such a hint only when the logical generation is unchanged.
+This keeps mixed ARM/Thumb navigation separate from persistent user overrides.
 
 Shift+F1/Ctrl+A opens the interpretation profile. Keys 0–6 choose automatic
 architecture, x86-16, x86-32, x86-64, ARM, Thumb, or AArch64; Enter applies it and
@@ -87,6 +103,11 @@ Code-view branch return command.
 Parsed metadata is tied to the logical document generation. Edits, undo, discard,
 save, and slice changes cause fresh interpretation before use. A malformed
 pending header leaves raw byte editing available and cannot retain stale mappings.
+Symbols use the same logical generation and selected slice, with separate lazy
+read/entry/text budgets. Their failures do not invalidate otherwise usable image
+mappings. Following a metadata record performs ordinary byte navigation; it
+never rebuilds symbols, relocations or checksums. See the
+[symbol decision](adr/0005-symbol-navigation.md) for supported tables and gaps.
 
 After save succeeds the frontend calls `complete_save` with the verified source.
 After a precommit error it retains the transaction. After a post-replacement

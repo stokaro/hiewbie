@@ -2,6 +2,7 @@
 
 use hiewbie_core::formats::Endian;
 use hiewbie_core::instructions::DecodeMode;
+use hiewbie_core::symbols::SymbolKind;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
@@ -31,6 +32,23 @@ pub(super) enum AnalysisPage {
     Fields,
     Slices,
     Profiles,
+    Symbols,
+    Imports,
+    Exports,
+}
+
+impl AnalysisPage {
+    pub(super) fn is_symbols(self) -> bool {
+        matches!(self, Self::Symbols | Self::Imports | Self::Exports)
+    }
+
+    pub(super) fn symbol_kind(self) -> Option<SymbolKind> {
+        match self {
+            Self::Imports => Some(SymbolKind::Import),
+            Self::Exports => Some(SymbolKind::Export),
+            _ => None,
+        }
+    }
 }
 
 pub(super) struct AnalysisDialog {
@@ -42,6 +60,9 @@ impl<S: ByteSource> Ui<S> {
     pub(super) fn open_analysis(&mut self, page: AnalysisPage) {
         self.pending_nibble = None;
         self.editor.refresh_analysis();
+        if page.is_symbols() {
+            self.editor.refresh_symbols();
+        }
         self.dialog = Some(Dialog::Analysis(AnalysisDialog { page, selected: 0 }));
     }
 
@@ -65,6 +86,15 @@ impl<S: ByteSource> Ui<S> {
     }
 
     fn analysis_count(&self, page: AnalysisPage) -> usize {
+        if page.is_symbols() {
+            return self.editor.symbols().map_or(0, |table| {
+                table
+                    .entries
+                    .iter()
+                    .filter(|symbol| page.symbol_kind().is_none_or(|kind| symbol.kind == kind))
+                    .count()
+            });
+        }
         if page == AnalysisPage::Profiles {
             return PROFILES.len();
         }
@@ -73,6 +103,7 @@ impl<S: ByteSource> Ui<S> {
             AnalysisPage::Regions => executable.regions.len(),
             AnalysisPage::Fields => executable.fields.len(),
             AnalysisPage::Slices => executable.slices.len(),
+            AnalysisPage::Symbols | AnalysisPage::Imports | AnalysisPage::Exports => 0,
         })
     }
 
@@ -91,6 +122,9 @@ impl<S: ByteSource> Ui<S> {
 
     pub(super) fn analysis_key(&mut self, mut dialog: AnalysisDialog, key: KeyEvent) {
         self.editor.refresh_analysis();
+        if dialog.page.is_symbols() {
+            self.editor.refresh_symbols();
+        }
         if key.modifiers.intersects(
             KeyModifiers::CONTROL
                 | KeyModifiers::ALT
@@ -175,10 +209,32 @@ impl<S: ByteSource> Ui<S> {
                 dialog.page = AnalysisPage::Slices;
                 dialog.selected = 0;
             }
-            KeyCode::F(7) | KeyCode::F(9) if dialog.page != AnalysisPage::Profiles => {
-                self.notice("Import/export tables are not implemented in this analysis slice");
+            KeyCode::F(7) if dialog.page != AnalysisPage::Profiles => {
+                dialog.page = AnalysisPage::Imports;
+                dialog.selected = 0;
+            }
+            KeyCode::F(9) if dialog.page != AnalysisPage::Profiles => {
+                dialog.page = AnalysisPage::Exports;
+                dialog.selected = 0;
+            }
+            KeyCode::Char('n' | 'N') if dialog.page != AnalysisPage::Profiles => {
+                dialog.page = AnalysisPage::Symbols;
+                dialog.selected = 0;
+            }
+            KeyCode::Char('r' | 'R') if dialog.page.is_symbols() => {
+                if let Some(index) = self.symbol_index(dialog.page, dialog.selected) {
+                    close = self.analysis_dispatch(
+                        Command::GotoSymbolRecord(index),
+                        "Moved to symbol metadata bytes; no structural repair is performed",
+                    );
+                }
             }
             KeyCode::Enter => match dialog.page {
+                page if page.is_symbols() => {
+                    if let Some(index) = self.symbol_index(page, dialog.selected) {
+                        close = self.analysis_dispatch(Command::GotoSymbol(index), "Moved to symbol bytes; import targets are pointer slots, not resolved external code");
+                    }
+                }
                 AnalysisPage::Profiles => {
                     if self.analysis_dispatch(
                         Command::SetDecodeMode(PROFILES[dialog.selected]),
@@ -220,6 +276,9 @@ impl<S: ByteSource> Ui<S> {
             _ => {}
         }
         if !close {
+            if dialog.page.is_symbols() {
+                self.editor.refresh_symbols();
+            }
             self.dialog = Some(Dialog::Analysis(dialog));
         }
     }
@@ -230,6 +289,10 @@ impl<S: ByteSource> Ui<S> {
         area: Rect,
         dialog: &AnalysisDialog,
     ) {
+        if dialog.page.is_symbols() {
+            self.render_symbol_dialog(frame, area, dialog);
+            return;
+        }
         let popup = popup(area, 96, 23);
         let available = popup.height.saturating_sub(7) as usize;
         let title = match dialog.page {
@@ -238,6 +301,7 @@ impl<S: ByteSource> Ui<S> {
             AnalysisPage::Fields => " Header fields and backing bytes ",
             AnalysisPage::Slices => " Universal Mach-O slices ",
             AnalysisPage::Profiles => " Decoder and raw addressing ",
+            AnalysisPage::Symbols | AnalysisPage::Imports | AnalysisPage::Exports => unreachable!(),
         };
         let context = self.editor.decode_context();
         let mode = context
@@ -289,7 +353,7 @@ impl<S: ByteSource> Ui<S> {
                 "F5 entry / F6 regions / F4 fields / S slices / F8 overview",
             ));
             lines.push(Line::raw(
-                "Enter follows selected bytes; F7 imports/F9 exports planned; Esc closes",
+                "F7 imports / F9 exports / N symbols; Enter follows; Esc closes",
             ));
             match self.editor.executable() {
                 Some(executable) => {
@@ -300,14 +364,44 @@ impl<S: ByteSource> Ui<S> {
                     match dialog.page {
                         AnalysisPage::Overview => {
                             let summary = [
-                                format!("Format {} | machine {} | {} bit | {} endian", executable.format, executable.machine, executable.bitness, executable.endian),
+                                format!(
+                                    "Format {} | machine {} | {} bit | {} endian",
+                                    executable.format,
+                                    executable.machine,
+                                    executable.bitness,
+                                    executable.endian
+                                ),
                                 format!("Entry VA {entry}"),
-                                format!("Image base {}", executable.image_base.map_or_else(|| "not declared".to_owned(), |base| format!("{:016X}", base.get()))),
-                                format!("Image bytes FO {:016X}, size {:X}", executable.slice.offset.get(), executable.slice.len),
-                                format!("Regions {} | fields {} | container slices {}", executable.regions.len(), executable.fields.len(), executable.slices.len()),
-                                format!("Selected slice {} | logical generation {}", executable.selected_slice.map_or_else(|| "none".to_owned(), |slice| slice.to_string()), executable.generation),
-                                "Headers and mappings only; symbols/imports/relocations remain planned.".to_owned(),
-                                "Byte edits do not rebuild headers, checksums, or signatures.".to_owned(),
+                                format!(
+                                    "Image base {}",
+                                    executable.image_base.map_or_else(
+                                        || "not declared".to_owned(),
+                                        |base| format!("{:016X}", base.get())
+                                    )
+                                ),
+                                format!(
+                                    "Image bytes FO {:016X}, size {:X}",
+                                    executable.slice.offset.get(),
+                                    executable.slice.len
+                                ),
+                                format!(
+                                    "Regions {} | fields {} | container slices {}",
+                                    executable.regions.len(),
+                                    executable.fields.len(),
+                                    executable.slices.len()
+                                ),
+                                format!(
+                                    "Selected slice {} | logical generation {}",
+                                    executable.selected_slice.map_or_else(
+                                        || "none".to_owned(),
+                                        |slice| slice.to_string()
+                                    ),
+                                    executable.generation
+                                ),
+                                "F7/F9/N read bounded import/export/symbol tables on request."
+                                    .to_owned(),
+                                "Byte edits do not rebuild headers, checksums, or signatures."
+                                    .to_owned(),
                             ];
                             lines.extend(summary.into_iter().take(available).map(Line::raw));
                         }

@@ -7,6 +7,9 @@ use ratatui::backend::TestBackend;
 
 use super::*;
 
+#[path = "symbol_tests.rs"]
+mod symbols;
+
 fn ui(bytes: &[u8]) -> Ui<MemorySource> {
     Ui::new(
         Editor::new(Document::new(MemorySource::new(bytes.to_vec())), false),

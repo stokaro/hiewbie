@@ -178,6 +178,14 @@ edit truncates at the cursor; it must never be treated as a universal Quit key.
 The view Escape/F10 timestamp wording and the state immediately after edit F9
 need measurement before changing persistence policy.
 
+Hiewbie now provides bounded header-context F7 imports and F9 exports for its
+implemented PE/ELF/Mach-O tables. N (all parsed symbols) and R (metadata record)
+are additive controls. The H21 generated scenarios cover table failures and
+file-byte navigation, including import pointer slots and unresolved forwarders.
+This extends hiewbie-side evidence without an original-runtime observation or
+a claim of complete original table, loader or navigation behavior. Remaining
+format-specific scope is recorded in [ADR 0005](../adr/0005-symbol-navigation.md).
+
 The distribution's `file_id.diz` predates documented Mach-O support (8.51) and
 TE support (8.60). Use the manuals, contextual help and release notes together.
 Retain older formats, indirect references, instruction-pattern search, assembly

@@ -1,7 +1,7 @@
 # Compatibility implementation ledger
 
 This ledger retains every requirement ID from [compatibility.md](compatibility.md).
-It covers native byte editing and the initial executable-analysis slice. Full
+It covers native byte editing, executable analysis and selected symbol tables. Full
 HIEW parity remains the goal. **Implemented**
 means the stated initial behavior exists with the linked regression evidence;
 **Partial** means only the recorded subset exists; **Planned** means no application
@@ -37,7 +37,7 @@ and the parent epic remain open.
 | UI-008 | Partial | [T], [P]: 80-column cells, dynamic rows, resize; full reference comparison pending. |
 | UI-009 | Partial | [T]: blue/cyan default; accessible configurable themes pending. |
 | UI-010 | Partial | [T], [Commands]: Ctrl alternatives and keyboard header/profile dialogs; comprehensive command-menu and intercepted-key coverage pending. |
-| UI-011 | Partial | [T], [Input], [Commands], [Reference]: unavailable Open, textual assembly, imports and exports plus documented deviations are explicit; original runtime observations pending. |
+| UI-011 | Partial | [T], [ST], [Input], [Commands], [Reference]: unavailable Open/textual assembly and symbol-table coverage gaps are explicit; original runtime observations pending. |
 | UI-012 | Partial | [T], [Commands]: contextual help and shared command inventory cover current analysis; key-event diagnostics and comprehensive command index UI pending. |
 | UI-013 | Implemented | [F], [D], [A], [T]: bounded viewport, metadata reads and per-row decoding; no eager whole-file disassembly or indexing. |
 | UI-014 | Implemented | [CLI], [P]: ordinary editing has no network/service dependency. |
@@ -47,7 +47,7 @@ and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| KEY-001 | Implemented | [C], [A], [Commands]: stable IDs include source-byte restores, formats, decoder profiles, mappings and branch navigation. |
+| KEY-001 | Implemented | [C], [A], [SN], [Commands]: 26 stable IDs include source-byte restores, profiles, mappings, branches and separate symbol-target/record navigation. |
 | KEY-002 | Partial | [A], [T], [ACLI]: terminal dialogs, shortcuts and headless inspection use shared application commands; macro/browser callers pending. |
 | KEY-003 | Partial | [C], [A], [T], [ACLI], [Reference]: hexadecimal, decimal t, relative and dotted absolute-VA syntax reject overflow/unavailable mappings; original current-section-relative dotted interpretation remains open. |
 | KEY-004 | Partial | [A], [T]: shared position and bounded branch-return history across views; reference-specific navigation/bookmark comparison pending. |
@@ -70,9 +70,9 @@ and the parent epic remain open.
 | EDIT-008 | Partial | [C], [N]: ranges and limits validated before mutation; later operations pending. |
 | EDIT-009 | Partial | [C], [N], [Storage]: atomic logical edits and documented replacement commit point. |
 | EDIT-010 | Partial | [T]: edit entry column visible; size-changing insert mode unavailable. |
-| EDIT-011 | Implemented | [C], [F], [A], [T]: generation changes invalidate search, metadata, decoding and direct targets after overwrites, source-byte restores, undo/redo, discard and save. |
+| EDIT-011 | Implemented | [C], [F], [A], [SN], [T]: generation changes invalidate search, metadata, symbols, decoding and direct targets after overwrites, source-byte restores, undo/redo, discard and save. |
 | EDIT-012 | Implemented | [N], [P]: saved logical bytes preserve untouched ranges, including copy boundaries. |
-| EDIT-013 | Implemented | [A], [N], [T]: header-field navigation leads to ordinary byte edits; no format repair or checksum rewrite is invoked. |
+| EDIT-013 | Implemented | [A], [SN], [N], [ST], [P]: header-field and symbol-record navigation lead to ordinary byte edits; no format repair or checksum rewrite is invoked. |
 | EDIT-014 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | EDIT-015 | Partial | [C], [T], [P]: readonly blocks current command/save paths; extension paths pending. |
 | EDIT-016 | Partial | [N], [Storage]: identity/metadata conflict detection; final-check/rename race documented. |
@@ -101,7 +101,7 @@ and the parent epic remain open.
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
 | IO-001 | Implemented | [C], [N], [T]: bounded reads; sparse-file access beyond 4 GiB. |
-| IO-002 | Partial | [C], [F], [D], [A], [Analysis]: independent viewport, parser, decoder, edit/history and search budgets; background analysis remains future work. |
+| IO-002 | Partial | [C], [F], [S], [D], [A], [Analysis], [Symbols]: independent viewport, image/symbol reader, decoder, edit/history and search budgets; symbols are lazy; background analysis remains future work. |
 | IO-003 | Implemented | [N], [F], [A], [T]: real Unix sparse file, synthetic 1 TiB source and bounded code reads beyond 4 GiB. |
 | IO-004 | Implemented | [N], [Storage]: seek/read strategy and truncation checks; no unsafe file mapping. |
 | IO-005 | Implemented | [C]: incremental KMP with cross-chunk matches and bounded steps. |
@@ -124,7 +124,7 @@ and the parent epic remain open.
 | ISA-010 | Implemented | [D], [T], [ACLI]: Decoded, Unknown, Truncated and Unsupported preserve raw bytes and guarantee progress for nonempty input; unknown is not a universal invalid-encoding claim. |
 | ISA-011 | Implemented | [A], [T], [ACLI]: unknown machines, malformed metadata and unsupported instruction order preserve raw viewing and byte editing. |
 | ISA-012 | Partial | [D], [A], [T], [P]: visible direct branches can be followed and returned from without execution, including ARM/Thumb mode exchange; indirect/far resolution pending. |
-| ISA-013 | Partial | [Analysis], [README]: scope is explicitly direct targets only; general references, symbols and complete control-flow analysis remain planned. |
+| ISA-013 | Partial | [Analysis], [Symbols], [README]: direct branch targets and selected symbol definitions are navigable; general references, complete loader symbol resolution and control-flow analysis remain planned. |
 | ISA-014 | Implemented | [A], [T]: current logical bytes drive re-decoding and fresh direct targets after edits/undo; generation changes invalidate dependent interpretation. |
 | ISA-015 | Implemented | [A], [T], [Commands]: Code-view / resynchronizes at the selected byte; instruction navigation retraces known boundaries or uses a bounded byte/alignment fallback. |
 
@@ -147,9 +147,9 @@ and the parent epic remain open.
 | --- | --- | --- |
 | FMT-001 | Partial | [A], [T], [ACLI]: raw viewing/editing and explicit mode/base interpretation are available; COM-specific reference parity remains unverified. |
 | FMT-002 | Planned | [Analysis]: MZ identification routes to PE when present; DOS MZ headers and legacy navigation are not implemented. |
-| FMT-003 | Partial | [F], [A], [ACLI]: PE32/PE32+ numeric headers, sections, preferred base, entry and mappings; directory contents, imports, exports, relocations and resources pending. |
-| FMT-004 | Partial | [F], [ACLI]: ELF32/64 in both data byte orders, numeric headers, PT_LOAD segments and entry; sections/symbols/relocations/dynamic tables pending, extended numbering unsupported. |
-| FMT-005 | Partial | [F], [A], [ACLI]: thin Mach-O32/64 in both data byte orders, bounded load commands, segments and standard LC_MAIN; sections/symbols/imports/relocations and LC_UNIXTHREAD entry pending; high-VM segments unsupported. |
+| FMT-003 | Partial | [F], [S], [SN], [SCLI], [P]: PE32/PE32+ headers, mappings, ordinary named/ordinal imports and exports, aliases and explicit forwarders; delay imports, bound-directory resolution, COFF/PDB, relocations and resources pending. |
+| FMT-004 | Partial | [F], [S], [Symbols]: ELF32/64 headers, PT_LOAD and section-backed SYMTAB/DYNSYM in both byte orders; ET_REL file targets; sectionless dynamic tables, symbol versions/providers and relocations pending; extended numbering unsupported. |
+| FMT-005 | Partial | [F], [S], [Symbols]: thin Mach-O32/64 headers, segments, LC_MAIN, sections for target validation and LC_SYMTAB/nlist in both byte orders; export tries, dyld bindings/chained fixups, indirect-symbol bindings, relocations and LC_UNIXTHREAD pending; high-VM segments unsupported. |
 | FMT-006 | Implemented | [F], [A], [T], [ACLI]: fat32/fat64 descriptors, explicit selection and global mapping; deterministic first-slice default independent of host, selected thin members only. |
 | FMT-007 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | FMT-008 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
@@ -157,9 +157,9 @@ and the parent epic remain open.
 | FMT-010 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | FMT-011 | Partial | [Analysis]: DOS MZ, NE/LE/LX, TE/TE64 and NetWare rows remain required; initial modern readers do not remove legacy work. |
 | FMT-012 | Implemented | [A], [T], [ACLI]: failed/unsupported detection retains raw access and a diagnostic; --headers fails clearly while --dump remains available. |
-| FMT-013 | Implemented | [F], [T]: each interpreted numeric field retains its exact backing range; the header dialog navigates to those bytes. |
+| FMT-013 | Implemented | [F], [S], [T], [ST]: interpreted fields and symbol records retain exact backing ranges; header and symbol dialogs navigate to those bytes. |
 | FMT-014 | Partial | [F], [A]: zero-fill, overlays and disk padding never acquire invented bytes or VAs; dedicated overlay browsing and broader non-file-backed metadata pending. |
-| FMT-015 | Implemented | [F], [ACLI], [Analysis]: current readers bound reads, parsed tables, counts, names and fields before allocation; malformed/truncated fixtures and bounded mutations exercise failures. |
+| FMT-015 | Implemented | [F], [S], [ACLI], [SCLI], [Analysis], [Symbols]: current readers bound reads, parsed tables, counts, names, fields and retained text; malformed/truncated fixtures, real budget exhaustion and bounded mutations exercise failures. |
 | FMT-016 | Implemented | [A], [T], [README]: navigating and editing backing bytes is explicitly separate from executable rebuilding; no structural rebuild action exists yet. |
 | FMT-017 | Partial | [N]: save invokes no signer or repair command; format-aware workflows pending. |
 | FMT-018 | Implemented | [F], [D], [A], [ACLI], [P]: executable/instruction fixtures are generated or independently written; no proprietary binary samples are required. |
@@ -270,6 +270,10 @@ and the parent epic remain open.
 [F]: ../crates/hiewbie-core/src/formats/tests.rs
 [D]: ../crates/hiewbie-core/src/instructions/tests.rs
 [A]: ../crates/hiewbie-core/src/analysis_tests.rs
+[S]: ../crates/hiewbie-core/src/symbols
+[SN]: ../crates/hiewbie-core/src/symbol_navigation_tests.rs
+[ST]: ../crates/hiewbie/src/terminal/symbol_tests.rs
+[SCLI]: ../crates/hiewbie/tests/symbol_cli.rs
 [N]: ../crates/hiewbie/tests/persistence.rs
 [T]: ../crates/hiewbie/src/terminal/tests.rs
 [CLI]: ../crates/hiewbie/tests/cli.rs
@@ -281,12 +285,14 @@ and the parent epic remain open.
 [Input]: adr/0002-terminal-input.md
 [Build]: adr/0003-build-targets.md
 [Analysis]: adr/0004-analysis-backends.md
+[Symbols]: adr/0005-symbol-navigation.md
 [Commands]: commands.md
 [README]: ../README.md
 [Reference]: reference/hiew-8.63.md
 
 - [Core unit/command/search tests][C]
 - [Generated format/mapping fixtures][F], [decoder fixtures and bounded corpora][D], and [shared analysis/navigation regressions][A]
+- [Symbol reader fixtures][S], [generation/navigation commands][SN], [symbol dialogs][ST], [symbol CLI][SCLI], and [symbol PTY recording](evidence/symbol-navigation.cast)
 - [Native persistence and sparse-file tests][N] and [adapter fault tests](../crates/hiewbie/src/file.rs)
 - [Key/rendering tests][T], [built CLI tests][CLI], and [executable-analysis CLI tests][ACLI]
 - [Real Unix PTY scenarios][P], [PTY-harness regressions][PH], [initial editor recording](evidence/native-editor.cast), and [PE analysis recording][Recording]
