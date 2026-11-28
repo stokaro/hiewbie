@@ -4,10 +4,12 @@ use yaxpeax_arch::{Decoder, LengthedInstruction, U8Reader};
 use yaxpeax_arm::{armv7, armv8::a64};
 
 use super::{
-    BranchTarget, DecodeMode, DecodeStatus, DecodedInstruction, TextBuffer, fallback, instruction,
-    relative_target,
+    AddressOperand, BranchTarget, DecodeMode, DecodeStatus, DecodedInstruction, TextBuffer,
+    fallback, fallback_with_reason, instruction,
 };
 use crate::formats::VirtualAddress;
+
+mod a64_extensions;
 
 pub(super) fn decode_arm(
     bytes: &[u8],
@@ -43,7 +45,10 @@ pub(super) fn decode_arm(
     };
     let mut text = TextBuffer::new();
     let _ = write!(text, "{decoded}");
-    let text = branch_text(text.finish(), branch);
+    let text = pc_relative_text(
+        text.finish(),
+        branch.map(|target| target.map(|branch| branch.address)),
+    );
     instruction(
         &bytes[..length],
         address,
@@ -54,19 +59,32 @@ pub(super) fn decode_arm(
 }
 
 pub(super) fn decode_aarch64(bytes: &[u8], address: VirtualAddress) -> DecodedInstruction {
+    let mode = DecodeMode::Aarch64;
+    let Ok(encoding) = bytes.try_into() else {
+        return fallback(bytes, address, mode, DecodeStatus::Truncated);
+    };
+    if let Some(text) = a64_extensions::decode(u32::from_le_bytes(encoding)) {
+        return instruction(bytes, address, text, DecodeStatus::Decoded, None);
+    }
     let mut reader = U8Reader::new(bytes);
     let decoded = match a64::InstDecoder::default().decode(&mut reader) {
         Ok(value) => value,
-        Err(error) => {
-            let status = if error == a64::DecodeError::ExhaustedInput {
-                DecodeStatus::Truncated
-            } else {
-                DecodeStatus::Unknown
-            };
-            return fallback(bytes, address, DecodeMode::Aarch64, status);
+        Err(a64::DecodeError::ExhaustedInput) => {
+            return fallback(bytes, address, mode, DecodeStatus::Truncated);
         }
+        Err(a64::DecodeError::IncompleteDecoder) => {
+            return fallback_with_reason(
+                bytes,
+                address,
+                mode,
+                DecodeStatus::Unsupported,
+                "encoding class unimplemented by AArch64 decoder",
+            );
+        }
+        Err(_) => return fallback(bytes, address, mode, DecodeStatus::Unknown),
     };
-    let branch = if matches!(
+
+    let direct = matches!(
         decoded.opcode,
         a64::Opcode::B
             | a64::Opcode::BL
@@ -76,27 +94,49 @@ pub(super) fn decode_aarch64(bytes: &[u8], address: VirtualAddress) -> DecodedIn
             | a64::Opcode::CBNZ
             | a64::Opcode::TBZ
             | a64::Opcode::TBNZ
-    ) {
+    );
+    let literal = matches!(decoded.opcode, a64::Opcode::ADR | a64::Opcode::ADRP);
+    let memory = matches!(
+        decoded.opcode,
+        a64::Opcode::LDR | a64::Opcode::LDRSW | a64::Opcode::PRFM
+    );
+    let target = if direct || literal || memory {
         decoded.operands.iter().find_map(|operand| {
-            if let a64::Operand::PCOffset(displacement) = operand {
-                Some(relative_target(address, *displacement, DecodeMode::Aarch64))
+            let a64::Operand::PCOffset(displacement) = operand else {
+                return None;
+            };
+            let pc = if decoded.opcode == a64::Opcode::ADRP {
+                address.get() & !0xfff
             } else {
-                None
-            }
+                address.get()
+            };
+            Some(
+                pc.checked_add_signed(*displacement)
+                    .map(VirtualAddress::new),
+            )
         })
     } else {
         None
     };
     let mut text = TextBuffer::new();
     let _ = write!(text, "{decoded}");
-    let text = branch_text(text.finish(), branch);
-    instruction(
+    let mut row = instruction(
         &bytes[..4],
         address,
-        text,
+        pc_relative_text(text.finish(), target),
         DecodeStatus::Decoded,
-        branch.flatten(),
-    )
+        None,
+    );
+    if let Some(address) = target.flatten() {
+        if direct {
+            row.direct_branch = Some(BranchTarget { address, mode });
+        } else if literal {
+            row.address_operand = Some(AddressOperand::Literal(address));
+        } else if memory {
+            row.address_operand = Some(AddressOperand::Memory(address));
+        }
+    }
+    row
 }
 
 /// The backend's ARM/Thumb operand offsets include inconsistent PC biases.
@@ -224,13 +264,13 @@ fn sign_extend(value: u32, bits: u32) -> i64 {
     i64::from((value << (32 - bits)) as i32 >> (32 - bits))
 }
 
-fn branch_text(mut text: String, branch: Option<Option<BranchTarget>>) -> String {
-    if let Some(target) = branch
+fn pc_relative_text(mut text: String, target: Option<Option<VirtualAddress>>) -> String {
+    if let Some(target) = target
         && let Some(start) = text.find('$')
     {
         text.truncate(start);
         if let Some(target) = target {
-            let _ = write!(text, "0x{:x}", target.address.get());
+            let _ = write!(text, "0x{:x}", target.get());
         } else {
             text.push_str("<address out of range>");
         }

@@ -400,12 +400,13 @@ const BUILT_INS: &[Capability<'static>] = &[
         modes: &["aarch64"],
         byte_orders: &["little"],
         limitations: &[
-            "Complete SVE/SVE2 and extension coverage is not qualified.",
-            "Big-endian instructions are unsupported.",
+            "In-tree BTI, selected SVE/SVE2 and SME mode forms supplement yaxpeax.",
+            "A64 instruction bytes are always little-endian, including in big-endian images.",
+            "Coverage of remaining SVE, SVE2, SME and other extensions is incomplete.",
         ],
         evidence: &[
-            "crates/hiewbie-core/src/instructions/tests.rs",
-            "docs/adr/0004-analysis-backends.md",
+            "crates/hiewbie-core/src/instructions/aarch64_tests.rs",
+            "docs/aarch64-decode-coverage.md",
         ],
     },
     Capability {
@@ -779,7 +780,7 @@ const BUILT_INS: &[Capability<'static>] = &[
         modes: &[],
         byte_orders: &[],
         limitations: &[
-            "Direct branch following is available through decoding; reference search is not implemented.",
+            "Decoded direct branches and file-backed A64 PC-relative operands support navigation. Reference search is pending.",
         ],
         evidence: &["crates/hiewbie-core/src/references.rs"],
     },

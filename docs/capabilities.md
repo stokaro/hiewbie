@@ -63,7 +63,7 @@ additional IDs and fields while rejecting unknown required schema versions.
 | Raw read and overwrite | hiewbie-core | Bounded logical bytes, pending overwrite, undo/redo | Insert/delete, recovery, device persistence |
 | x86-16/32/64 decoding | iced-x86 1.22.0 | Little-endian bounded decoding | Exhaustive versioned extension qualification |
 | ARM and Thumb decoding | yaxpeax-arm 0.5.0 | Little-endian bounded decoding and selected direct branches | Revision filtering, complete IT-state handling, instruction byte-order variants |
-| AArch64 decoding | yaxpeax-arm 0.5.0 | Little-endian bounded decoding and selected direct branches | Complete extension qualification, including SVE/SVE2 |
+| AArch64 decoding | yaxpeax-arm 0.5.0 and hiewbie-core | Little-endian A64 instructions in either container data order, checked PC-relative operands, and versioned scalar and extension families | Wider scalable-vector, matrix and other extension coverage |
 | x86 textual assembly | iced-x86 1.22.0 and hiewbie-core | Little-endian x86-16/32/64 core API with checked addresses and encoding choices | Full HIEW grammar and #78 editor integration |
 | AArch64 textual assembly | None | Research probe only | Production adapter and editor integration in #77 and #78 |
 | x86 reference search | iced-x86 and hiewbie-core | Bounded near branches, selected mapped memory and literal operands | General references, loader resolution and control-flow analysis |

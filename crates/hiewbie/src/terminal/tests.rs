@@ -10,6 +10,9 @@ use super::search::{SEARCH_STEP_BYTES, parse_hex_pattern};
 use super::*;
 use hiewbie_core::{MAX_SEARCH_PATTERN_BYTES, SearchRequest};
 
+#[path = "../../../../tests/fixtures/aarch64_images.rs"]
+mod aarch64_images;
+
 #[path = "symbol_tests.rs"]
 mod symbols;
 
@@ -2199,4 +2202,32 @@ fn calculator_is_read_only_in_every_view_and_resizes_with_endian_input() {
         assert!(!ui.editor.document().is_dirty());
         assert_eq!(bytes(&mut ui), [0x80, 0xFE]);
     }
+}
+
+#[test]
+fn aarch64_code_labels_backed_data_and_restores_code_after_hex() {
+    use aarch64_images::{ARM64_CODE_OFFSET, arm64_elf};
+    let original = arm64_elf(true);
+    let mut ui = ui(&original);
+    ui.editor.dispatch(Command::GotoEntry).unwrap();
+    ui.editor
+        .dispatch(Command::SetMode(ViewMode::Code))
+        .unwrap();
+    let code = screen(&mut ui, 120, 25);
+    assert!(code.contains("adrp x1, 0x140002000 --↑2"), "{code}");
+    assert!(code.contains("ldr x3, 0x140002030 --↓3"), "{code}");
+    let prefetch = code.lines().find(|line| line.contains("prfm")).unwrap();
+    assert!(prefetch.ends_with("0x140002050"), "{prefetch}");
+
+    key(&mut ui, KeyCode::Char('3'));
+    assert_eq!(ui.editor.mode(), ViewMode::Hex);
+    assert_eq!(
+        ui.editor.cursor(),
+        FileOffset::new(ARM64_CODE_OFFSET + 0x30)
+    );
+    key(&mut ui, KeyCode::Backspace);
+    assert_eq!(ui.editor.mode(), ViewMode::Code);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(ARM64_CODE_OFFSET));
+    assert_eq!(bytes(&mut ui), original);
+    assert!(!ui.editor.document().is_dirty());
 }

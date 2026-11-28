@@ -287,8 +287,9 @@ opens Code. Automatic uses image metadata and selects x86-32 for ordinary
 unrecognized raw input. L/B/E select little/big/inferred endian, R toggles raw
 interpretation, and V enters a raw base. A forced raw profile or invalid image
 can require an explicit decoder. Ctrl+F1/Ctrl+B cycles x86 bitness in Code. The current
-decoder adapters return `Unsupported` for big-endian instruction bytes; parsing
-a big-endian container does not imply instruction support.
+decoder adapters return `Unsupported` for an explicit big-endian instruction
+override. Automatic AArch64 uses little-endian instruction bytes with either
+executable data order. [AArch64 Decode coverage](aarch64-decode-coverage.md)
 
 The Decode viewport shows addresses, contiguous opcode bytes, mnemonic and
 operands on rows between the title and function keys. The x86 view groups runs
@@ -312,7 +313,8 @@ fixed-address and PC-relative memory operands and address-like MOV literals
 open Hex at the target byte. A numbered near indirect CALL or JMP reads the
 complete file-backed pointer and opens Code at its checked destination. The
 operand still displays the slot address. A failed mapping leaves the selected
-byte and return history intact.
+byte and return history intact. AArch64 ADR, ADRP and literal memory operands
+also open Hex when the checked target has file backing.
 
 0 or Backspace returns from a branch or the Hex view opened by a data operand.
 Returning from that Hex view restores the prior Decode window. These keys also

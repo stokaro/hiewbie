@@ -1,8 +1,11 @@
 //! Independently generated images: exact bytes, no external executable fixtures.
 
 use crate::formats::{Endian, Machine, VirtualAddress};
-use crate::instructions::{DecodeMode, DecodeStatus};
+use crate::instructions::{AddressOperand, DecodeMode, DecodeStatus};
 use crate::*;
+
+#[path = "../../../tests/fixtures/aarch64_images.rs"]
+mod aarch64_images;
 
 fn put16(bytes: &mut [u8], offset: usize, value: u16) {
     bytes[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
@@ -1012,4 +1015,118 @@ fn assembly_uses_checked_mapped_and_raw_addresses_without_editing() {
         .read_at(FileOffset::new(0), &mut after)
         .unwrap();
     assert_eq!(after, original);
+}
+
+#[test]
+fn aarch64_elf_uses_instruction_order_and_only_follows_backed_operands() {
+    use aarch64_images::{ARM64_BASE, ARM64_CODE_OFFSET, arm64_elf};
+
+    for (big, data_order) in [(false, Endian::Little), (true, Endian::Big)] {
+        let mut editor = editor(arm64_elf(big));
+        let entry = FileOffset::new(ARM64_CODE_OFFSET);
+        editor.dispatch(Command::GotoEntry).unwrap();
+        editor.dispatch(Command::SetMode(ViewMode::Code)).unwrap();
+        assert_eq!(editor.executable().unwrap().endian, data_order);
+        assert_eq!(editor.decode_context().mode, Some(DecodeMode::Aarch64));
+        assert_eq!(editor.decode_context().endian, Endian::Little);
+        assert_eq!(editor.cursor(), entry);
+
+        let rows = editor.code_viewport(entry, 5).unwrap();
+        assert_eq!(
+            rows[0].operand,
+            Some(AddressOperand::Literal(VirtualAddress::new(
+                ARM64_BASE + 0x20
+            )))
+        );
+        assert_eq!(
+            rows[1].operand,
+            Some(AddressOperand::Literal(VirtualAddress::new(ARM64_BASE)))
+        );
+        assert_eq!(
+            rows[2].operand,
+            Some(AddressOperand::Memory(VirtualAddress::new(
+                ARM64_BASE + 0x30
+            )))
+        );
+        assert_eq!(
+            rows[3].instruction.address_operand,
+            Some(AddressOperand::Memory(VirtualAddress::new(
+                ARM64_BASE + 0x50
+            )))
+        );
+        assert_eq!(rows[3].operand, None);
+        assert_eq!(rows[3].branch_number, None);
+        assert_eq!(
+            rows[4].instruction.direct_branch.unwrap().address.get(),
+            ARM64_BASE + 0x18
+        );
+
+        let target = FileOffset::new(ARM64_CODE_OFFSET + 0x30);
+        assert_eq!(
+            editor.dispatch(Command::FollowBranch(3)).unwrap(),
+            Effect::PositionViewport(target)
+        );
+        assert_eq!(editor.mode(), ViewMode::Hex);
+        assert_eq!(editor.cursor(), target);
+        assert_eq!(
+            editor.dispatch(Command::ReturnBranch).unwrap(),
+            Effect::PositionViewport(entry)
+        );
+        assert_eq!(editor.mode(), ViewMode::Code);
+        assert_eq!(editor.cursor(), entry);
+
+        editor
+            .dispatch(Command::SetEndian(Some(Endian::Big)))
+            .unwrap();
+        let rejected = &editor.code_rows(1).unwrap()[0];
+        assert_eq!(rejected.instruction.status, DecodeStatus::Unsupported);
+        assert_eq!(rejected.instruction.bytes(), &[0x00, 0x01, 0x00, 0x10]);
+        editor.dispatch(Command::SetEndian(None)).unwrap();
+        assert_eq!(
+            editor.code_rows(1).unwrap()[0].instruction.status,
+            DecodeStatus::Decoded
+        );
+    }
+}
+
+#[test]
+fn raw_aarch64_operand_navigation_refreshes_after_edit_and_undo() {
+    use aarch64_images::{ARM64_BASE, ARM64_CODE_OFFSET, arm64_elf};
+
+    let mut editor = editor(arm64_elf(false).split_off(ARM64_CODE_OFFSET as usize));
+    editor
+        .dispatch(Command::SetRawBase(VirtualAddress::new(ARM64_BASE)))
+        .unwrap();
+    editor
+        .dispatch(Command::SetDecodeMode(Some(DecodeMode::Aarch64)))
+        .unwrap();
+    editor.dispatch(Command::SetMode(ViewMode::Code)).unwrap();
+    let entry = FileOffset::new(0);
+    let original = VirtualAddress::new(ARM64_BASE + 0x30);
+    let changed = VirtualAddress::new(ARM64_BASE + 0x20);
+    assert_eq!(
+        editor.code_viewport(entry, 4).unwrap()[2].operand,
+        Some(AddressOperand::Memory(original))
+    );
+    assert_eq!(editor.code_rows(4).unwrap()[3].operand, None);
+    editor.dispatch(Command::BeginEdit).unwrap();
+    editor
+        .document_mut()
+        .overwrite(FileOffset::new(8), &[0xc3, 0x00, 0x00, 0x58])
+        .unwrap();
+    assert_eq!(
+        editor.code_viewport(entry, 4).unwrap()[2].operand,
+        Some(AddressOperand::Memory(changed))
+    );
+    editor.dispatch(Command::Undo).unwrap();
+    assert_eq!(
+        editor.code_viewport(entry, 4).unwrap()[2].operand,
+        Some(AddressOperand::Memory(original))
+    );
+    assert!(!editor.document().is_dirty());
+    editor.dispatch(Command::DiscardEdit).unwrap();
+    assert_eq!(
+        editor.dispatch(Command::FollowBranch(3)).unwrap(),
+        Effect::PositionViewport(FileOffset::new(0x30))
+    );
 }
