@@ -6,6 +6,7 @@
 //! logical bytes and never executes inspected code.
 
 mod analysis;
+mod block;
 mod command;
 mod document;
 mod error;
@@ -16,6 +17,7 @@ mod search;
 pub mod symbols;
 
 pub use analysis::{CodeRow, DecodeContext, MAX_CODE_ROWS, MAX_NAVIGATION_HISTORY};
+pub use block::{BlockBoundary, BlockSelection};
 pub use command::{COMMANDS, Command, CommandInfo, Editor, Effect, ViewMode};
 pub use document::{
     ByteSource, Document, MAX_EDIT_BYTES, MAX_HISTORY_BYTES, MAX_HISTORY_ENTRIES,
@@ -23,7 +25,10 @@ pub use document::{
 };
 pub use error::Error;
 pub use offset::{FileOffset, parse_goto, parse_virtual_address};
-pub use search::{MAX_SEARCH_PATTERN_BYTES, Search, SearchProgress};
+pub use search::{
+    MAX_SEARCH_PATTERN_BYTES, Search, SearchCase, SearchDirection, SearchProgress, SearchRepeat,
+    SearchRequest,
+};
 
 #[cfg(test)]
 mod analysis_tests;

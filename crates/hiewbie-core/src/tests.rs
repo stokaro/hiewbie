@@ -622,6 +622,12 @@ fn command_registry_contains_every_stable_command_once() {
         Command::RestorePreviousByte,
         Command::Undo,
         Command::Redo,
+        Command::ToggleBlock,
+        Command::ClearBlock,
+        Command::SelectWholeBlock,
+        Command::ResizeBlock,
+        Command::GotoBlockBoundary(BlockBoundary::First),
+        Command::ExportBlock,
         Command::Move(1),
         Command::Goto(offset(0)),
         Command::GotoVirtual(crate::formats::VirtualAddress::new(0)),
@@ -873,4 +879,230 @@ fn search_source_failure_preserves_progress_for_a_retry() {
         search.step(&mut document, 2).unwrap(),
         SearchProgress::Found(offset(2))
     );
+}
+
+#[test]
+fn scoped_literal_search_matches_reference_windows_at_each_budget_and_direction() {
+    let bytes = b"AaaaAAaBA";
+    let mut document = memory(bytes);
+    for direction in [SearchDirection::Forward, SearchDirection::Backward] {
+        for case in [SearchCase::Exact, SearchCase::AsciiInsensitive] {
+            for even in [false, true] {
+                for first in 0..=bytes.len() {
+                    for end in first..=bytes.len() {
+                        for start in 0..=bytes.len() {
+                            let mut candidates = bytes[first..end]
+                                .windows(3)
+                                .enumerate()
+                                .map(|(delta, window)| (first + delta, window))
+                                .filter(|(at, window)| {
+                                    (!even || at % 2 == 0)
+                                        && match case {
+                                            SearchCase::Exact => *window == b"aAA",
+                                            SearchCase::AsciiInsensitive => {
+                                                window.eq_ignore_ascii_case(b"aAA")
+                                            }
+                                        }
+                                })
+                                .map(|(at, _)| at);
+                            let expected = match direction {
+                                SearchDirection::Forward => candidates.find(|at| *at >= start),
+                                SearchDirection::Backward => candidates.rfind(|at| *at <= start),
+                            }
+                            .map_or(SearchProgress::NotFound, |at| {
+                                SearchProgress::Found(offset(at as u64))
+                            });
+                            let mut request = SearchRequest::utf8("aAA".into(), case).unwrap();
+                            request.direction = direction;
+                            request.even = even;
+                            request.scope = Some(offset(first as u64)..offset(end as u64));
+                            for budget in [1, 2, usize::MAX] {
+                                let mut search =
+                                    Search::from_request(&request, offset(start as u64), 0);
+                                let actual = (0..=bytes.len())
+                                    .map(|_| search.step(&mut document, budget).unwrap())
+                                    .find(|progress| {
+                                        !matches!(progress, SearchProgress::Pending { .. })
+                                    })
+                                    .expect("scan terminates within the fixture length");
+                                assert_eq!(
+                                    actual, expected,
+                                    "{request:?}, origin {start}, budget {budget}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn reverse_search_retains_prefix_across_bounded_reads_at_large_offsets() {
+    let boundary = 1 << 32;
+    let mut document = Document::new(HugeSource::new(u64::MAX));
+    let mut request = SearchRequest::bytes(vec![0xFE, 0xFF, 0, 1]).unwrap();
+    request.direction = SearchDirection::Backward;
+    request.scope = Some(offset(boundary - 5)..offset(boundary + 5));
+    let mut search = Search::from_request(&request, offset(boundary + 4), document.generation());
+    assert_eq!(
+        search.step(&mut document, 0).unwrap(),
+        SearchProgress::Pending {
+            next: offset(boundary + 5)
+        }
+    );
+    assert_eq!(
+        search.step(&mut document, 4).unwrap(),
+        SearchProgress::Pending {
+            next: offset(boundary + 1)
+        }
+    );
+    assert_eq!(
+        search.step(&mut document, 4).unwrap(),
+        SearchProgress::Found(offset(boundary - 2))
+    );
+    assert_eq!(document.source().bytes_read, 8);
+
+    request.scope = None;
+    let mut near_end = Search::from_request(&request, offset(u64::MAX - 2), document.generation());
+    assert_eq!(
+        near_end.step(&mut document, 3).unwrap(),
+        SearchProgress::Pending {
+            next: offset(u64::MAX - 3)
+        }
+    );
+    assert_eq!(document.source().largest_read, 4);
+}
+
+#[test]
+fn search_resume_survives_canceled_replacement_and_resets_after_edit() {
+    let mut editor = Editor::new(memory(b"a----a----a"), false);
+    editor.start_search(SearchRequest::bytes(vec![b'a']).unwrap());
+    assert_eq!(
+        editor.step_search(99).unwrap(),
+        Some(SearchProgress::Found(offset(0)))
+    );
+    editor.dispatch(Command::Move(7)).unwrap();
+    editor.start_search(SearchRequest::bytes(vec![b'b']).unwrap());
+    assert!(matches!(
+        editor.step_search(1).unwrap(),
+        Some(SearchProgress::Pending { .. })
+    ));
+    editor.cancel_search();
+    assert_eq!(editor.cursor(), offset(7));
+    assert_eq!(editor.last_search_hit(), Some(offset(0)));
+    assert_eq!(editor.repeat_search(), SearchRepeat::Started);
+    assert_eq!(
+        editor.step_search(99).unwrap(),
+        Some(SearchProgress::Found(offset(5)))
+    );
+    assert_eq!(editor.cursor(), offset(5));
+
+    editor.dispatch(Command::BeginEdit).unwrap();
+    editor.dispatch(Command::WriteByte(b'x')).unwrap();
+    assert_eq!(editor.last_search_hit(), None);
+    editor.goto_expression("0").unwrap();
+    assert_eq!(editor.repeat_search(), SearchRepeat::Started);
+    assert_eq!(
+        editor.step_search(99).unwrap(),
+        Some(SearchProgress::Found(offset(0)))
+    );
+    assert_eq!(logical(editor.document_mut()), b"a----x----a");
+    assert!(editor.document().is_dirty());
+}
+
+#[test]
+fn block_tracks_reverse_and_crossing_motion_then_freezes_inclusive_boundaries() {
+    let mut editor = Editor::new(memory(b"0123456789"), true);
+    editor.dispatch(Command::Goto(offset(5))).unwrap();
+    editor.dispatch(Command::ToggleBlock).unwrap();
+    let block = editor.block_selection().unwrap();
+    assert!(block.is_marking);
+    assert_eq!((block.range.offset, block.range.len), (offset(5), 1));
+    editor.dispatch(Command::Move(-3)).unwrap();
+    let block = editor.block_selection().unwrap();
+    assert_eq!((block.range.offset, block.range.len), (offset(2), 4));
+    editor.dispatch(Command::Move(5)).unwrap();
+    let block = editor.block_selection().unwrap();
+    assert_eq!((block.range.offset, block.range.len), (offset(5), 3));
+
+    assert!(matches!(
+        editor.dispatch(Command::ExportBlock),
+        Err(Error::Block(_))
+    ));
+    editor.dispatch(Command::ToggleBlock).unwrap();
+    editor.dispatch(Command::Move(-7)).unwrap();
+    let block = editor.block_selection().unwrap();
+    assert!(!block.is_marking);
+    assert_eq!((block.range.offset, block.range.len), (offset(5), 3));
+    assert_eq!(
+        editor.dispatch(Command::ExportBlock).unwrap(),
+        Effect::ExportBlock(block.range)
+    );
+    editor
+        .dispatch(Command::GotoBlockBoundary(BlockBoundary::Last))
+        .unwrap();
+    assert_eq!(editor.cursor(), offset(7));
+    editor
+        .dispatch(Command::GotoBlockBoundary(BlockBoundary::First))
+        .unwrap();
+    assert_eq!(editor.cursor(), offset(5));
+    editor.dispatch(Command::Goto(offset(1))).unwrap();
+    editor.dispatch(Command::ResizeBlock).unwrap();
+    let resized = editor.block_selection().unwrap().range;
+    assert_eq!((resized.offset, resized.len), (offset(1), 5));
+    editor.dispatch(Command::ToggleBlock).unwrap();
+    assert!(editor.block_selection().is_none());
+    assert_eq!(editor.document().generation(), 0);
+    assert!(!editor.document().is_dirty());
+}
+
+#[test]
+fn block_select_all_can_span_the_full_u64_file_domain_without_reads() {
+    let mut empty = Editor::new(memory(b""), true);
+    assert!(matches!(
+        empty.dispatch(Command::ToggleBlock),
+        Err(Error::Block(_))
+    ));
+    assert!(matches!(
+        empty.dispatch(Command::SelectWholeBlock),
+        Err(Error::Block(_))
+    ));
+    assert!(empty.block_selection().is_none());
+
+    let mut editor = Editor::new(Document::new(HugeSource::new(u64::MAX)), true);
+    editor.dispatch(Command::SelectWholeBlock).unwrap();
+    let range = editor.block_selection().unwrap().range;
+    assert_eq!(range.offset, offset(0));
+    assert_eq!(range.end().unwrap(), offset(u64::MAX));
+    editor
+        .dispatch(Command::GotoBlockBoundary(BlockBoundary::Last))
+        .unwrap();
+    assert_eq!(editor.cursor(), offset(u64::MAX - 1));
+    assert_eq!(editor.document().source().reads, 0);
+}
+
+#[test]
+fn editor_retains_a_fixed_block_across_mode_and_edit_transactions() {
+    let mut editor = Editor::new(memory(b"01234"), false);
+    editor.dispatch(Command::ToggleBlock).unwrap();
+    editor.dispatch(Command::Move(2)).unwrap();
+    editor.dispatch(Command::SetMode(ViewMode::Text)).unwrap();
+    let block = editor.block_selection().unwrap();
+    assert!(!block.is_marking);
+    assert!(matches!(
+        editor.dispatch(Command::ToggleBlock),
+        Err(Error::Block(_))
+    ));
+    editor.dispatch(Command::Move(1)).unwrap();
+    editor.dispatch(Command::SetMode(ViewMode::Code)).unwrap();
+    editor.dispatch(Command::BeginEdit).unwrap();
+    editor.dispatch(Command::WriteByte(b'X')).unwrap();
+    assert_eq!(editor.block_selection(), Some(block));
+    editor.dispatch(Command::DiscardEdit).unwrap();
+    assert_eq!(editor.block_selection(), Some(block));
+    assert_eq!(logical(editor.document_mut()), b"01234");
+    editor.complete_save(MemorySource::new(vec![0]));
+    assert!(editor.block_selection().is_none());
 }

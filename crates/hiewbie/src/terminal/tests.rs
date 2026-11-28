@@ -5,7 +5,9 @@ use std::rc::Rc;
 use hiewbie_core::{Document, MemorySource};
 use ratatui::backend::TestBackend;
 
+use super::search::{SEARCH_STEP_BYTES, parse_hex_pattern};
 use super::*;
+use hiewbie_core::{MAX_SEARCH_PATTERN_BYTES, SearchRequest};
 
 #[path = "symbol_tests.rs"]
 mod symbols;
@@ -334,7 +336,7 @@ fn goto_dialog_validates_and_preserves_context_on_error() {
 }
 
 #[test]
-fn literal_search_repeats_and_long_scan_can_be_cancelled() {
+fn literal_search_repeats_and_long_scan_can_be_canceled() {
     let mut ui = ui(b"a--a--a");
     key(&mut ui, KeyCode::F(7));
     type_text(&mut ui, "61");
@@ -348,18 +350,18 @@ fn literal_search_repeats_and_long_scan_can_be_cancelled() {
     ui.advance_search();
     assert_eq!(ui.editor.cursor(), FileOffset::new(6));
     control(&mut ui, KeyCode::Char('r'));
-    assert!(ui.search.is_none());
+    assert!(!ui.editor.is_searching());
     assert!(ui.message.contains("No further match"));
 
     let mut long = self::ui(&vec![0; SEARCH_STEP_BYTES * 3]);
-    long.start_search(vec![1, 2, 3], FileOffset::new(0))
-        .unwrap();
+    long.editor
+        .start_search(SearchRequest::bytes(vec![1, 2, 3]).unwrap());
     long.advance_search();
-    assert!(long.search.is_some());
+    assert!(long.editor.is_searching());
     assert_eq!(key(&mut long, KeyCode::Esc), UiAction::Continue);
-    assert!(long.search.is_none());
+    assert!(!long.editor.is_searching());
     assert_eq!(long.editor.cursor(), FileOffset::new(0));
-    assert!(long.message.contains("cancelled"));
+    assert!(long.message.contains("canceled"));
 }
 
 #[test]
@@ -372,8 +374,8 @@ fn shift_f7_repeats_search_only_from_view_without_modifier_collisions() {
     key(&mut ui, KeyCode::F(7));
     type_text(&mut ui, "61");
     ui.key(repeat);
-    assert!(matches!(ui.dialog, Some(Dialog::Input(_))));
-    assert!(ui.search.is_none());
+    assert!(matches!(ui.dialog, Some(Dialog::Search(_))));
+    assert!(!ui.editor.is_searching());
     key(&mut ui, KeyCode::Enter);
     ui.advance_search();
     assert_eq!(ui.editor.cursor(), FileOffset::new(0));
@@ -384,11 +386,11 @@ fn shift_f7_repeats_search_only_from_view_without_modifier_collisions() {
         KeyCode::F(7),
         KeyModifiers::SHIFT | KeyModifiers::ALT,
     ));
-    assert!(ui.search.is_none());
+    assert!(!ui.editor.is_searching());
     assert_eq!(ui.editor.cursor(), FileOffset::new(3));
     key(&mut ui, KeyCode::F(3));
     ui.key(repeat);
-    assert!(ui.search.is_none());
+    assert!(!ui.editor.is_searching());
     assert!(ui.editor.is_editing());
     assert_eq!(ui.editor.cursor(), FileOffset::new(3));
     assert_eq!(bytes(&mut ui), b"a--a--a");
@@ -812,4 +814,255 @@ fn code_viewport_and_small_windows_keep_reads_and_allocations_bounded() {
     assert!(largest.get() <= 15);
     assert!(ui.visible_rows <= hiewbie_core::MAX_CODE_ROWS);
     assert!(screen(&mut ui, 80, 25).contains("FO 0000000100000010"));
+}
+
+#[test]
+fn search_cells_show_both_representations_direction_and_context() {
+    let mut ui = ui(b"ABC abc AbC");
+    key(&mut ui, KeyCode::F(7));
+    type_text(&mut ui, "41 62 43");
+    key(&mut ui, KeyCode::Tab);
+    key(&mut ui, KeyCode::F(2));
+    let cells = screen(&mut ui, 80, 25);
+    let panel: Vec<_> = cells
+        .lines()
+        .filter(|line| {
+            line.contains("┌ Search") || line.contains("│UTF-8 ") || line.contains("│Hex")
+        })
+        .collect();
+    assert_eq!(
+        panel,
+        [
+            "    ┌ Search | Backward | File ────────────────────────────────────────────┐",
+            "    │UTF-8 AbC                                                             │",
+            "    │Hex   41 62 43                                                        │",
+            "    │UTF-8 matches with ASCII case folding.                                │",
+        ]
+    );
+    assert_eq!(
+        cells.lines().last(),
+        Some(" F1 Help   F2 Direct   F5 GoLast   Tab field   Enter find   Esc cancel")
+    );
+    key(&mut ui, KeyCode::F(1));
+    assert!(screen(&mut ui, 80, 25).contains("UTF-8 folds ASCII letters only"));
+    key(&mut ui, KeyCode::Esc);
+    assert_eq!(screen(&mut ui, 80, 25), cells);
+    key(&mut ui, KeyCode::Esc);
+    assert!(ui.dialog.is_none());
+    assert_eq!(ui.editor.cursor(), FileOffset::new(0));
+}
+
+#[test]
+fn search_keeps_exact_hex_separate_and_rejects_unconvertible_input() {
+    let mut ui = ui(b"ABC abc AbC\xff");
+    key(&mut ui, KeyCode::F(7));
+    type_text(&mut ui, "FF");
+    key(&mut ui, KeyCode::Tab);
+    assert!(screen(&mut ui, 80, 25).contains("Hex query is not valid UTF-8"));
+    key(&mut ui, KeyCode::Enter);
+    ui.advance_search();
+    assert_eq!(ui.editor.cursor(), FileOffset::new(11));
+
+    control(&mut ui, KeyCode::Home);
+    key(&mut ui, KeyCode::F(7));
+    type_text(&mut ui, "61 62 63");
+    key(&mut ui, KeyCode::Enter);
+    ui.advance_search();
+    assert_eq!(ui.editor.cursor(), FileOffset::new(4));
+    control(&mut ui, KeyCode::Home);
+    key(&mut ui, KeyCode::F(7));
+    key(&mut ui, KeyCode::F(5));
+    assert!(ui.dialog.is_none());
+    assert_eq!(ui.editor.cursor(), FileOffset::new(4));
+}
+
+#[test]
+fn backward_text_search_uses_last_hit_and_explicit_origin_resets() {
+    let mut ui = ui(b"ABC abc AbC");
+    key(&mut ui, KeyCode::Enter);
+    control(&mut ui, KeyCode::End);
+    key(&mut ui, KeyCode::F(7));
+    type_text(&mut ui, "aBc");
+    key(&mut ui, KeyCode::F(2));
+    key(&mut ui, KeyCode::Enter);
+    ui.advance_search();
+    assert_eq!(ui.editor.cursor(), FileOffset::new(8));
+
+    key(&mut ui, KeyCode::Home);
+    assert_eq!(ui.editor.cursor(), FileOffset::new(0));
+    control(&mut ui, KeyCode::Char('r'));
+    ui.advance_search();
+    assert_eq!(ui.editor.cursor(), FileOffset::new(4));
+
+    key(&mut ui, KeyCode::F(5));
+    type_text(&mut ui, "9");
+    key(&mut ui, KeyCode::Enter);
+    control(&mut ui, KeyCode::Char('r'));
+    ui.advance_search();
+    assert_eq!(ui.editor.cursor(), FileOffset::new(8));
+
+    control(&mut ui, KeyCode::Home);
+    control(&mut ui, KeyCode::Char('r'));
+    ui.advance_search();
+    assert_eq!(ui.editor.cursor(), FileOffset::new(0));
+
+    control(&mut ui, KeyCode::End);
+    control(&mut ui, KeyCode::Char('r'));
+    ui.advance_search();
+    assert_eq!(ui.editor.cursor(), FileOffset::new(8));
+    assert_eq!(bytes(&mut ui), b"ABC abc AbC");
+    assert!(!ui.editor.document().is_dirty());
+}
+
+#[test]
+fn block_marking_updates_hex_and_text_cells_and_escape_cancels_tracking() {
+    use ratatui::style::Color;
+
+    let mut ui = ui(b"abcdefghijklmnop");
+    key(&mut ui, KeyCode::Right);
+    key(&mut ui, KeyCode::Right);
+    key(&mut ui, KeyCode::Right);
+    key(&mut ui, KeyCode::Char('*'));
+    key(&mut ui, KeyCode::Left);
+    key(&mut ui, KeyCode::Left);
+    let frame = screen(&mut ui, 80, 25);
+    assert!(frame.lines().nth(23).unwrap().ends_with("00000003/3"));
+
+    key(&mut ui, KeyCode::Char('*'));
+    key(&mut ui, KeyCode::Left);
+    let mut terminal = Terminal::new(TestBackend::new(80, 25)).unwrap();
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    let buffer = terminal.backend().buffer();
+    for column in [20, 23, 25, 60, 61, 62] {
+        let cell = &buffer[(column, 2)];
+        assert_eq!(cell.fg, Color::Yellow, "column {column}");
+        assert_eq!(cell.bg, Color::Magenta, "column {column}");
+    }
+    let frame = screen(&mut ui, 80, 25);
+    assert!(!frame.lines().nth(23).unwrap().contains("00000003/3"));
+    assert!(frame.lines().last().unwrap().contains("2PutBlk"));
+
+    key(&mut ui, KeyCode::Char(']'));
+    assert_eq!(ui.editor.cursor(), FileOffset::new(3));
+    key(&mut ui, KeyCode::Char('['));
+    assert_eq!(ui.editor.cursor(), FileOffset::new(1));
+    key(&mut ui, KeyCode::Char('*'));
+    key(&mut ui, KeyCode::Char('*'));
+    assert_eq!(key(&mut ui, KeyCode::Esc), UiAction::Continue);
+    assert!(ui.editor.block_selection().is_none());
+    assert!(screen(&mut ui, 80, 25).contains("Block marking canceled"));
+    assert_eq!(bytes(&mut ui), b"abcdefghijklmnop");
+    assert!(!ui.editor.document().is_dirty());
+}
+
+#[test]
+fn scoped_search_keeps_the_completed_block_and_its_original_bounds_for_repeat() {
+    let mut ui = ui(b"A--A--A--A");
+    key(&mut ui, KeyCode::F(7));
+    key(&mut ui, KeyCode::F(4));
+    assert!(screen(&mut ui, 80, 25).contains("Finish marking a block"));
+    key(&mut ui, KeyCode::Esc);
+    for _ in 0..3 {
+        key(&mut ui, KeyCode::Right);
+    }
+    key(&mut ui, KeyCode::Char('*'));
+    for _ in 0..3 {
+        key(&mut ui, KeyCode::Right);
+    }
+    key(&mut ui, KeyCode::Char('*'));
+    key(&mut ui, KeyCode::Char('['));
+    key(&mut ui, KeyCode::F(7));
+    key(&mut ui, KeyCode::F(4));
+    let frame = screen(&mut ui, 80, 25);
+    assert!(frame.contains("Search | Forward | Block"));
+    assert!(frame.lines().last().unwrap().contains("F4 Area"));
+    type_text(&mut ui, "41");
+    key(&mut ui, KeyCode::Enter);
+    ui.advance_search();
+    assert_eq!(ui.editor.cursor(), FileOffset::new(3));
+    control(&mut ui, KeyCode::Char('r'));
+    ui.advance_search();
+    assert_eq!(ui.editor.cursor(), FileOffset::new(6));
+    key(&mut ui, KeyCode::Char('*'));
+    assert!(ui.editor.block_selection().is_none());
+    control(&mut ui, KeyCode::Char('r'));
+    ui.advance_search();
+    assert_eq!(ui.editor.cursor(), FileOffset::new(6));
+    assert!(ui.message.contains("No match"));
+    assert_eq!(bytes(&mut ui), b"A--A--A--A");
+    assert!(!ui.editor.document().is_dirty());
+}
+
+#[test]
+fn block_export_form_preserves_range_and_requires_explicit_existing_file_confirmation() {
+    use hiewbie::file::ExportOffset;
+    use std::path::PathBuf;
+
+    let mut ui = ui(b"abcdef");
+    control(&mut ui, KeyCode::Char('k'));
+    assert_eq!(key(&mut ui, KeyCode::F(2)), UiAction::Continue);
+    let frame = screen(&mut ui, 80, 25);
+    assert!(frame.contains("Write block"));
+    assert!(frame.contains("Block  00000000–00000005"));
+    assert!(frame.contains("Length 00000006/6"));
+    assert!(frame.contains("Format  Raw bytes"));
+    type_text(&mut ui, "část.bin");
+    assert_eq!(key(&mut ui, KeyCode::Enter), UiAction::Continue);
+    type_text(&mut ui, "*");
+    assert_eq!(key(&mut ui, KeyCode::Enter), UiAction::Continue);
+    let UiAction::ExportBlock(first) = key(&mut ui, KeyCode::Enter) else {
+        panic!("the form must emit an export request");
+    };
+    assert_eq!(first.offset, ExportOffset::Append);
+    assert_eq!(first.path, PathBuf::from("část.bin"));
+    assert_eq!(first.range.len, 6);
+    assert!(!first.replace_existing);
+
+    ui.confirm_block_output();
+    assert!(screen(&mut ui, 80, 25).contains("Enter confirms the update"));
+    let UiAction::ExportBlock(confirmed) = key(&mut ui, KeyCode::Enter) else {
+        panic!("the confirmation must emit an export request");
+    };
+    assert!(confirmed.replace_existing);
+    ui.export_in_progress = true;
+    assert_eq!(key(&mut ui, KeyCode::Esc), UiAction::CancelBlockExport);
+    ui.report_export_failure("Block export canceled");
+    assert!(screen(&mut ui, 80, 25).contains("Block export canceled"));
+    assert_eq!(key(&mut ui, KeyCode::Esc), UiAction::Continue);
+    assert!(ui.dialog.is_none());
+    assert_eq!(bytes(&mut ui), b"abcdef");
+    assert!(!ui.editor.document().is_dirty());
+}
+
+#[test]
+fn code_block_highlight_uses_individual_instruction_bytes() {
+    use hiewbie_core::instructions::DecodeMode;
+    use ratatui::style::Color;
+
+    let mut ui = ui(&[0xE9, 0, 0, 0, 0, 0xCC]);
+    key(&mut ui, KeyCode::Right);
+    key(&mut ui, KeyCode::Char('*'));
+    key(&mut ui, KeyCode::Right);
+    key(&mut ui, KeyCode::Char('*'));
+    ui.editor
+        .dispatch(Command::SetDecodeMode(Some(DecodeMode::X86_32)))
+        .unwrap();
+    ui.editor
+        .dispatch(Command::SetMode(ViewMode::Code))
+        .unwrap();
+    ui.editor
+        .dispatch(Command::Goto(FileOffset::new(0)))
+        .unwrap();
+    let mut terminal = Terminal::new(TestBackend::new(80, 25)).unwrap();
+    terminal.draw(|frame| ui.render(frame)).unwrap();
+    let cells = terminal.backend().buffer();
+    assert_eq!(cells[(31, 2)].symbol(), "E");
+    for column in 31..41 {
+        let bg = cells[(column, 2)].bg;
+        assert_eq!(
+            bg == Color::Magenta,
+            (33..37).contains(&column),
+            "column {column}"
+        );
+    }
 }

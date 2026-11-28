@@ -3,6 +3,10 @@
 //! No operation writes through the source handle. Pending edits remain in the
 //! portable document until the caller adopts a successfully returned source.
 
+mod block_export;
+
+pub use block_export::{BlockExport, ExportOffset, ExportProgress};
+
 use std::{
     fmt,
     fs::{self, File, Metadata},
@@ -289,18 +293,7 @@ pub fn save_document(document: &mut Document<FileSource>) -> Result<FileSource, 
             .prefix(".hiewbie-")
             .tempfile_in(parent),
     )?;
-    #[cfg(unix)]
-    {
-        let temp_metadata = save_io(
-            "checking temporary file ownership",
-            temporary.as_file().metadata(),
-        )?;
-        if temp_metadata.uid() != metadata.uid() || temp_metadata.gid() != metadata.gid() {
-            return Err(SaveError::Unsupported(
-                "replacement would change file ownership; this save strategy cannot preserve it",
-            ));
-        }
-    }
+    check_replacement_owner(&temporary, &metadata)?;
     copy_document(document, temporary.as_file_mut())?;
     save_io(
         "preserving file permissions",
@@ -319,6 +312,27 @@ pub fn save_document(document: &mut Document<FileSource>) -> Result<FileSource, 
     )?;
     let persisted = commit_temporary(temporary, &path)?;
     FileSource::from_file(path, persisted).map_err(SaveError::ReplacedButRefreshFailed)
+}
+
+fn check_replacement_owner(
+    temporary: &tempfile::NamedTempFile,
+    metadata: &Metadata,
+) -> Result<(), SaveError> {
+    #[cfg(unix)]
+    {
+        let staged = save_io(
+            "checking temporary file ownership",
+            temporary.as_file().metadata(),
+        )?;
+        if staged.uid() != metadata.uid() || staged.gid() != metadata.gid() {
+            return Err(SaveError::Unsupported(
+                "replacement would change file ownership; this strategy cannot preserve it",
+            ));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = (temporary, metadata);
+    Ok(())
 }
 
 #[cfg(windows)]

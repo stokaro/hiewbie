@@ -126,27 +126,53 @@ application, browser or release-matrix parity.
 
 ## Next development priorities
 
-### Search must retain a structured request and its own continuation point
+### Search fields, direction, and continuation
 
-The English manual describes case-insensitive search when confirmed in the
-ASCII field and exact matching when confirmed in the hex field
-(`hiew_en.txt`, Search and replace, lines 255-258). The Russian manual also
-mentions Russian letters and documents a continuation point independent of
-ordinary cursor movement (`hiew_ru.txt`, lines 265-274). Ctrl+Home, Ctrl+End,
-F5 and a new F7 search reset that continuation state. Translation tables contain
-uppercase mappings used by search (`hiew_en.txt`, lines 516-521).
+The English manual documents case-insensitive ASCII-field confirmation and
+exact Hex-field confirmation (`hiew_en.txt`, Search and replace, lines 255–258).
+The Russian manual includes Russian letters and describes continuation from
+the last hit after ordinary movement, with resets on Ctrl+Home/End, F5 and a
+new F7 query (`hiew_ru.txt`, lines 265–274). Translation tables include search
+case mappings (`hiew_en.txt`, lines 516–521). The 8.63 in-program help
+(`hiew8.hlp`, FindEdit) identifies F2 for direction, F4 for search area, F5
+for the last hit, F6 for even/odd alignment in Unicode search, and F7 for
+assembler input.
 
-Hiewbie currently searches literal bytes, including explicitly entered UTF-8,
-case-sensitively, and repeats from the visible cursor plus one. Adding Shift+F7
-does not resolve these differences. The next search change needs a request
-holding bytes/text, encoding, case policy, direction, scope and last-match state;
-repeat must preserve that request. Test `ABC abc AbC`, cursor movement after a
-hit, each reset command, and a pattern crossing a read-chunk boundary. Do not
-equate ASCII folding with arbitrary Unicode or legacy-code-page folding.
+Hiewbie displays UTF-8 and Hex representations of one query, folds only
+ASCII letters in the UTF-8 field, supports F2 direction and F5 GoLast, and
+keeps the continuation point independent of movement. Ctrl+Home/End and
+successful Goto restart the retained request from the destination. Cancel
+preserves the prior completed search. These implementation rules and the
+no-wrap boundary policy have hiewbie regressions. Original execution and
+continuation behavior beyond the observed search dialog still requires
+H07/H08 comparison, including failed or canceled queries, field conversion,
+Unicode alignment, translation tables, and original boundary behavior. A
+separate controlled observation confirmed F4 area selection and the first
+exact byte hit within a marked block. Wildcards
+and instruction search also remain open.
 
-Whether Tab converts between two representations of one query, and what happens
-at an unsuccessful search boundary, require a reference run. No wrap behavior is
-inferred here.
+### Block marking, scoped search, and export
+
+A second 80×25 Windows console run used two independently generated files.
+In Hex, starting at offset 5 and moving backward to offset 3 displayed lengths
+1, 2, and 3 before the second `*` fixed the mark. The finalized mark kept its
+byte colors and removed the live counter. `[` and `]` moved to offsets 3 and
+5. The F2 write form accepted the path, offset, and translation-table choice
+in sequence. The raw export wrote bytes `00 01`. Appending a reversed mark
+of offsets 3–5 produced `00 01 03 04 05`.
+
+For exact block search, the fixture contained `A--A--A--A---ABABA`, and the
+marked range was 2–9. F4 switched the Search area to Block, and confirming hex
+`41` from offset 2 found offset 3. The console transport delivered the modified
+F7 chord as an unmodified key, so original repeat and boundary behavior remain
+open. The original Ctrl+`*` and Alt+`*` state transitions also need direct
+modifier testing. See the [sanitized block observation](../evidence/hiew-8.63-windows-blocks.json).
+
+Hiewbie retains a completed block when changing views or editing. It uses the
+marked range captured on search confirmation and asks for an additional
+confirmation before updating an existing export file. Its export currently
+offers raw bytes. The original file chooser, translation-table selection,
+cross-file block history, and import remain open.
 
 ### Text is a line-oriented view, with encoding and layout settings
 

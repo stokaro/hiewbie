@@ -45,17 +45,25 @@ script uses Python's standard library and generated temporary fixtures. Its
 `--record-analysis PATH` records the generated PE header/entry/Code/branch/return
 workflow followed by dotted-VA navigation and an exact one-byte save. The
 `--record-symbols PATH` option records generated PE import-slot, export-target
-and forwarded-export record navigation with exact byte-save assertions. All six
+and forwarded-export record navigation with exact byte-save assertions.
+`--record-search PATH` records the two-field dialog and backward repeat after
+independent cursor movement, followed by an exact one-byte save.
+`--record-block PATH` records reverse block marking, scoped search, an exact
+edit, export cancellation, raw export, and confirmed append. All seven
 PTY scenarios run in the existing native Unix CI jobs even without recording
 options. The symbol fixture contains no external executable bytes. The
 checked-in [editing](evidence/native-editor.cast) and
 [analysis](evidence/executable-analysis.cast) recordings, together with the
-[symbol navigation](evidence/symbol-navigation.cast) recording, are evidence of those
-scenarios; byte/state assertions and cleanup checks remain the regression gate.
+[symbol navigation](evidence/symbol-navigation.cast),
+[search repeat](evidence/search-repeat.cast), and
+[block workflow](evidence/block-workflow.cast) recordings, are evidence of those
+scenarios. Byte assertions, state assertions, and cleanup checks are the
+regression gate.
 The PTY harness keeps a supervisor alive as the controlling session leader
 while the editor exits. It checks the editor's exact exit status, restored
 termios attributes, and terminal cleanup sequences before releasing that
-supervisor. This preserves an inspectable terminal for macOS as well as Linux;
+supervisor. Exit actions wait for the editor status even when terminal output
+has gone quiet. This preserves an inspectable terminal for macOS as well as Linux;
 an unavailable post-exit terminal is never treated as a successful cleanup check.
 The lifecycle rule is documented in the inspected
 [Darwin session-leader exit implementation](https://github.com/apple-oss-distributions/xnu/blob/43a90889846e00bfb5cf1d255cdc0a701a1e05a4/bsd/kern/kern_exit.c).

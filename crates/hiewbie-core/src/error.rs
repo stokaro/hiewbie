@@ -22,6 +22,8 @@ pub enum Error {
     UnsupportedAddress,
     /// An interpretation or navigation operation is unavailable or invalid.
     Analysis(String),
+    /// A block command is unavailable in the current state.
+    Block(&'static str),
     /// Read-only sessions cannot edit or request persistence.
     ReadOnly,
     /// A mutation or save requires an active edit transaction.
@@ -58,6 +60,7 @@ impl fmt::Display for Error {
                 "dotted virtual addresses require an address-mapping backend"
             ),
             Self::Analysis(reason) => formatter.write_str(reason),
+            Self::Block(reason) => formatter.write_str(reason),
             Self::ReadOnly => formatter.write_str("the document is open read-only"),
             Self::NotEditing => formatter.write_str("begin an edit transaction first"),
             Self::InvalidPattern(reason) => write!(formatter, "invalid search pattern: {reason}"),

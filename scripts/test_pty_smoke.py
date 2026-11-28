@@ -46,6 +46,8 @@ if command == b"s":
 if RESTORE:
     termios.tcsetattr(0, termios.TCSANOW, original)
 os.write(1, b"\\x1b[?25h\\x1b[?2004l\\x1b[?1049l")
+if command == b"d":
+    time.sleep(0.35)
 sys.exit(EXIT_CODE)
 """
 
@@ -105,7 +107,7 @@ class PtyLifecycleTests(unittest.TestCase):
             self.assertNotEqual(child["pid"], child["sid"])
             self.assertEqual(child["sid"], session.process.pid)
             self.assertEqual(child["pgrp"], session.process.pid)
-            session.send(b"q", "exit mock editor", allow_exit=True)
+            session.send(b"q", "exit mock editor", expect_exit=True)
             self.assertEqual(session.poll_editor(), 0)
             self.assertIsNone(session.process.poll(), "terminal owner exited before validation")
             session.verify_termios_restored()
@@ -113,16 +115,16 @@ class PtyLifecycleTests(unittest.TestCase):
             session.finish()
             self.assertEqual(session.process.returncode, 0)
 
-    def test_nonzero_editor_exit_is_not_replaced_by_supervisor_success(self) -> None:
+    def test_delayed_nonzero_editor_exit_is_captured_after_terminal_output(self) -> None:
         with self.session(exit_code=7) as session:
-            session.send(b"q", "nonzero mock exit", allow_exit=True)
+            session.send(b"d", "delayed nonzero mock exit", expect_exit=True)
             self.assertEqual(session.poll_editor(), 7)
             with self.assertRaisesRegex(pty_smoke.SmokeFailure, "editor exit, received 7"):
                 session.finish()
 
     def test_signal_exit_keeps_the_original_negative_returncode(self) -> None:
         with self.session() as session:
-            session.send(b"!", "signal mock editor", allow_exit=True)
+            session.send(b"!", "signal mock editor", expect_exit=True)
             self.assertEqual(session.poll_editor(), -signal.SIGTERM)
             with self.assertRaisesRegex(
                 pty_smoke.SmokeFailure, f"editor exit, received {-signal.SIGTERM}"
@@ -131,13 +133,13 @@ class PtyLifecycleTests(unittest.TestCase):
 
     def test_missing_termios_restoration_still_fails(self) -> None:
         with self.session(restore=False) as session:
-            session.send(b"q", "exit without restoring raw mode", allow_exit=True)
+            session.send(b"q", "exit without restoring raw mode", expect_exit=True)
             with self.assertRaisesRegex(pty_smoke.SmokeFailure, "termios attributes"):
                 session.finish()
 
     def test_observational_read_rejects_unexpected_input(self) -> None:
         with self.session() as session:
-            session.send(b"q", "exit mock editor", allow_exit=True)
+            session.send(b"q", "exit mock editor", expect_exit=True)
             os.write(session.master, b"unexpected\n")
             ready, _, _ = select.select([session.slave], [], [], 1.0)
             self.assertTrue(ready, "fixture input did not reach the canonical queue")

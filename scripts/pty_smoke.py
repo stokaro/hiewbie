@@ -46,6 +46,7 @@ FIXTURE_BYTES = bytes(range(256)) * 4
 FIXTURE_NAME = "данные-é.bin"
 
 ESC = b"\x1b"
+F2 = b"\x1bOQ"
 F3 = b"\x1bOR"
 F4 = b"\x1bOS"
 F5 = b"\x1b[15~"
@@ -57,6 +58,7 @@ UP = b"\x1b[A"
 DOWN = b"\x1b[B"
 LEFT = b"\x1b[D"
 RIGHT = b"\x1b[C"
+PAGE_UP = b"\x1b[5~"
 BACKSPACE = b"\x7f"
 CTRL_E = b"\x05"
 CTRL_G = b"\x07"
@@ -278,12 +280,12 @@ class PtySession:
                 return
         self.fail("startup deadline expired before terminal modes were acquired")
 
-    def settle(self, *, require_output: bool, allow_exit: bool = False) -> None:
+    def settle(self, *, require_output: bool, expect_exit: bool = False) -> None:
         """Drain responses to a batch, including delayed bare-Esc decoding.
 
-        Completion is a quiet output window after a minimum processing interval,
-        not a match against differential ANSI frame strings. Disk bytes and
-        terminal state supply the semantic assertions below.
+        Ordinary actions settle after a quiet output window. An exit action
+        must receive the editor's status from the supervisor, even after output
+        stops. Disk bytes and terminal state supply the semantic assertions.
         """
         started = time.monotonic()
         deadline = min(self.deadline, started + ACTION_SECONDS)
@@ -296,16 +298,19 @@ class PtySession:
             returncode = self.poll_editor()
             if returncode is not None:
                 self.read_available()
-                if allow_exit:
+                if expect_exit:
                     return
                 self.fail(f"unexpected editor exit with {returncode}")
             now = time.monotonic()
             if (
-                now - started >= 0.15
+                not expect_exit
+                and now - started >= 0.15
                 and now - last_output >= 0.08
                 and (received or not require_output)
             ):
                 return
+        if expect_exit:
+            self.fail("action deadline expired while waiting for the editor's exit status")
         self.fail("action deadline expired while waiting for terminal output to settle")
 
     def send(
@@ -314,7 +319,7 @@ class PtySession:
         label: str,
         *,
         require_output: bool = True,
-        allow_exit: bool = False,
+        expect_exit: bool = False,
     ) -> None:
         self.steps.append(label)
         self.event("m", label)
@@ -332,7 +337,7 @@ class PtySession:
                 select.select([], [self.master], [], 0.025)
             except InterruptedError:
                 continue
-        self.settle(require_output=require_output, allow_exit=allow_exit)
+        self.settle(require_output=require_output, expect_exit=expect_exit)
 
     def set_size(self, width: int, height: int) -> None:
         fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack("HHHH", height, width, 0, 0))
@@ -512,28 +517,78 @@ def edit_save(binary: Path, directory: Path, *, record: bool) -> list[list]:
         session.send(CTRL_S, "Ctrl+S: save fallback")
         expected[32] = ord("Z")
         session.expect_file(bytes(expected))
-        session.send(ESC, "Escape: exit from view", allow_exit=True)
+        session.send(ESC, "Escape: exit from view", expect_exit=True)
         session.finish()
         session.expect_file(bytes(expected))
         return sanitized_events(session.events, str(path.parent.resolve()))
 
 
-def search_repeat(binary: Path, directory: Path) -> None:
+def search_repeat(binary: Path, directory: Path, *, record: bool) -> list[list]:
     path, mtime_ns = fixture(directory)
-    with PtySession(binary, path, "Shift+F7 search repeat") as session:
-        session.send(F7, "F7: open hex search")
-        session.send(b"00\r", "find the first zero byte")
-        session.send(SHIFT_F7, "Shift+F7: repeat at the next zero byte")
+    with PtySession(binary, path, "backward Shift+F7 search repeat", record=record) as session:
+        session.send(F5 + b"300\r", "Goto hexadecimal offset 300")
+        session.send(F7, "F7: open the two-field search dialog")
+        session.send(F2, "F2: change search direction to backward")
+        session.send(b"00\r", "Find a zero byte at offset 300")
+        session.send(PAGE_UP, "Move the cursor below the next match")
+        session.send(SHIFT_F7, "Shift+F7: resume the backward search from the last hit")
         session.send(F3, "F3: edit the repeated search result")
-        session.send(b"9D", "replace only the match at offset 256")
+        session.send(b"9D", "Replace only the match at offset 200")
         session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
         session.send(F9, "F9: save the repeated-search edit")
         expected = bytearray(FIXTURE_BYTES)
-        expected[256] = 0x9D
+        expected[512] = 0x9D
         session.expect_file(bytes(expected))
-        session.send(ESC, "Escape: exit from view", allow_exit=True)
+        session.send(ESC, "Escape: exit from view", expect_exit=True)
         session.finish()
         session.expect_file(bytes(expected))
+        return sanitized_events(session.events, str(path.parent.resolve()))
+
+
+def block_workflow(binary: Path, directory: Path, *, record: bool) -> list[list]:
+    path, mtime_ns = fixture(directory)
+    with PtySession(binary, path, "reverse block, scoped search, and export", record=record) as session:
+        session.send(F5 + b"5\r", "Goto file offset 5")
+        session.send(b"*", "Start the block at offset 5")
+        session.send(LEFT * 3, "Extend the block backward to offset 2")
+        session.send(b"*", "Finalize inclusive block 2–5")
+        session.send(b"[", "Go to the first block byte")
+        session.send(F7 + F4, "F4 in Search selects the marked block")
+        session.send(b"03\r", "Find byte 03 within the block")
+        session.send(SHIFT_F7, "The next copy of 03 lies outside the block")
+        session.send(F3 + b"A6", "Change the scoped match at offset 3")
+        session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
+        session.send(F9, "Save exactly the scoped match")
+        expected = bytearray(FIXTURE_BYTES)
+        expected[3] = 0xA6
+        session.expect_file(bytes(expected))
+        saved_mtime = path.stat().st_mtime_ns
+
+        session.send(F2 + b"canceled.bin", "Open PutBlk with a test destination")
+        session.send(ESC, "Cancel the export before committing")
+        if (directory / "canceled.bin").exists():
+            session.fail("canceling the block form created a destination")
+
+        session.send(F2 + b"extract.bin\r", "Enter a new output file")
+        session.send(b"\r", "Confirm the default output offset zero")
+        session.send(b"\r", "Select raw bytes and write the block")
+        output = directory / "extract.bin"
+        block = bytes(expected[2:6])
+        if output.read_bytes() != block:
+            session.fail("new output does not contain exactly the selected block")
+
+        session.send(F2 + b"extract.bin\r", "Choose the same existing output file")
+        session.send(b"*\r", "Select append at the output offset")
+        session.send(b"\r", "Stage confirmation for the existing output")
+        if output.read_bytes() != block:
+            session.fail("the output changed before explicit confirmation")
+        session.send(b"\r", "Confirm append and commit")
+        if output.read_bytes() != block * 2:
+            session.fail("append changed or misplaced bytes in the existing output")
+        session.expect_file(bytes(expected), mtime_ns=saved_mtime)
+        session.send(ESC, "Exit from view", expect_exit=True)
+        session.finish()
+        return sanitized_events(session.events, str(path.parent.resolve()))
 
 
 def discard_resize(binary: Path, directory: Path) -> None:
@@ -546,7 +601,7 @@ def discard_resize(binary: Path, directory: Path) -> None:
         session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
         session.send(ESC, "Escape: discard and remain in view")
         session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
-        session.send(ESC, "Escape: exit after discard", allow_exit=True)
+        session.send(ESC, "Escape: exit after discard", expect_exit=True)
         session.finish()
         session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
 
@@ -561,7 +616,7 @@ def read_only(binary: Path, directory: Path) -> None:
         session.send(b"AD", "typed hex remains inert", require_output=False)
         session.send(CTRL_S, "Ctrl+S: refused read-only save", require_output=False)
         session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
-        session.send(ESC, "one Escape exits read-only view", allow_exit=True)
+        session.send(ESC, "one Escape exits read-only view", expect_exit=True)
         session.finish()
         session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
 
@@ -623,7 +678,7 @@ def analyze_edit_save(binary: Path, directory: Path, *, record: bool) -> list[li
         expected = bytearray(original)
         expected[0x206] = 0xCC
         session.expect_file(bytes(expected))
-        session.send(ESC, "Escape: exit Code view", allow_exit=True)
+        session.send(ESC, "Escape: exit Code view", expect_exit=True)
         session.finish()
         session.expect_file(bytes(expected))
         return sanitized_events(session.events, str(path.parent.resolve()))
@@ -683,7 +738,7 @@ def symbols_edit_save(binary: Path, directory: Path, *, record: bool) -> list[li
         session.expect_file(bytes(expected))
         session.send(F8 + b"n", "N: inspect every parsed symbol after record edit")
         session.send(ESC, "Escape: close the symbol dialog")
-        session.send(ESC, "Escape: exit the editor", allow_exit=True)
+        session.send(ESC, "Escape: exit the editor", expect_exit=True)
         session.finish()
         session.expect_file(bytes(expected))
         return sanitized_events(session.events, str(path.parent.resolve()))
@@ -765,6 +820,8 @@ def main() -> int:
     parser.add_argument("--record", type=Path, help="write a successful asciicast v2 recording")
     parser.add_argument("--record-analysis", type=Path, help="record PE headers, Code, branch/return, virtual goto, and byte save")
     parser.add_argument("--record-symbols", type=Path, help="record import/export target and metadata navigation with exact byte saves")
+    parser.add_argument("--record-search", type=Path, help="record the two-field search, backward repeat, and exact byte save")
+    parser.add_argument("--record-block", type=Path, help="record reverse selection, scoped search, and raw block export")
     options = parser.parse_args()
     if os.name != "posix":
         parser.error("Unix PTYs are required; Windows ConPTY needs a separate harness")
@@ -778,8 +835,10 @@ def main() -> int:
             root = Path(temporary)
             events = edit_save(binary, root / "save", record=options.record is not None)
             print("PASS: F4 mode menu, F3/Backspace restore, F9 save, Ctrl fallbacks, paste rejection")
-            search_repeat(binary, root / "search")
-            print("PASS: Shift+F7 repeat selects and saves only the next literal match")
+            search_events = search_repeat(binary, root / "search", record=options.record_search is not None)
+            print("PASS: backward Shift+F7 resumes from the last match after cursor movement")
+            block_events = block_workflow(binary, root / "block", record=options.record_block is not None)
+            print("PASS: reverse block, range-limited search, cancel, exact export and append")
             discard_resize(binary, root / "discard")
             print("PASS: narrow resize, 80x25 restoration, discard preserves bytes and mtime")
             read_only(binary, root / "readonly")
@@ -807,6 +866,22 @@ def main() -> int:
                 filename="symbols.exe",
             )
             print(f"Symbol recording: {options.record_symbols}")
+        if options.record_search is not None:
+            write_recording(
+                options.record_search,
+                search_events,
+                title="hiewbie search: backward repeat after cursor movement",
+                filename=FIXTURE_NAME,
+            )
+            print(f"Search recording: {options.record_search}")
+        if options.record_block is not None:
+            write_recording(
+                options.record_block,
+                block_events,
+                title="hiewbie blocks: reverse selection, scoped search, export and append",
+                filename=FIXTURE_NAME,
+            )
+            print(f"Block recording: {options.record_block}")
         print("PASS: exact termios and alternate-screen/paste/cursor restoration in all sessions")
         return 0
     except (SmokeFailure, OSError, subprocess.SubprocessError) as error:

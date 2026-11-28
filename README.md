@@ -57,8 +57,12 @@ beyond 4 GiB, without loading the complete file into memory.
 | View | F4 | Choose Text, Hex or Code; arrows select, Enter applies, Esc cancels |
 | View | F3 / Ctrl+E | Begin a pending overwrite transaction |
 | View | F5 / Ctrl+G | Goto: hex, decimal `t`, relative `+` / `-`, or absolute dotted VA |
-| View | F7 / Ctrl+F | Literal hex-byte or UTF-8 text search; Tab selects input type |
-| View | Shift+F7 / Ctrl+Enter / Ctrl+R | Repeat search forward, without wrapping |
+| View | F7 / Ctrl+F | Search exact hex bytes or UTF-8 text with ASCII case folding |
+| Search | Tab / F2 / F4 / F5 | Switch field / reverse direction / file or completed block / last hit |
+| View | Shift+F7 / Ctrl+Enter / Ctrl+R | Repeat in the same direction from the last hit, without wrapping |
+| Hex / Code view | `*` / `[` / `]` | Start, finish, or clear a block / first byte / last byte |
+| Hex / Code view | Alt+`*` / Ctrl+`*` or Ctrl+K | Move the marked endpoint / select the whole file |
+| Completed block | F2 | Write raw bytes to a file. Confirm its path, offset, and format. Use `*` as the offset to append |
 | View | F8 / Ctrl+O | Executable headers; F5 entry, F6 regions, F4 fields, S slices |
 | Headers | F7 / F9 / N | Parsed imports / exports / all symbols; tables load on request |
 | Symbols | Enter / R | Follow target bytes / the exact metadata record |
@@ -93,8 +97,8 @@ different from undoing the most recent command. Backspace first cancels an
 incomplete hex digit, otherwise restores and moves to the previous byte.
 Ctrl+Z/Y additionally undo/redo commands, including restores. The
 [Hiew 8.63 comparison](docs/reference/hiew-8.63.md) records documentation-derived
-expectations, remaining search/text/navigation differences, and the blocked
-attempt to run the original. These are not claims of observed HIEW parity.
+expectations, observed Windows console behavior, and remaining search, Text,
+and navigation differences.
 
 Saving streams the logical document into a sibling temporary file before
 replacement. Conflict checks refuse an externally changed source; ordinary

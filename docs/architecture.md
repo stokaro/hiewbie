@@ -74,6 +74,14 @@ The diagram also contains planned consumers; it does not claim a browser UI.
   newer edits. Invalidate relevant analysis when bytes or mappings change.
 - Long searches and analysis are cancellable, report progress, and have explicit
   memory/work limits. First display must not wait for whole-file analysis.
+- An editor block holds a file anchor and a tracked or fixed endpoint. Both
+  marked bytes belong to the range. The selection needs constant storage and
+  is independent of analysis profiles and document generations. Block search
+  captures the fixed range when the user confirms the query.
+- The editor owns the search request and resume point. A pending scan reads a
+  single document generation in bounded steps. A completed scan updates the
+  resume point, and a canceled scan leaves the previous completed request
+  available. Frontends translate keys and display progress.
 - External modification, truncation, replacement, and loss of permissions must
   be handled explicitly. A naive file-wide mapping can fault when another
   process truncates the file; choose paging or a controlled mapping strategy.
@@ -94,6 +102,12 @@ persistence atomic. In-place file or device writes may partially succeed: report
 written and uncertain ranges, preserve recovery information, and reconcile the
 actual backing data before retrying. Do not promise rollback that the backend
 cannot provide.
+
+A block export carries its file range to a platform adapter as a read effect.
+The native adapter stages the selected logical bytes and any preserved output
+bytes in a sibling temporary file. It commits only after explicit acceptance
+and revalidation. Check the [storage ADR](adr/0001-document-storage.md#block-export)
+for destination collision and cancellation behavior.
 
 Text assembly is a document operation with an explicit architecture, mode,
 endianness, current virtual address, and allowed patch span. Preview resulting

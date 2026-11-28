@@ -1,11 +1,16 @@
+use hiewbie_core::formats::FileRange;
 use hiewbie_core::instructions::DecodeStatus;
-use hiewbie_core::{ByteSource, FileOffset, MAX_CODE_ROWS, MAX_READ_BYTES, ViewMode};
+use hiewbie_core::{
+    ByteSource, FileOffset, MAX_CODE_ROWS, MAX_READ_BYTES, SearchDirection, ViewMode,
+};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
+use super::block::{BlockField, BlockWrite};
+use super::search::{SearchDialog, SearchField};
 use super::{
     Dialog, EntryColumn, InputDialog, ModeChoice, PromptKind, Ui, escaped_text, printable,
 };
@@ -13,6 +18,7 @@ use super::{
 pub(super) const BASE: Style = Style::new().fg(Color::Gray).bg(Color::Blue);
 const ADDRESS: Style = Style::new().fg(Color::Cyan).bg(Color::Blue);
 const SELECTED: Style = Style::new().fg(Color::Black).bg(Color::Cyan);
+const MARK: Style = Style::new().fg(Color::Yellow).bg(Color::Magenta);
 const ACTIVE: Style = Style::new().fg(Color::Black).bg(Color::Yellow);
 pub(super) const HEADER: Style = Style::new().fg(Color::Black).bg(Color::Cyan);
 
@@ -106,18 +112,42 @@ impl<S: ByteSource> Ui<S> {
         } else {
             self.render_bytes(frame, area);
         }
-        frame.render_widget(
-            Paragraph::new(self.message.as_str()).style(BASE.fg(Color::Yellow)),
-            row(area, area.height - 2),
-        );
+        self.render_status_message(frame, row(area, area.height - 2));
         self.render_function_bar(frame, row(area, area.height - 1));
         match self.dialog.as_ref() {
             Some(Dialog::Help) => render_help(frame, area),
             Some(Dialog::Input(input)) => render_prompt(frame, area, input),
+            Some(Dialog::Search(search)) => render_search(frame, area, search),
+            Some(Dialog::BlockWrite(dialog)) => {
+                if !self.export_in_progress {
+                    render_block_write(frame, area, dialog);
+                }
+            }
             Some(Dialog::Mode(selected)) => render_mode_picker(frame, area, *selected),
             Some(Dialog::Analysis(dialog)) => self.render_analysis_dialog(frame, area, dialog),
             None => {}
         }
+    }
+
+    fn render_status_message(&self, frame: &mut Frame<'_>, area: Rect) {
+        let mut message = area;
+        if let Some(block) = self
+            .editor
+            .block_selection()
+            .filter(|block| block.is_marking)
+        {
+            let counter = format!("{:08X}/{}", block.range.len, block.range.len);
+            let width = (counter.len() as u16).min(area.width);
+            message.width = area.width - width;
+            frame.render_widget(
+                Paragraph::new(counter).style(MARK),
+                Rect::new(area.x + message.width, area.y, width, 1),
+            );
+        }
+        frame.render_widget(
+            Paragraph::new(self.message.as_str()).style(BASE.fg(Color::Yellow)),
+            message,
+        );
     }
 
     fn update_viewport(&mut self, area: Rect) {
@@ -181,6 +211,10 @@ impl<S: ByteSource> Ui<S> {
         }
         let raw = self.editor.decode_context().raw;
         let mut lines = Vec::with_capacity(rows.len());
+        let block = self
+            .editor
+            .block_selection()
+            .map(|selection| selection.range);
         for (index, row) in rows.iter().enumerate() {
             let domain = if raw {
                 "R:"
@@ -189,20 +223,6 @@ impl<S: ByteSource> Ui<S> {
             } else {
                 "F:"
             };
-            let mut encoded = row
-                .instruction
-                .bytes()
-                .iter()
-                .take(8)
-                .map(|byte| format!("{byte:02X}"))
-                .collect::<String>();
-            if row.instruction.bytes().len() > 8 {
-                encoded.truncate(14);
-                encoded.push_str("..");
-            }
-            if index == 0 && self.pending_nibble.is_some() && !encoded.is_empty() {
-                encoded.replace_range(..2, &format!("{:X}_", self.pending_nibble.unwrap_or(0)));
-            }
             let branch = row
                 .branch_number
                 .map_or_else(|| "  ".to_owned(), |number| format!("{number}>"));
@@ -218,7 +238,7 @@ impl<S: ByteSource> Ui<S> {
             } else {
                 BASE
             };
-            lines.push(Line::from(vec![
+            let mut spans = vec![
                 Span::styled(
                     format!(
                         "{:08X} {domain}{:016X} ",
@@ -228,9 +248,34 @@ impl<S: ByteSource> Ui<S> {
                     selected,
                 ),
                 Span::styled(format!("{branch} "), BASE.fg(Color::Yellow)),
-                Span::styled(format!("{encoded:<16} "), byte_style),
-                Span::raw(format!("{state}{}", escaped_text(&row.instruction.text))),
-            ]));
+            ];
+            let encoded = row.instruction.bytes();
+            let shortened = encoded.len() > 8;
+            let display = &encoded[..encoded.len().min(if shortened { 7 } else { 8 })];
+            for (column, byte) in display.iter().enumerate() {
+                let position = row.offset.get().checked_add(column as u64);
+                let text = if index == 0 && column == 0 {
+                    format_hex_byte(*byte, self.pending_nibble)
+                } else {
+                    format!("{byte:02X}")
+                };
+                let style = if index == 0 && column == 0 && self.editor.is_editing() {
+                    byte_style
+                } else {
+                    block_style(block, position, byte_style)
+                };
+                spans.push(Span::styled(text, style));
+            }
+            if shortened {
+                spans.push(Span::styled(".. ", byte_style));
+            } else {
+                spans.push(Span::styled(" ".repeat(17 - display.len() * 2), byte_style));
+            }
+            spans.push(Span::raw(format!(
+                "{state}{}",
+                escaped_text(&row.instruction.text)
+            )));
+            lines.push(Line::from(spans));
         }
         frame.render_widget(Paragraph::new(lines).style(BASE), body);
     }
@@ -281,17 +326,19 @@ impl<S: ByteSource> Ui<S> {
 
     fn byte_line(&self, offset: u64, bytes: &[u8]) -> Line<'static> {
         let mut spans = vec![Span::styled(format!("{offset:016X}  "), ADDRESS)];
+        let block = self
+            .editor
+            .block_selection()
+            .map(|selection| selection.range);
         if matches!(self.editor.mode(), ViewMode::Hex | ViewMode::Code) {
             for index in 0..self.bytes_per_row {
                 if index > 0 && index % 2 == 0 {
                     spans.push(Span::raw(" "));
                 }
-                let current = offset.checked_add(index as u64) == Some(self.editor.cursor().get());
+                let position = offset.checked_add(index as u64);
+                let current = position == Some(self.editor.cursor().get());
                 let text = match bytes.get(index) {
-                    Some(_) if current && self.pending_nibble.is_some() => {
-                        format!("{:X}_", self.pending_nibble.unwrap_or(0))
-                    }
-                    Some(byte) => format!("{byte:02X}"),
+                    Some(byte) => format_hex_byte(*byte, self.pending_nibble.filter(|_| current)),
                     None => "  ".into(),
                 };
                 let style = if current && index < bytes.len() {
@@ -303,12 +350,18 @@ impl<S: ByteSource> Ui<S> {
                 } else {
                     BASE
                 };
+                let style = if current || index >= bytes.len() {
+                    style
+                } else {
+                    block_style(block, position, style)
+                };
                 spans.push(Span::styled(text, style));
             }
             spans.push(Span::raw("  "));
         }
         for (index, byte) in bytes.iter().enumerate() {
-            let current = offset.checked_add(index as u64) == Some(self.editor.cursor().get());
+            let position = offset.checked_add(index as u64);
+            let current = position == Some(self.editor.cursor().get());
             let style = if current {
                 if self.editor.is_editing() && self.entry_column == EntryColumn::Ascii {
                     ACTIVE
@@ -318,6 +371,11 @@ impl<S: ByteSource> Ui<S> {
             } else {
                 BASE
             };
+            let style = if current {
+                style
+            } else {
+                block_style(block, position, style)
+            };
             spans.push(Span::styled(printable(*byte).to_string(), style));
         }
         Line::from(spans)
@@ -326,8 +384,10 @@ impl<S: ByteSource> Ui<S> {
     fn render_function_bar(&self, frame: &mut Frame<'_>, area: Rect) {
         let contextual = if self.reopen_required {
             Some(" File replaced | Esc exits | Reopen before further edits ")
-        } else if self.search.is_some() {
+        } else if self.editor.is_searching() {
             Some(" Searching in bounded steps | Esc cancel ")
+        } else if self.export_in_progress {
+            Some(" Staging block output | Esc cancel ")
         } else {
             match self.dialog.as_ref() {
                 Some(Dialog::Help) => Some(" F1 / Enter / Esc close help "),
@@ -345,13 +405,24 @@ impl<S: ByteSource> Ui<S> {
                 Some(Dialog::Input(input)) if input.kind == PromptKind::RawBase => {
                     Some(" Enter sets raw base | Ctrl+U clear | Esc cancel ")
                 }
-                Some(Dialog::Input(input))
-                    if matches!(input.kind, PromptKind::SearchHex | PromptKind::SearchText) =>
+                Some(Dialog::Search(search)) if search.help => {
+                    Some(" F1 / Enter / Esc close search help ")
+                }
+                Some(Dialog::Search(_))
+                    if self.editor.block_selection().is_some_and(|b| !b.is_marking) =>
                 {
-                    Some(" Enter search | Tab hex/text | Ctrl+U clear | Esc cancel ")
+                    Some(
+                        " F1 Help  F2 Direct  F4 Area  F5 GoLast  Tab field  Enter find  Esc cancel ",
+                    )
+                }
+                Some(Dialog::Search(_)) => {
+                    Some(" F1 Help   F2 Direct   F5 GoLast   Tab field   Enter find   Esc cancel ")
                 }
                 Some(Dialog::Input(_)) => Some(" Enter goto | Ctrl+U clear | Esc cancel "),
                 Some(Dialog::Mode(_)) => Some(" Up/Down choose | Enter select | Esc cancel "),
+                Some(Dialog::BlockWrite(_)) => {
+                    Some(" Tab field | Enter accept | Ctrl+U clear | Esc cancel ")
+                }
                 None => None,
             }
         };
@@ -364,8 +435,18 @@ impl<S: ByteSource> Ui<S> {
                 "Help", "Asm-", "Rest", "--", "--", "--", "--", "--", "Save", "Trunc-",
             ]
         } else {
+            let put = if self.editor.mode() != ViewMode::Text
+                && self
+                    .editor
+                    .block_selection()
+                    .is_some_and(|block| !block.is_marking)
+            {
+                "PutBlk"
+            } else {
+                "--"
+            };
             [
-                "Help", "--", "Edit", "Mode", "Goto", "Refs-", "Search", "Header", "Open-", "--",
+                "Help", put, "Edit", "Mode", "Goto", "Refs-", "Search", "Header", "Open-", "--",
             ]
         };
         let mut spans = Vec::with_capacity(20);
@@ -383,6 +464,20 @@ impl<S: ByteSource> Ui<S> {
             spans.push(Span::styled(format!("{label:<6}"), style));
         }
         frame.render_widget(Paragraph::new(Line::from(spans)).style(HEADER), area);
+    }
+}
+
+fn block_style(block: Option<FileRange>, position: Option<u64>, fallback: Style) -> Style {
+    match (block, position) {
+        (Some(range), Some(position)) if range.contains(FileOffset::new(position)) => MARK,
+        _ => fallback,
+    }
+}
+
+fn format_hex_byte(byte: u8, pending: Option<u8>) -> String {
+    match pending {
+        Some(high) => format!("{high:X}_"),
+        None => format!("{byte:02X}"),
     }
 }
 
@@ -407,7 +502,7 @@ fn render_help(frame: &mut Frame<'_>, area: Rect) {
         "Hex, ASCII Text, and Code share one document and file cursor.",
         "View  Enter cycle; F4 select mode; F3/Ctrl+E edit; Esc quit",
         "      F5/Ctrl+G goto; F7/Ctrl+F search; F8/Ctrl+O headers",
-        "      Shift+F7 / Ctrl+Enter / Ctrl+R repeat (forward, no wrap)",
+        "      Shift+F7 / Ctrl+Enter / Ctrl+R repeat (same direction, no wrap)",
         "Code  1..9 direct branch; Backspace return; / resynchronize",
         "      Up/Down instructions; Left/Right bytes; PgUp/PgDn pages",
         "      Unknown backward boundaries use one byte/ISA alignment.",
@@ -423,7 +518,10 @@ fn render_help(frame: &mut Frame<'_>, area: Rect) {
         "Goto  Hex default, decimal suffix t, +/- relative; .address is VA",
         "      V: image VA; R: raw base address; F: unmapped file offset",
         "Find  Tab hex/UTF-8 text; Esc cancels scan; Ctrl+Home/End file edges",
-        "Paste rejected. Blocks, global references and multi-file planned.",
+        "Block * start/finish/clear; [ / ] endpoints; Alt+* resize",
+        "      Ctrl+*/Ctrl+K select all; F4 in Search toggles File/Block",
+        "      F2 exports a completed block; * in the offset field appends",
+        "Paste rejected. Global references and multi-file planned.",
         "F9 in view means Open (planned), never Save. '-' means planned.",
         "Legacy terminals may intercept keys; use the Ctrl alternatives.",
         "Close help with F1, Enter, or Esc.",
@@ -482,14 +580,6 @@ fn render_prompt(frame: &mut Frame<'_>, area: Rect, input: &InputDialog) {
             " Raw virtual base ",
             "Absolute hexadecimal or decimal suffix t. Enables raw address mapping.",
         ),
-        PromptKind::SearchHex => (
-            " Search HEX (Tab: Text) ",
-            "Pairs of hex digits, e.g. 48 65 6C 6C 6F. Forward search; no wrap.",
-        ),
-        PromptKind::SearchText => (
-            " Search UTF-8 TEXT (Tab: Hex) ",
-            "Literal UTF-8 bytes; case-sensitive. Forward search; no wrap.",
-        ),
     };
     // Display the tail of long input; all input is retained for validation.
     let available = popup.width.saturating_sub(6) as usize;
@@ -529,4 +619,153 @@ fn render_prompt(frame: &mut Frame<'_>, area: Rect, input: &InputDialog) {
             ),
         popup,
     );
+}
+
+fn render_search(frame: &mut Frame<'_>, area: Rect, search: &SearchDialog) {
+    // Keep the main function bar visible even on the smallest usable terminal.
+    let overlay = Rect::new(area.x, area.y, area.width, area.height - 1);
+    let popup = popup(overlay, 72, 7);
+    let direction = match search.direction {
+        SearchDirection::Forward => "Forward",
+        SearchDirection::Backward => "Backward",
+    };
+    let panel = Style::new().fg(Color::Black).bg(Color::Gray);
+    let title = if search.help {
+        " Search help ".into()
+    } else {
+        let scope = if search.scope.is_some() {
+            "Block"
+        } else {
+            "File"
+        };
+        format!(" Search | {direction} | {scope} ")
+    };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .style(panel);
+    let content = block.inner(popup);
+    frame.render_widget(Clear, popup);
+    frame.render_widget(block, popup);
+    if search.help {
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::raw("Tab or Up/Down switches field. Ctrl+U clears the query."),
+                Line::raw("F2 reverses the scan. F5 goes to the last match."),
+                Line::raw("F4 selects the file or a completed block."),
+                Line::raw("UTF-8 folds ASCII letters only. Hex matches exact bytes."),
+            ])
+            .style(panel),
+            content,
+        );
+        return;
+    }
+
+    let alternate = search
+        .alternate_input()
+        .unwrap_or_else(|_| "<unavailable>".into());
+    for (index, (field, label)) in [(SearchField::Text, "UTF-8 "), (SearchField::Hex, "Hex   ")]
+        .into_iter()
+        .enumerate()
+    {
+        if index as u16 >= content.height {
+            break;
+        }
+        let active = field == search.field;
+        let input = if active { &search.input } else { &alternate };
+        let entry = escaped_text(input);
+        let field_width = content.width.saturating_sub(label.len() as u16);
+        let tail = visible_tail(&entry, field_width.saturating_sub(1));
+        let y = content.y + index as u16;
+        frame.render_widget(
+            Paragraph::new(label).style(panel),
+            row(content, index as u16),
+        );
+        let field_area = Rect::new(content.x + label.len() as u16, y, field_width, 1);
+        let field_style = if active { SELECTED } else { panel };
+        frame.render_widget(Paragraph::new(tail).style(field_style), field_area);
+        if active && field_width > 0 {
+            let cursor = Span::raw(tail).width() as u16;
+            frame.set_cursor_position((field_area.x + cursor, y));
+        }
+    }
+
+    if content.height >= 3 {
+        let hint = search.error.as_deref().unwrap_or(match search.field {
+            SearchField::Text => "UTF-8 matches with ASCII case folding.",
+            SearchField::Hex => "Hex matches exact bytes. Use two digits per byte.",
+        });
+        frame.render_widget(Paragraph::new(hint).style(panel), row(content, 2));
+    }
+}
+
+fn render_block_write(frame: &mut Frame<'_>, area: Rect, dialog: &BlockWrite) {
+    let overlay = Rect::new(area.x, area.y, area.width, area.height - 1);
+    let popup = popup(overlay, 68, 9);
+    let panel = Style::new().fg(Color::Black).bg(Color::Gray);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Write block ")
+        .style(panel);
+    let content = block.inner(popup);
+    let first = dialog.range.offset.get();
+    let last = first + dialog.range.len - 1;
+    let length = dialog.range.len;
+    frame.render_widget(Clear, popup);
+    frame.render_widget(block, popup);
+    let lines = [
+        format!("Block  {first:08X}–{last:08X}"),
+        format!("Length {length:08X}/{length}"),
+        "File".into(),
+        "Offset".into(),
+        "Format".into(),
+        dialog
+            .message
+            .as_deref()
+            .unwrap_or("Blank offset starts at zero. * appends.")
+            .into(),
+    ];
+    for (index, text) in lines
+        .into_iter()
+        .take(usize::from(content.height))
+        .enumerate()
+    {
+        frame.render_widget(
+            Paragraph::new(text).style(panel),
+            row(content, index as u16),
+        );
+    }
+    for (index, input, focus) in [
+        (2, dialog.file.as_str(), BlockField::File),
+        (3, dialog.offset.as_str(), BlockField::Offset),
+        (4, "Raw bytes", BlockField::Format),
+    ] {
+        if content.height <= index || content.width <= 8 {
+            continue;
+        }
+        let field = Rect::new(content.x + 8, content.y + index, content.width - 8, 1);
+        let focused = focus == dialog.focus;
+        let style = if focused { SELECTED } else { panel };
+        let input = escaped_text(input);
+        let tail = visible_tail(&input, field.width - 1);
+        frame.render_widget(Paragraph::new(tail).style(style), field);
+        if focused && focus != BlockField::Format {
+            frame.set_cursor_position((field.x + Span::raw(tail).width() as u16, field.y));
+        }
+    }
+}
+
+fn visible_tail(input: &str, columns: u16) -> &str {
+    let mut available = usize::from(columns);
+    let mut start = input.len();
+    for (index, character) in input.char_indices().rev() {
+        let mut utf8 = [0; 4];
+        let width = Span::raw(character.encode_utf8(&mut utf8) as &str).width();
+        let Some(remaining) = available.checked_sub(width) else {
+            break;
+        };
+        available = remaining;
+        start = index;
+    }
+    &input[start..]
 }

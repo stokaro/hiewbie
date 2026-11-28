@@ -31,11 +31,11 @@ and the parent epic remain open.
 | UI-002 | Partial | [T], [P], [Commands], [Reference], [Observation]: separate F4 choice/Enter cycle, edit restores, Shift+F7 and Code/header/profile bindings; full modifier and command matrix remains unverified. |
 | UI-003 | Partial | [T], [ACLI], [Observation]: FO/VA context, mode, dirty state, effective decoder profile/backend and overrides are displayed; observed title/access tokens and pending-byte colors need complete comparison. |
 | UI-004 | Partial | [A], [T]: cursor survives all three views; branch return restores position and interpretation; bookmarks and reference-specific per-view behavior pending. |
-| UI-005 | Partial | [T], [Observation]: view/edit/search/recovery and mode/header/profile dialogs resolve their own commands; observed block-selection and nested-overlay details remain unimplemented. |
+| UI-005 | Partial | [T], [Observation]: view/edit/search/recovery and mode/header/profile dialogs resolve their own commands; the two-field search dialog has its own help and contextual bindings; block tracking, active-mark cancellation, scoped search and Write block have tests. Transient modifier and other overlay details remain open. |
 | UI-006 | Partial | [T], [Commands], [Observation]: context-sensitive function bar and profile/bitness hints; the observed ten-slot bar, dialog bars, and transient Alt layer require complete parity. |
 | UI-007 | Implemented | [T], [P]: all currently implemented operations are keyboard-accessible. |
 | UI-008 | Partial | [T], [P], [Observation]: 80-column cells, dynamic rows, resize; the observed 80x25 title/content/function-bar geometry is recorded, with resize comparison pending. |
-| UI-009 | Partial | [T], [Observation]: blue/cyan default aligns with the observed palette; changed-byte, block, dialog, and accessible theme coverage remains pending. |
+| UI-009 | Partial | [T], [Observation]: blue/cyan default aligns with the observed palette; block bytes use yellow on magenta. Pending-byte and accessible theme coverage remains open. |
 | UI-010 | Partial | [T], [Commands]: Ctrl alternatives and keyboard header/profile dialogs; comprehensive command-menu and intercepted-key coverage pending. |
 | UI-011 | Partial | [T], [ST], [Input], [Commands], [Reference], [Observation]: visible deviations and unavailable commands are explicit; the observed runtime now covers primary views and dialogs, while the remaining matrix stays open. |
 | UI-012 | Partial | [T], [Commands]: contextual help and shared command inventory cover current analysis; key-event diagnostics and comprehensive command index UI pending. |
@@ -47,12 +47,12 @@ and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| KEY-001 | Implemented | [C], [A], [SN], [Commands]: 26 stable IDs include source-byte restores, profiles, mappings, branches and separate symbol-target/record navigation. |
+| KEY-001 | Implemented | [C], [A], [SN], [Commands]: 32 stable IDs include source-byte restores, block selection/export, profiles, mappings, branches and separate symbol-target/record navigation. |
 | KEY-002 | Partial | [A], [T], [ACLI]: terminal dialogs, shortcuts and headless inspection use shared application commands; macro/browser callers pending. |
 | KEY-003 | Partial | [C], [A], [T], [ACLI], [Reference]: hexadecimal, decimal t, relative and dotted absolute-VA syntax reject overflow/unavailable mappings; original current-section-relative dotted interpretation remains open. |
-| KEY-004 | Partial | [A], [T]: shared position and bounded branch-return history across views; reference-specific navigation/bookmark comparison pending. |
+| KEY-004 | Partial | [A], [T]: shared position, bounded branch-return history and a search resume point independent of ordinary movement; general navigation return and per-view bookmarks remain open. |
 | KEY-005 | Partial | [C], [T], [P], [Reference], [Observation]: observed Hex input is nibble-oriented and F3 restores the current source byte then advances; buffer boundaries, Backspace, assembly, truncation and timestamps remain open. |
-| KEY-006 | Partial | [C], [T], [P], [Commands]: F3/F9, F4 mode selection, Shift+F7, header keys and Code view/edit collisions covered; F2 textual assembly and full reference scenarios pending. |
+| KEY-006 | Partial | [C], [T], [P], [Commands]: F3/F9, F4 mode selection and search area, F2 export, Shift+F7, header keys and Code view/edit collisions covered; F2 textual assembly and full reference scenarios pending. |
 | KEY-007 | Implemented | [T], [P]: Esc cancels search/dialog, discards edits, then exits view. |
 | KEY-008 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 
@@ -65,7 +65,7 @@ and the parent epic remain open.
 | EDIT-003 | Implemented | [C], [N], [P]: discard restores original bytes and does not rewrite mtime. |
 | EDIT-004 | Implemented | [C], [N], [T]: successful save rebases and clears transaction/history. |
 | EDIT-005 | Partial | [C], [A], [T]: bounded overwrite/restore command undo/redo refreshes Code and remains distinct from source-byte restoration; blocks and textual assembly pending. |
-| EDIT-006 | Partial | [C], [T]: overwrite implemented; insert/delete/copy/move/fill/import/export pending. |
+| EDIT-006 | Partial | [C], [T], [Block export], [Block observation]: overwrite and native raw block export implemented. Insert/delete/copy/move/fill/import remain open. |
 | EDIT-007 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | EDIT-008 | Partial | [C], [N]: ranges and limits validated before mutation; later operations pending. |
 | EDIT-009 | Partial | [C], [N], [Storage]: atomic logical edits and documented replacement commit point. |
@@ -74,7 +74,7 @@ and the parent epic remain open.
 | EDIT-012 | Implemented | [N], [P]: saved logical bytes preserve untouched ranges, including copy boundaries. |
 | EDIT-013 | Implemented | [A], [SN], [N], [ST], [P]: header-field and symbol-record navigation lead to ordinary byte edits; no format repair or checksum rewrite is invoked. |
 | EDIT-014 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
-| EDIT-015 | Partial | [C], [T], [P]: readonly blocks current command/save paths; extension paths pending. |
+| EDIT-015 | Partial | [C], [T], [P]: read-only mode blocks source edits and saves. Raw export rejects the source as a destination. Extension paths remain open. |
 | EDIT-016 | Partial | [N], [Storage]: identity/metadata conflict detection; final-check/rename race documented. |
 | EDIT-017 | Partial | [N], [T], [Storage]: precommit errors retain edits; postcommit uncertainty requires reopen; recovery export pending. |
 | EDIT-018 | Partial | [N], [Storage]: ordinary modes/links/partial-I/O policy; ACL/xattrs/ADS and durability gaps remain. |
@@ -104,8 +104,8 @@ and the parent epic remain open.
 | IO-002 | Partial | [C], [F], [S], [D], [A], [Analysis], [Symbols]: independent viewport, image/symbol reader, decoder, edit/history and search budgets; symbols are lazy; background analysis remains future work. |
 | IO-003 | Implemented | [N], [F], [A], [T]: real Unix sparse file, synthetic 1 TiB source and bounded code reads beyond 4 GiB. |
 | IO-004 | Implemented | [N], [Storage]: seek/read strategy and truncation checks; no unsafe file mapping. |
-| IO-005 | Implemented | [C]: incremental KMP with cross-chunk matches and bounded steps. |
-| IO-006 | Partial | [C], [T], [Analysis]: cancellable search/progress; format inspection and decoding are bounded synchronous work, save is synchronous; general long-operation scheduling pending. |
+| IO-005 | Implemented | [C]: bidirectional KMP with cross-chunk matches and bounded steps. |
+| IO-006 | Partial | [C], [T], [Analysis]: search and block output staging provide cancellation and progress. Final export commit, save, and bounded format/decoder reads remain synchronous. |
 | IO-007 | Partial | [Storage], [Analysis]: explicit read, table, row, text and history budgets; reproducible latency/RSS benchmarks pending. |
 
 ## ISA
@@ -168,8 +168,8 @@ and the parent epic remain open.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| SEARCH-001 | Partial | [C], [T], [Reference]: case-sensitive literal bytes/UTF-8; original character-field case policy, encoding mappings and wildcard/instruction search remain open. |
-| SEARCH-002 | Partial | [C], [T], [P], [Reference]: forward/repeat/cancel plus Shift+F7; cursor+1 repeat still differs from documented independent last-match state; backward/scope/boundary policies pending. |
+| SEARCH-001 | Partial | [C], [T], [Reference]: exact bytes and UTF-8 with ASCII case folding; legacy code-page case mapping, wildcard and instruction search remain open. |
+| SEARCH-002 | Partial | [C], [T], [P], [Reference]: forward/backward, repeat from the last hit, explicit resets and cancellation; F4 selects whole file or a completed block. [Block observation] records the first original hit. Original repeat, no-hit, boundary, and Unicode-alignment details remain open. |
 | SEARCH-003 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | SEARCH-004 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 
@@ -256,8 +256,8 @@ and the parent epic remain open.
 | TEST-005 | Planned | No implementation or test evidence yet; the full specification entry remains required. |
 | TEST-006 | Partial | [F], [D], [A], [ACLI]: host-independent x86 PE, ARM64 Mach-O and ELF fixtures are shared by six native CI jobs; per-commit results are recorded in PR/CI, while the full required host/runtime matrix remains incomplete. |
 | TEST-007 | Partial | [N], [C], [F], [A], [T]: real Unix sparse file, synthetic 1 TiB format source and large-offset code windows; interactive large-file benchmark pending. |
-| TEST-008 | Partial | [C], [T]: chunk-boundary literal matches and cancellation; latency benchmark pending. |
-| TEST-009 | Partial | [C]: overlapping overwrites and history; blocks/EOF insertion/deletion pending. |
+| TEST-008 | Partial | [C], [T]: chunk-boundary literal matches in both directions, cancellation, and [native PTY search replay][Search replay]; latency benchmark pending. |
+| TEST-009 | Partial | [C], [T], [Block export], [Block replay]: overlapping overwrites and history, reversed marks, fixed range search, export cancellation, exact output and append. Overlapping block edits and EOF insertion/deletion remain open. |
 | TEST-010 | Implemented | [F], [D], [A], [ACLI]: generated malformed/truncated formats, bounded mutation corpora, arithmetic overflow, overlaps, zero-fill and unmapped VAs; not exhaustive fuzzing or format conformance. |
 | TEST-011 | Partial | [P], [T]: F-keys/Ctrl/paste/resize/cleanup subset; terminal application/modifier matrix pending. |
 | TEST-012 | Implemented | [A], [T], [ACLI]: malformed formats, unknown machines and unavailable decoding retain raw inspection/editing; explicit profile override can decode raw bytes. |
@@ -280,6 +280,10 @@ and the parent epic remain open.
 [ACLI]: ../crates/hiewbie/tests/analysis_cli.rs
 [P]: ../scripts/pty_smoke.py
 [PH]: ../scripts/test_pty_smoke.py
+[Block observation]: evidence/hiew-8.63-windows-blocks.json
+[Block export]: ../crates/hiewbie/tests/block_export.rs
+[Block replay]: evidence/block-workflow.cast
+[Search replay]: evidence/search-repeat.cast
 [Recording]: evidence/executable-analysis.cast
 [Storage]: adr/0001-document-storage.md
 [Input]: adr/0002-terminal-input.md

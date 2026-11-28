@@ -107,6 +107,23 @@ place, and operation-specific I/O errors identify the failed save stage.
 - Raw devices, in-place patching, Save As, resizing, recovery exports, and
   preserving earlier transactions across a completed save are not implemented.
 
+## Block export
+
+The terminal can export a fixed block while the source remains open, including
+a read-only source. A named output must be a distinct regular file. Existing
+outputs require confirmation and must pass destination identity, permission,
+ownership, and link checks. Append uses the verified output length. Absolute
+offsets preserve outside bytes and can create a sparse, zero-filled gap.
+
+The export steps stage at most one 64 KiB copy buffer of logical or existing
+output bytes per iteration. Source and existing-destination identities are
+checked before commit. A newly created destination uses a no-clobber commit.
+Existing destinations follow the same replacement, temporary-path checks,
+metadata limits, and final-check race policy as save. During staging, Esc drops
+the temporary file and leaves the previous destination in place. The final
+sync and rename are synchronous. Source bytes, edit overlay, and undo state
+are unaffected.
+
 ## Evidence
 
 [Core tests](../../crates/hiewbie-core/src/tests.rs) cover exact overlays,
