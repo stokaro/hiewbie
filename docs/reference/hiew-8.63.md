@@ -300,13 +300,25 @@ These modified keys were confirmed with Windows console key events.
 
 ### Navigation state is richer than a single cursor
 
-Original bookmarks preserve eight screen states independently for each mode.
-Backspace in view returns after navigation/search; it is distinct from edit
-Backspace (`hiew_en.txt`, lines 211-217; `hiew8.hlp`, `[Bookmark]`, lines 137-144).
-Hiewbie now has bounded direct-branch return history restoring file position and
-interpretation in Code. General goto/search return, per-mode bookmarks and exact
-reference viewport behavior remain open, with separate tests needed for each
-key context. The documented configurable target labels and `0` return key also
+HIEW keeps up to eight screen bookmarks per Text, Hex, and Decode view. A
+diamond marks the active slot in the title, and digits mark the other occupied
+slots. `+` uses the first vacant slot and leaves all slots alone when full.
+Repeated saves at the same address can fill distinct slots. `-` restores the
+active slot, Alt+1 through Alt+8 select an occupied slot, and Alt+Minus removes
+the current slot without renumbering. Alt+0 empties all three views.
+
+The observed Hex restore recovers the saved position and viewport. Text restores
+the horizontal scroll while keeping the current wrapping choice. Decode restores
+saved bitness as an explicit selection. In the observed argument-switching
+sequence, returning to a previously open file started with empty bookmark slots.
+
+[Paired Windows observations](../evidence/hiew-8.63-windows-bookmarks.json)
+
+Backspace in view returns after navigation/search in HIEW. This is separate
+from edit Backspace (`hiew_en.txt`, lines 211–217; `hiew8.hlp`, `[Bookmark]`).
+Hiewbie has bounded direct-branch return history for Code. General goto/search
+return and exact reference viewport behavior beyond bookmark restoration remain
+open. The documented configurable target labels and `0` return key also
 remain distinct from hiewbie's current `1`–`9` targets and Code-view Backspace.
 
 The initial analysis supports checked absolute dotted VAs and explicit raw

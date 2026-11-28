@@ -92,6 +92,8 @@ bindings stay planned. Validate contextual details before declaring HIEW parity.
 | PE header | F5 / F6 / F7 / F9 | Entry / sections / imports / exports |
 | Code | Default labels 1-9,A-Z / 0 | Follow target / return; JumpTable is configurable |
 | View | Backspace | Return after goto/find/reference navigation |
+| View | + / - | Save the screen in the first free slot / restore the active slot |
+| View | Alt+1…8 / Alt+Minus / Alt+0 | Restore a numbered slot / remove the active slot / clear all views' bookmarks |
 | Code | Ctrl+F1 / Shift+F1 | Bitness / architecture |
 | Code | / | Resynchronize decoding |
 | Hex / Code view | * / [ / ] | Start, finish, or clear a block / go to its first or last byte |
@@ -249,7 +251,8 @@ each capability requires independent fixtures and acceptance evidence.
 - **SEARCH-004**: Track multi-file search/replacement as an explicit parity requirement [S1].
 - **META-001**: Persist names, comments, bookmarks, and colored ranges separately from file bytes.
   Preserve the documented eight screen-state bookmarks per mode, separately
-  from navigation return history; verify rollover and restored viewport state [S12].
+  from navigation return history. Preserve occupied slots when all eight are full
+  and retain numbering after deletion [S12], [Windows bookmark observations].
 - **META-002**: Version sidecar data and bind it to an identifiable document revision.
 - **META-003**: Record verification work for HIEW name/map import/export compatibility.
 - **CALC-001**: Provide checked 64-bit expressions, bases, bit operations, and data reads.
@@ -357,3 +360,5 @@ No milestone may claim full HIEW parity while required legacy or contextual entr
 - [S11] https://sw.kovidgoyal.net/kitty/keyboard-protocol/
 
 [S12]: reference/hiew-8.63.md
+
+[Windows bookmark observations]: evidence/hiew-8.63-windows-bookmarks.json

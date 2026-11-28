@@ -460,6 +460,12 @@ const CODE_MORE: &[Entry] = &[
 ];
 
 const VIEW_FALLBACKS: &[Entry] = &[
+    section(20, "Bookmarks"),
+    key("+", "Save the current screen"),
+    key("-", "Restore the active bookmark"),
+    key("Alt-1 to Alt-8", "Restore a numbered bookmark in this view"),
+    key("Alt-Minus", "Remove the active bookmark"),
+    key("Alt-0", "Clear bookmarks in every view"),
     section(20, "hiewbie keys"),
     key("Ctrl-E", "Start editing through the byte input"),
     key("Ctrl-G", "Open the address prompt"),

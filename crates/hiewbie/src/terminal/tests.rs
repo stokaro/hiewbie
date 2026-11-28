@@ -161,6 +161,80 @@ fn save_errors_distinguish_pre_replacement_failure_from_committed_state() {
 }
 
 #[test]
+fn bookmarks_restore_hex_viewport_and_show_the_active_slot_in_each_title() {
+    let mut ui = ui(&[b'A'; 0x700]);
+    ui.dispatch(Command::Goto(FileOffset::new(0x221)));
+    ui.top = 0x200;
+    let original = screen(&mut ui, 80, 25);
+    assert!(original.lines().nth(1).unwrap().contains("00000200:"));
+    assert_eq!(
+        ui.key(KeyEvent::new(KeyCode::Char('+'), KeyModifiers::SHIFT)),
+        UiAction::Continue
+    );
+    ui.dispatch(Command::Goto(FileOffset::new(0)));
+    assert!(screen(&mut ui, 80, 25).contains("↓FRO ♦-------                  00000000"));
+    ui.key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT));
+    let restored = screen(&mut ui, 80, 25);
+    assert!(restored.contains("↓FRO ♦-------                  00000221"));
+    assert_eq!(restored.lines().nth(1), original.lines().nth(1));
+    assert_eq!(ui.editor.cursor(), FileOffset::new(0x221));
+
+    for mode in [ViewMode::Text, ViewMode::Code] {
+        ui.dispatch(Command::SetMode(mode));
+        let view = screen(&mut ui, 80, 25);
+        assert!(view.lines().next().unwrap().contains("↓FRO --------"));
+        key(&mut ui, KeyCode::Char('+'));
+        assert!(
+            screen(&mut ui, 80, 25)
+                .lines()
+                .next()
+                .unwrap()
+                .contains("↓FRO ♦-------")
+        );
+    }
+    ui.key(KeyEvent::new(KeyCode::Char('0'), KeyModifiers::ALT));
+    ui.dispatch(Command::SetMode(ViewMode::Hex));
+    assert!(screen(&mut ui, 80, 25).contains("↓FRO --------"));
+    assert_eq!(bytes(&mut ui), [b'A'; 0x700]);
+}
+
+#[test]
+fn text_bookmark_restores_horizontal_scroll_under_the_current_wrap_setting() {
+    let mut ui = ui(b"0123456789 ABCDEFGHIJ
+0123456789 second row
+");
+    ui.dispatch(Command::SetMode(ViewMode::Text));
+    screen(&mut ui, 80, 25);
+    if ui.text.horizontal().is_none() {
+        key(&mut ui, KeyCode::F(2));
+    }
+    key(&mut ui, KeyCode::Right);
+    key(&mut ui, KeyCode::Right);
+    key(&mut ui, KeyCode::Char('+'));
+    key(&mut ui, KeyCode::Right);
+    key(&mut ui, KeyCode::Right);
+    key(&mut ui, KeyCode::Char('-'));
+    assert_eq!(ui.text.horizontal(), Some(2));
+    assert!(
+        screen(&mut ui, 80, 25)
+            .lines()
+            .nth(1)
+            .unwrap()
+            .starts_with("↑2345")
+    );
+    key(&mut ui, KeyCode::F(2));
+    key(&mut ui, KeyCode::Char('-'));
+    assert_eq!(ui.text.horizontal(), None);
+    assert!(
+        screen(&mut ui, 80, 25)
+            .lines()
+            .nth(1)
+            .unwrap()
+            .starts_with("↑0123")
+    );
+}
+
+#[test]
 fn modes_share_cursor_and_read_only_cannot_begin_editing() {
     let mut ui = ui(b"0123456789");
     key(&mut ui, KeyCode::Right);

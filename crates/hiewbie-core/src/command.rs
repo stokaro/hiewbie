@@ -2,6 +2,9 @@ use std::fmt;
 
 use crate::analysis::{Analysis, Location, analysis_error};
 use crate::block::{BlockBoundary, BlockMark, BlockSelection};
+use crate::bookmark::{
+    BOOKMARK_SLOTS, Bookmark, BookmarkCommand, BookmarkMark, BookmarkViewport, Bookmarks,
+};
 use crate::calculator::{self, CalculationError};
 use crate::formats::{Endian, Executable, FileRange, VirtualAddress};
 use crate::instructions::DecodeMode;
@@ -45,6 +48,7 @@ pub enum Command {
     GotoBlockBoundary(BlockBoundary),
     ExportBlock,
     OpenCalculator,
+    Bookmark(BookmarkCommand),
     Move(i64),
     Goto(FileOffset),
     GotoVirtual(VirtualAddress),
@@ -97,6 +101,11 @@ impl Command {
             Self::GotoBlockBoundary(_) => "block.goto-boundary",
             Self::ExportBlock => "block.export",
             Self::OpenCalculator => "tools.calculator",
+            Self::Bookmark(BookmarkCommand::Store(_)) => "bookmark.store",
+            Self::Bookmark(BookmarkCommand::Recall) => "bookmark.recall",
+            Self::Bookmark(BookmarkCommand::Select(_)) => "bookmark.select",
+            Self::Bookmark(BookmarkCommand::Delete) => "bookmark.delete",
+            Self::Bookmark(BookmarkCommand::Clear) => "bookmark.clear",
             Self::Move(_) => "navigate.move",
             Self::Goto(_) => "navigate.goto",
             Self::GotoVirtual(_) => "navigate.virtual",
@@ -199,6 +208,26 @@ pub const COMMANDS: &[CommandInfo] = &[
         description: "Open the read-only integer calculator",
     },
     CommandInfo {
+        id: "bookmark.store",
+        description: "Store the current view position",
+    },
+    CommandInfo {
+        id: "bookmark.recall",
+        description: "Restore the active bookmark in the current view",
+    },
+    CommandInfo {
+        id: "bookmark.select",
+        description: "Select and restore a numbered bookmark in the current view",
+    },
+    CommandInfo {
+        id: "bookmark.delete",
+        description: "Delete the active bookmark from the current view",
+    },
+    CommandInfo {
+        id: "bookmark.clear",
+        description: "Clear bookmarks in all views of the current document",
+    },
+    CommandInfo {
         id: "navigate.move",
         description: "Move by a signed byte count, clamped to the document",
     },
@@ -296,6 +325,7 @@ pub const COMMANDS: &[CommandInfo] = &[
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Effect {
     None,
+    RestoreBookmark(BookmarkViewport),
     BrowseFiles,
     FileNavigation(FileNavigation),
     Save,
@@ -314,6 +344,7 @@ pub struct Editor<S: ByteSource> {
     analysis: Analysis,
     search: SearchSession,
     block: Option<BlockMark>,
+    bookmarks: Bookmarks,
 }
 
 impl<S: ByteSource> Editor<S> {
@@ -328,6 +359,7 @@ impl<S: ByteSource> Editor<S> {
             analysis: Analysis::default(),
             search: SearchSession::default(),
             block: None,
+            bookmarks: Bookmarks::default(),
         }
     }
 
@@ -363,6 +395,11 @@ impl<S: ByteSource> Editor<S> {
     #[must_use]
     pub fn block_selection(&self) -> Option<BlockSelection> {
         self.block?.selection(self.cursor, self.document.len())
+    }
+
+    #[must_use]
+    pub fn bookmark_marks(&self) -> [BookmarkMark; BOOKMARK_SLOTS] {
+        self.bookmarks.marks(self.mode)
     }
 
     /// Inspect the current logical generation; parser failures preserve raw access.
@@ -405,6 +442,12 @@ impl<S: ByteSource> Editor<S> {
             .problem
             .as_deref()
             .filter(|_| self.analysis.is_current(self.document.generation()))
+    }
+
+    /// Explicit architecture selection. An absent value uses automatic inference.
+    #[must_use]
+    pub const fn decode_mode_override(&self) -> Option<DecodeMode> {
+        self.analysis.interpretation.mode
     }
 
     /// Call `refresh_analysis` first when asking for inferred metadata directly.
@@ -693,6 +736,7 @@ impl<S: ByteSource> Editor<S> {
                 self.analysis.walk.clear();
                 self.mode = ViewMode::Code;
             }
+            Command::Bookmark(command) => return self.bookmark(command),
             Command::SetMode(mode) => self.set_mode(mode),
             Command::CycleMode => self.set_mode(match self.mode {
                 ViewMode::Text => ViewMode::Hex,
@@ -728,6 +772,50 @@ impl<S: ByteSource> Editor<S> {
         self.analysis.invalidate();
         self.editing = false;
         self.cursor = self.clamp(self.cursor.get());
+    }
+
+    fn bookmark(&mut self, command: BookmarkCommand) -> Result<Effect, Error> {
+        if self.editing {
+            return Err(Error::EditingInProgress);
+        }
+        let decode_mode =
+            if self.mode == ViewMode::Code && matches!(command, BookmarkCommand::Store(_)) {
+                self.refresh_analysis();
+                self.decode_context().mode
+            } else {
+                None
+            };
+        let bookmarks = self.bookmarks.view_mut(self.mode);
+        let bookmark = match command {
+            BookmarkCommand::Store(viewport) => {
+                bookmarks.store(Bookmark {
+                    offset: self.cursor,
+                    viewport,
+                    decode_mode,
+                });
+                None
+            }
+            BookmarkCommand::Recall => bookmarks.recall(),
+            BookmarkCommand::Select(slot) => bookmarks.select(slot),
+            BookmarkCommand::Delete => {
+                bookmarks.delete();
+                None
+            }
+            BookmarkCommand::Clear => {
+                self.bookmarks = Bookmarks::default();
+                None
+            }
+        };
+        let Some(bookmark) = bookmark else {
+            return Ok(Effect::None);
+        };
+        self.cursor = self.clamp(bookmark.offset.get());
+        if self.mode == ViewMode::Code {
+            self.analysis.interpretation.mode = bookmark.decode_mode;
+            self.analysis.symbol_mode = None;
+        }
+        self.analysis.walk.clear();
+        Ok(Effect::RestoreBookmark(bookmark.viewport))
     }
 
     fn set_mode(&mut self, mode: ViewMode) {

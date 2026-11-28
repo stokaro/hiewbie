@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "observation_date": "2026-11-28",
+  "reference_version": "8.63",
+  "environment": {
+    "runtime": "x64 console in a Hyper-V-isolated Windows Server Core LTSC 2022 container",
+    "candidate": "GNU-target x64 build in the same environment",
+    "input": "Win32 console key events with scan codes and modifier state",
+    "fixture": "Generated numbered CRLF text lines, inspected in all three views"
+  },
+  "slot_behavior": {
+    "capacity_per_view": 8,
+    "occupancy": "The title uses a diamond for the active slot, its number for another occupied slot, and a dash for an empty slot.",
+    "store": "Save to the first vacant slot. The ninth save has no effect while all eight slots are occupied. Equal positions can occupy separate slots.",
+    "recall": "Minus restores the active slot. Alt+1 through Alt+8 select and restore an occupied slot. Empty slots leave the cursor and active slot unchanged.",
+    "delete": "Alt+Minus leaves a hole in the numbering and clears the active marker. Alt+0 clears the three mode tables.",
+    "file_switch": "Returning to the first of two command-line files started with no populated slots."
+  },
+  "restoration": {
+    "hex": "Selecting slot 4 restored file byte 0x171 and first visible row 0x170.",
+    "text": "Recalling a screen saved at horizontal column 2 returned from column 4 to column 2 with wrapping off. When wrapping was on, the current wrapping choice stayed on.",
+    "decode": "A screen saved at automatic x86-32 restored explicit x86-32 after selecting x86-64 and paging away."
+  },
+  "paired_checks": {
+    "terminal_sizes": ["80x25", "100x30"],
+    "matching_title_slot_cells_and_palette": 35,
+    "matching_title_context_and_address": 30,
+    "limits": "The comparison covers the title slot strip and adjacent context fields. The raw fixture uses an explicit x86-32 profile in hiewbie while HIEW starts Decode with automatic x86-32, accounting for four context differences. One Decode page motion reached different offsets before the same bookmark recall. The full Code viewport and persistence remain open."
+  }
+}

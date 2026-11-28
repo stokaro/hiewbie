@@ -1,5 +1,6 @@
 use hiewbie_core::formats::{BinaryFormat, Executable, FileRange};
-use hiewbie_core::{ByteSource, FileOffset, MAX_READ_BYTES};
+use hiewbie_core::instructions::DecodeMode;
+use hiewbie_core::{BookmarkMark, ByteSource, FileOffset, MAX_READ_BYTES};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
@@ -108,6 +109,33 @@ impl<S: ByteSource> Ui<S> {
         self.render_byte_title(frame, area, &address, &detail, &column);
     }
 
+    pub(super) fn render_code_title(&self, frame: &mut Frame<'_>, area: Rect) {
+        let cursor = self.editor.cursor();
+        let image = self.hex_pe().filter(|_| !self.editor.is_editing());
+        let (marker, address) = byte_address(image, cursor);
+        let wide = self.hex_format() == Some(BinaryFormat::Pe64)
+            || self.editor.document().len().saturating_sub(1) > u64::from(u32::MAX)
+            || address > u64::from(u32::MAX);
+        let address = format!("{marker}{}", address_digits(address, wide));
+        let automatic = self.editor.decode_mode_override().is_none();
+        let context = match (self.editor.decode_context().mode, automatic) {
+            (Some(DecodeMode::X86_16), true) => "a16",
+            (Some(DecodeMode::X86_32), true) => "a32",
+            (Some(DecodeMode::X86_64), true) => "a64",
+            (Some(DecodeMode::X86_16), false) => "16",
+            (Some(DecodeMode::X86_32), false) => "32",
+            (Some(DecodeMode::X86_64), false) => "64",
+            (Some(DecodeMode::Arm), _) => "ARM",
+            (Some(DecodeMode::Thumb), _) => "THM",
+            (Some(DecodeMode::Aarch64), _) => "A64",
+            (None, _) => "",
+        };
+        let address_width = address.len().max(13);
+        let context_width = 26 - address_width;
+        let detail = format!("{context:>context_width$}{address:>address_width$}");
+        self.render_byte_title(frame, area, &address, &detail, context);
+    }
+
     fn render_byte_title(
         &self,
         frame: &mut Frame<'_>,
@@ -121,12 +149,24 @@ impl<S: ByteSource> Ui<S> {
             FileAccess::Write => "FWO",
             FileAccess::Updated => "FUO",
         };
+        let bookmarks: String;
         let state = if self.reopen_required {
             "REOPEN  "
         } else if self.editor.is_editing() {
             "EDITMODE"
         } else {
-            "--------"
+            bookmarks = self
+                .editor
+                .bookmark_marks()
+                .into_iter()
+                .enumerate()
+                .map(|(index, mark)| match mark {
+                    BookmarkMark::Empty => '-',
+                    BookmarkMark::Stored => char::from(b'1' + index as u8),
+                    BookmarkMark::Current => '♦',
+                })
+                .collect();
+            &bookmarks
         };
         if area.width < 63 {
             let title = format!(" {address} {access} {state} {context}");

@@ -57,6 +57,8 @@ Start without a file to open the file browser.
 View: F9 opens the file browser; Enter cycles Text/Hex/Code; F4 selects a mode; F3/Ctrl+E begins editing;
       F5/Ctrl+G goes to an offset; F7/Ctrl+F searches;
       Shift+F7, Ctrl+Enter, or Ctrl+R repeats the search.
+      + saves a screen, - restores it, and Alt+1 through Alt+8 select bookmarks.
+      Alt+- removes the active bookmark. Alt+0 clears all view bookmarks.
       Ctrl+Backspace opens History; Tab cycles visited files.
       Ctrl+F9 selects command-line files; Ctrl+F11/F12 moves between them.
 Code: F8/Ctrl+O shows headers; Shift+F1/Ctrl+A opens the analysis profile.
