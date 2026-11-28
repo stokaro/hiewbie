@@ -33,6 +33,12 @@ pub enum CalculationError {
     DivisionByZero {
         at: usize,
     },
+    ArithmeticOverflow {
+        at: usize,
+    },
+    InvalidShiftCount {
+        at: usize,
+    },
     LocalOffsetOverflow {
         at: usize,
     },
@@ -56,6 +62,8 @@ impl fmt::Display for CalculationError {
             Self::Syntax { at, expected } => write!(f, "Column {} expects {expected}", at + 1),
             Self::InvalidNumber { at } => write!(f, "Invalid 64-bit integer at column {}", at + 1),
             Self::DivisionByZero { .. } => f.write_str("Division by zero"),
+            Self::ArithmeticOverflow { .. } => f.write_str("Signed 64-bit arithmetic overflow"),
+            Self::InvalidShiftCount { .. } => f.write_str("Shift count must be between 0 and 63"),
             Self::LocalOffsetOverflow { .. } => f.write_str("Local address exceeds 64 bits"),
             Self::ShortRead { offset, width, .. } => {
                 write!(f, "Need {width} bytes at file offset {:X}", offset.get())
@@ -76,6 +84,8 @@ impl CalculationError {
             | Self::Syntax { at, .. }
             | Self::InvalidNumber { at }
             | Self::DivisionByZero { at }
+            | Self::ArithmeticOverflow { at }
+            | Self::InvalidShiftCount { at }
             | Self::LocalOffsetOverflow { at }
             | Self::ShortRead { at, .. } => Some(*at),
             _ => None,
@@ -102,6 +112,33 @@ pub fn evaluate<S: ByteSource>(
     cursor: FileOffset,
     local: Option<u64>,
 ) -> Result<u64, CalculationError> {
+    evaluate_with(expression, document, cursor, local, Arithmetic::Wrapping)
+}
+
+/// Evaluate the same expression with checked signed 64-bit arithmetic.
+/// Bitwise operations use the original bit patterns and shifts require a count below 64.
+pub fn evaluate_checked<S: ByteSource>(
+    expression: &str,
+    document: &mut Document<S>,
+    cursor: FileOffset,
+    local: Option<u64>,
+) -> Result<u64, CalculationError> {
+    evaluate_with(expression, document, cursor, local, Arithmetic::Checked)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Arithmetic {
+    Wrapping,
+    Checked,
+}
+
+fn evaluate_with<S: ByteSource>(
+    expression: &str,
+    document: &mut Document<S>,
+    cursor: FileOffset,
+    local: Option<u64>,
+    arithmetic: Arithmetic,
+) -> Result<u64, CalculationError> {
     if expression.len() > MAX_EXPRESSION_BYTES {
         return Err(CalculationError::LengthLimit);
     }
@@ -112,6 +149,7 @@ pub fn evaluate<S: ByteSource>(
         document,
         cursor,
         local,
+        arithmetic,
     };
     let value = parser.expression(1, 0)?;
     match parser.rest().as_bytes().first() {
@@ -128,6 +166,7 @@ struct Parser<'a, S: ByteSource> {
     document: &'a mut Document<S>,
     cursor: FileOffset,
     local: Option<u64>,
+    arithmetic: Arithmetic,
 }
 
 impl<S: ByteSource> Parser<'_, S> {
@@ -146,9 +185,14 @@ impl<S: ByteSource> Parser<'_, S> {
             if precedence < minimum {
                 break;
             }
+            let operator_offset = self.index;
             self.index += token.len();
             let operand = self.expression(precedence + 1, depth + 1)?;
-            value = operator.apply(value, operand, self.index)?;
+            let at = match self.arithmetic {
+                Arithmetic::Wrapping => self.index,
+                Arithmetic::Checked => operator_offset,
+            };
+            value = operator.apply(value, operand, at, self.arithmetic)?;
         }
         Ok(value)
     }
@@ -165,9 +209,14 @@ impl<S: ByteSource> Parser<'_, S> {
                 Ok(value)
             }
             Some(operator @ (b'+' | b'-' | b'!' | b'~')) => {
+                let at = self.index;
                 self.index += 1;
                 let value = self.expression(11, depth + 1)?;
                 match operator {
+                    b'-' if self.arithmetic == Arithmetic::Checked => (value as i64)
+                        .checked_neg()
+                        .map(|result| result as u64)
+                        .ok_or(CalculationError::ArithmeticOverflow { at }),
                     b'-' => Ok(value.wrapping_neg()),
                     b'!' => Ok(u64::from(value == 0)),
                     b'~' => Ok(!value),
@@ -336,10 +385,25 @@ const INFIX: &[(&str, Operator, u8)] = &[
 ];
 
 impl Operator {
-    fn apply(self, left: u64, right: u64, at: usize) -> Result<u64, CalculationError> {
+    fn apply(
+        self,
+        left: u64,
+        right: u64,
+        at: usize,
+        arithmetic: Arithmetic,
+    ) -> Result<u64, CalculationError> {
         use Operator::*;
         let signed_left = left as i64;
         let signed_right = right as i64;
+        if matches!(self, Divide | Remainder) && right == 0 {
+            return Err(CalculationError::DivisionByZero { at });
+        }
+        let checked = arithmetic == Arithmetic::Checked;
+        let require_result = |result: Option<i64>| {
+            result
+                .map(|value| value as u64)
+                .ok_or(CalculationError::ArithmeticOverflow { at })
+        };
         Ok(match self {
             LogicalOr => u64::from(left != 0 || right != 0),
             LogicalAnd => u64::from(left != 0 && right != 0),
@@ -354,13 +418,16 @@ impl Operator {
             Greater => u64::from(signed_left > signed_right),
             Left if right < 64 => left << right,
             Right if right < 64 => left >> right,
+            Left | Right if checked => return Err(CalculationError::InvalidShiftCount { at }),
             Left | Right => 0,
+            Add if checked => return require_result(signed_left.checked_add(signed_right)),
+            Subtract if checked => return require_result(signed_left.checked_sub(signed_right)),
+            Multiply if checked => return require_result(signed_left.checked_mul(signed_right)),
+            Divide if checked => return require_result(signed_left.checked_div(signed_right)),
+            Remainder if checked => return require_result(signed_left.checked_rem(signed_right)),
             Add => left.wrapping_add(right),
             Subtract => left.wrapping_sub(right),
             Multiply => left.wrapping_mul(right),
-            Divide | Remainder if right == 0 => {
-                return Err(CalculationError::DivisionByZero { at });
-            }
             Divide => signed_left.wrapping_div(signed_right) as u64,
             Remainder => signed_left.wrapping_rem(signed_right) as u64,
         })

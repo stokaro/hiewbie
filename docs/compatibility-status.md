@@ -190,7 +190,7 @@ cover visiting, switching, and reopening files.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| CALC-001 | Partial | [Calculator tests], [A], [T], [Calculator observation], [Calculator replay]: 64-bit wrapping HIEW expressions, bases, diagnostics, data reads, and native dialog. Checked overflow arithmetic, expression grammar edge cases, and full parity coverage remain open. |
+| CALC-001 | Partial | [Calculator tests], [A], [T], [Calculator observation], [Calculator replay]: 64-bit wrapping HIEW expressions, bases, diagnostics, data reads, and native dialog. Ctrl+E and the shared core API provide checked signed arithmetic. Expression grammar edge cases and full parity coverage remain open. |
 | CALC-002 | Partial | [Commands], [Calculator tests]: legacy tags encode signedness and width, and use little-endian byte order. Explicit byte-order control remains open. |
 
 ## CRYPT

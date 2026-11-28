@@ -37,6 +37,60 @@ fn hiew_arithmetic_literals_and_operator_precedence() {
 }
 
 #[test]
+fn checked_arithmetic_reports_the_overflowing_operator() {
+    let mut data = document(&[]);
+    for (expression, at) in [
+        ("7FFFFFFFFFFFFFFF + (1 * 1)", 17),
+        ("8000000000000000-1", 16),
+        ("4000000000000000*2", 16),
+        ("-8000000000000000", 0),
+        ("8000000000000000/-1", 16),
+        ("8000000000000000%-1", 16),
+    ] {
+        assert!(
+            matches!(
+                evaluate_checked(expression, &mut data, FileOffset::new(0), None),
+                Err(CalculationError::ArithmeticOverflow { at: offset }) if offset == at
+            ),
+            "{expression}"
+        );
+    }
+    for expression in ["1<<40", "1>>-1"] {
+        assert!(
+            matches!(
+                evaluate_checked(expression, &mut data, FileOffset::new(0), None),
+                Err(CalculationError::InvalidShiftCount { at: 1 })
+            ),
+            "{expression}"
+        );
+    }
+    assert!(matches!(
+        evaluate_checked("1/0", &mut data, FileOffset::new(0), None),
+        Err(CalculationError::DivisionByZero { at: 1 })
+    ));
+}
+
+#[test]
+fn checked_arithmetic_keeps_signed_values_and_bit_operations() {
+    let mut data = document(&[0xFE]);
+    for (expression, expected) in [
+        ("@b+10i*3t", 4),
+        ("FFFFFFFFFFFFFFFF+1", 0),
+        ("8000000000000000+0", 1 << 63),
+        ("1<<3F", 1 << 63),
+        ("FFFFFFFFFFFFFFFF<<1", u64::MAX - 1),
+        ("-1>>1", u64::MAX >> 1),
+        ("-3%2", u64::MAX),
+    ] {
+        assert_eq!(
+            evaluate_checked(expression, &mut data, FileOffset::new(0), None).unwrap(),
+            expected,
+            "{expression}"
+        );
+    }
+}
+
+#[test]
 fn reads_little_endian_document_bytes_and_distinguishes_coordinates() {
     let mut data = document(&[0xFE, 0x80, 1, 2, 3, 4, 5, 0x86, 0x7F]);
     let origin = FileOffset::new(0);
@@ -123,6 +177,7 @@ fn editor_evaluates_the_overlay_without_mutating_it() {
     let offset = FileOffset::new(0);
     editor.document_mut().overwrite(offset, &[0xA5]).unwrap();
     assert_eq!(editor.calculate("@B").unwrap(), 0xA5);
+    assert_eq!(editor.calculate_checked("@B+@o").unwrap(), 0xA5);
     assert_eq!(editor.cursor(), offset);
     assert!(editor.document().is_dirty());
     assert!(editor.document_mut().undo().unwrap());

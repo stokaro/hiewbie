@@ -837,6 +837,8 @@ def calculator(binary: Path, directory: Path, *, record: bool) -> list[list]:
         expect_input(b"1+2*3\r", "Evaluate the expression", b"\x1b[13;11H7", b"\x1b[14;72H111")
         expect_input(b"\x1bOP", "F1 opens calculator help", b"[Calculator]", b"\x1b[?25l")
         expect_input(ESC, "Restore the expression caret", b"\x1b[4 q", b"\x1b[11;12H")
+        expect_input(b"\x1b[5~7FFFFFFFFFFFFFFF+1\x05", "Ctrl+E checks signed overflow", b"Error:", b"overflow")
+        expect_input(b"\r", "Enter evaluates the same expression with wrapping arithmetic", b"-9223372036854775808")
         expect_input(b"\x1b[5~1/0\r", "Page Up clears the expression before testing division by zero", b"Error:", b"Division", b"zero")
         expect_input(ESC, "Return to the pending low nibble", b"\x1b[2;15H")
         session.send(b"5", "Complete the pending byte")

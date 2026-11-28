@@ -176,6 +176,13 @@ with the high byte. Addition, subtraction, and multiplication wrap at 64
 bits. Division and remainder are signed, zero divisors produce an error,
 and right shifts fill with zero.
 
+Ctrl+E evaluates the current expression with `Editor::calculate_checked`.
+It reports signed 64-bit overflow in addition, subtraction, negation,
+multiplication, division, and remainder. Both forms accept full 64-bit bit
+patterns. Checked shifts require a count from 0 through 63 and still shift
+the bit pattern with zero fill. The same expression can be evaluated again
+with Enter using HIEW arithmetic.
+
 `@b`, `@w`, `@d`, and `@q` read signed little-endian values of 1, 2,
 4, or 8 bytes. The uppercase versions read the same widths as unsigned
 values. `@o` uses the local address from the current executable or raw
