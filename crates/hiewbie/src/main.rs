@@ -551,6 +551,9 @@ fn write_disassembly<S: ByteSource>(
             image.slice.offset.get(),
             image.slice.len
         )?;
+        if image.endian != context.endian {
+            writeln!(output, "Image data byte order: {}-endian", image.endian)?;
+        }
         if let Some(index) = image.selected_slice {
             writeln!(
                 output,

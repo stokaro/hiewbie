@@ -16,6 +16,8 @@ mod x86;
 pub(crate) use x86::scan_references;
 
 #[cfg(test)]
+mod aarch64_tests;
+#[cfg(test)]
 mod tests;
 
 pub const MAX_INSTRUCTION_BYTES: usize = 15;
@@ -134,8 +136,8 @@ pub struct BranchTarget {
     pub mode: DecodeMode,
 }
 
-/// An address encoded by an x86 operand. A memory-indirect control transfer
-/// encodes a pointer slot whose contents require a separate mapping check.
+/// An address encoded by an instruction operand. A memory-indirect control
+/// transfer encodes a pointer slot whose contents require a separate mapping check.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AddressOperand {
     Memory(VirtualAddress),
@@ -248,6 +250,24 @@ fn fallback(
     mode: DecodeMode,
     status: DecodeStatus,
 ) -> DecodedInstruction {
+    let reason = match status {
+        DecodeStatus::Decoded => "",
+        DecodeStatus::Unknown => "unknown to backend",
+        DecodeStatus::InvalidForMode => "invalid in this instruction mode",
+        DecodeStatus::InvalidEncoding => "invalid encoding",
+        DecodeStatus::Truncated => "truncated instruction",
+        DecodeStatus::Unsupported => "unsupported instruction endianness",
+    };
+    fallback_with_reason(bytes, address, mode, status, reason)
+}
+
+fn fallback_with_reason(
+    bytes: &[u8],
+    address: VirtualAddress,
+    mode: DecodeMode,
+    status: DecodeStatus,
+    reason: &str,
+) -> DecodedInstruction {
     let bytes = &bytes[..bytes.len().min(mode.alignment())];
     let mut text = TextBuffer::new();
     text.append("db ");
@@ -257,14 +277,10 @@ fn fallback(
         }
         let _ = write!(text, "0x{byte:02x}");
     }
-    text.append(match status {
-        DecodeStatus::Decoded => "",
-        DecodeStatus::Unknown => " ; unknown to backend",
-        DecodeStatus::InvalidForMode => " ; invalid in this instruction mode",
-        DecodeStatus::InvalidEncoding => " ; invalid encoding",
-        DecodeStatus::Truncated => " ; truncated instruction",
-        DecodeStatus::Unsupported => " ; unsupported instruction endianness",
-    });
+    if !reason.is_empty() {
+        text.append(" ; ");
+        text.append(reason);
+    }
     instruction(bytes, address, text.finish(), status, None)
 }
 
@@ -308,18 +324,4 @@ impl fmt::Write for TextBuffer {
         self.append(text);
         Ok(())
     }
-}
-
-fn relative_target(
-    address: VirtualAddress,
-    displacement: i64,
-    mode: DecodeMode,
-) -> Option<BranchTarget> {
-    address
-        .get()
-        .checked_add_signed(displacement)
-        .map(|value| BranchTarget {
-            address: VirtualAddress::new(value),
-            mode,
-        })
 }

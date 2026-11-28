@@ -127,12 +127,12 @@ cover visiting, switching, and reopening files.
 | ISA-001 | Partial | [D], [A], [ACLI]: iced-x86 1.22.0 decodes 16/32/64-bit modes with automatic raw x86-32, manual overrides, and a native Decode viewport [Decode observation]. [Assembly]: portable x86 text core is available. Dialog, preview and patch integration remain open. |
 | ISA-002 | Partial | [D], [x86 Decode coverage]: 58 portable corpus rows, 31 additional 16-bit rows, and 181 additional 32/64-bit rows cover scalar, system, x87, and vector instructions with iced-x86 1.22.0. Interactive Decode reproduces the observed legacy, VEX, XOP, and EVEX boundaries. [Assembly]: baseline VEX AVX text assembly for 32/64-bit is available. A complete extension inventory remains open. |
 | ISA-003 | Partial | [D], [A], [Analysis]: separate ARM/Thumb modes, strict decoding and direct mode exchange; precise ARMv6/revision filtering, IT-state propagation and big-endian instructions remain gaps. |
-| ISA-004 | Partial | [D], [A], [ACLI]: AArch64 decoding and checked direct targets independent of host CPU; textual assembly, SVE/SVE2 and complete extension coverage pending. |
+| ISA-004 | Partial | [D], [A], [ACLI]: [AArch64 Decode coverage]: checked branches and PC-relative operands, A64 instruction order separate from data order, plus versioned scalar, BTI, Pointer Authentication and selected SVE/SVE2/SME forms. Remaining extensions and textual assembly are open. |
 | ISA-005 | Implemented | [Capabilities], [Capability tests]: separate evaluated MIPS32/64 roadmap, decoder/assembly/license/target constraints and minimal future experiments. Both production decoders and assemblers remain explicitly unavailable. |
 | ISA-006 | Implemented | [Capabilities], [Capability tests]: separate evaluated PowerPC32/64 roadmap with endian, ABI, reference and format-mapping decisions. Production support is deferred and unavailable. |
 | ISA-007 | Implemented | [Capabilities], [Capability tests]: separate evaluated RISC-V32/64 roadmap and independent text-assembly decisions. Inspected-ISA support remains unavailable and is distinct from the required RISC-V host target. |
 | ISA-008 | Implemented | [Capabilities], [Capability tests]: finite additional eBPF and format-candidate list, explicit deferred decisions and bounded registration/lookup contract; no implicit upstream-architecture support. |
-| ISA-009 | Implemented | [D], [T], [ACLI]: mode/bitness, endian, instruction lengths and backend version are reported; parsed CPU and explicit profile remain distinct. |
+| ISA-009 | Implemented | [D], [T], [ACLI]: mode/bitness, instruction byte order, instruction lengths and backend version are reported. A64 instruction byte order stays independent of image data byte order. |
 | ISA-010 | Implemented | [D], [T], [ACLI]: Decoded, Unknown, InvalidForMode, InvalidEncoding, Truncated, and Unsupported preserve raw bytes and guarantee progress for nonempty input. InvalidForMode identifies recognized legacy-only opcodes in long mode. InvalidEncoding records measured opcode and prefix rejections in the interactive profile. |
 | ISA-011 | Implemented | [A], [T], [ACLI]: unknown machines, malformed metadata and unsupported instruction order preserve raw viewing and byte editing. |
 | ISA-012 | Partial | [D], [A], [T], [P], [Decode operand observation]: Decode labels follow direct branches, mapped x86 data operands, and near indirect x86 targets whose complete pointer and destination have checked file mappings. Return supports ARM/Thumb mode exchange and Hex to Decode. Far and loader-resolved destinations remain open. |
@@ -326,6 +326,7 @@ cover visiting, switching, and reopening files.
 [Capability tests]: ../crates/hiewbie-core/src/capabilities_tests.rs
 [Fuzz]: fuzzing.md
 [Assembly]: x86-text-assembly.md
+[AArch64 Decode coverage]: aarch64-decode-coverage.md
 [Analysis]: adr/0004-analysis-backends.md
 [Symbols]: adr/0005-symbol-navigation.md
 [Commands]: commands.md

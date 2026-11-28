@@ -1,0 +1,88 @@
+# LLVM MC 23.1.6, aarch64-unknown-linux-gnu
+# -mattr=+v8.6a,+aes,+sha2,+crc,+lse,+pauth,+bti,+mte,+sve2,+sme
+scalar	A400068B	add x4, x5, x6	add x4, x5, x6
+scalar	8246A2D2	movz x2, #0x1234, lsl #16	mov x2, #0x12340000
+load-store	FD7BBFA9	stp x29, x30, [sp, #-16]!	stp x29, x30, [sp, #-0x10]!
+load-store	620C40F9	ldr x2, [x3, #24]	ldr x2, [x3, #0x18]
+fp	2028621E	fadd d0, d1, d2	fadd d0, d1, d2
+asimd	2084A24E	add v0.4s, v1.4s, v2.4s	add v0.4s, v1.4s, v2.4s
+system	BF3B03D5	dmb ish	dmb ish
+system	40D03BD5	mrs x0, tpidr_el0	mrs x0, tpidr_el0
+aes	2048284E	aese v0.16b, v1.16b	aese v0.16b, v1.16b
+sha2	2040025E	sha256h q0, q1, v2.4s	sha256h q0, q1, v2.4s
+crc	205CC29A	crc32cx w0, w1, x2	crc32cx w0, w1, x2
+lse	6200E1F8	ldaddal x1, x2, [x3]	ldaddal x1, x2, [x3]
+pauth	3F2303D5	paciasp	paciasp
+pauth	BF2303D5	autiasp	autiasp
+pauth	FF0B5FD6	retaa	retaa
+pauth	01081FD7	braa x0, x1	braa x0, x1
+pauth	621420F8	ldraa x2, [x3, #8]	ldraa x2, [x3, #0x8]
+mte	4110DF9A	irg x1, x2	irg x1, x2, xzr
+mte	410820D9	stg x1, [x2]	stg x1, [x2]
+ptrue	00E01825	ptrue p0.b, pow2	ptrue p0.b, pow2
+ptrue	EFE3D825	ptrue p15.d	ptrue p15.d
+ptrue	A7E15825	ptrue p7.h, vl256	ptrue p7.h, vl256
+ptrue	C6E39825	ptrue p6.s, mul3	ptrue p6.s, mul3
+whilelo	000C2025	whilelo p0.b, w0, w0	whilelo p0.b, w0, w0
+whilelo	EF1FFF25	whilelo p15.d, xzr, xzr	whilelo p15.d, xzr, xzr
+whilelo	C31CB325	whilelo p3.s, x6, x19	whilelo p3.s, x6, x19
+whilelo	280E7E25	whilelo p8.h, w17, w30	whilelo p8.h, w17, w30
+whilelt	00042025	whilelt p0.b, w0, w0	whilelt p0.b, w0, w0
+whilelt	EF17FF25	whilelt p15.d, xzr, xzr	whilelt p15.d, xzr, xzr
+add	00002004	add z0.b,z0.b,z0.b	add z0.b, z0.b, z0.b
+add	FF03FF04	add z31.d,z31.d,z31.d	add z31.d, z31.d, z31.d
+add	C5017504	add z5.h,z14.h,z21.h	add z5.h, z14.h, z21.h
+sub	00042004	sub z0.b,z0.b,z0.b	sub z0.b, z0.b, z0.b
+sub	FF07FF04	sub z31.d,z31.d,z31.d	sub z31.d, z31.d, z31.d
+eor3	00382004	eor3 z0.d,z0.d,z0.d,z0.d	eor3 z0.d, z0.d, z0.d, z0.d
+eor3	FF3B3F04	eor3 z31.d,z31.d,z31.d,z31.d	eor3 z31.d, z31.d, z31.d, z31.d
+eor3	E7392204	eor3 z7.d,z7.d,z2.d,z15.d	eor3 z7.d, z7.d, z2.d, z15.d
+sqxtnb	00402845	sqxtnb z0.b,z0.h	sqxtnb z0.b, z0.h
+sqxtnb	FF433045	sqxtnb z31.h,z31.s	sqxtnb z31.h, z31.s
+sqxtnb	0B426045	sqxtnb z11.s,z16.d	sqxtnb z11.s, z16.d
+sqxtnt	00442845	sqxtnt z0.b,z0.h	sqxtnt z0.b, z0.h
+sqxtnt	FF473045	sqxtnt z31.h,z31.s	sqxtnt z31.h, z31.s
+sqxtnt	0B466045	sqxtnt z11.s,z16.d	sqxtnt z11.s, z16.d
+sme	7F4703D5	smstart	smstart
+sme	7F4303D5	smstart sm	smstart sm
+sme	7F4503D5	smstart za	smstart za
+sme	7F4603D5	smstop	smstop
+sme	7F4203D5	smstop sm	smstop sm
+sme	7F4403D5	smstop za	smstop za
+bti	1F2403D5	bti	bti
+bti	5F2403D5	bti c	bti c
+bti	9F2403D5	bti j	bti j
+bti	DF2403D5	bti jc	bti jc
+ld1b	00A000A4	ld1b { z0.b }, p0/z, [x0]	ld1b { z0.b }, p0/z, [x0]
+ld1b	FFBF0FA4	ld1b { z31.b }, p7/z, [sp, #-1, mul vl]	ld1b { z31.b }, p7/z, [sp, #-1, mul vl]
+ld1b	A9BB07A4	ld1b { z9.b }, p6/z, [x29, #7, mul vl]	ld1b { z9.b }, p6/z, [x29, #7, mul vl]
+ld1b	26B408A4	ld1b { z6.b }, p5/z, [x1, #-8, mul vl]	ld1b { z6.b }, p5/z, [x1, #-8, mul vl]
+st1b	00E000E4	st1b { z0.b }, p0, [x0]	st1b { z0.b }, p0, [x0]
+st1b	FFFF0FE4	st1b { z31.b }, p7, [sp, #-1, mul vl]	st1b { z31.b }, p7, [sp, #-1, mul vl]
+st1b	A9FB07E4	st1b { z9.b }, p6, [x29, #7, mul vl]	st1b { z9.b }, p6, [x29, #7, mul vl]
+st1b	26F408E4	st1b { z6.b }, p5, [x1, #-8, mul vl]	st1b { z6.b }, p5, [x1, #-8, mul vl]
+ld1h	00A0A0A4	ld1h { z0.h }, p0/z, [x0]	ld1h { z0.h }, p0/z, [x0]
+ld1h	FFBFAFA4	ld1h { z31.h }, p7/z, [sp, #-1, mul vl]	ld1h { z31.h }, p7/z, [sp, #-1, mul vl]
+ld1h	A9BBA7A4	ld1h { z9.h }, p6/z, [x29, #7, mul vl]	ld1h { z9.h }, p6/z, [x29, #7, mul vl]
+ld1h	26B4A8A4	ld1h { z6.h }, p5/z, [x1, #-8, mul vl]	ld1h { z6.h }, p5/z, [x1, #-8, mul vl]
+st1h	00E0A0E4	st1h { z0.h }, p0, [x0]	st1h { z0.h }, p0, [x0]
+st1h	FFFFAFE4	st1h { z31.h }, p7, [sp, #-1, mul vl]	st1h { z31.h }, p7, [sp, #-1, mul vl]
+st1h	A9FBA7E4	st1h { z9.h }, p6, [x29, #7, mul vl]	st1h { z9.h }, p6, [x29, #7, mul vl]
+st1h	26F4A8E4	st1h { z6.h }, p5, [x1, #-8, mul vl]	st1h { z6.h }, p5, [x1, #-8, mul vl]
+ld1w	00A040A5	ld1w { z0.s }, p0/z, [x0]	ld1w { z0.s }, p0/z, [x0]
+ld1w	FFBF4FA5	ld1w { z31.s }, p7/z, [sp, #-1, mul vl]	ld1w { z31.s }, p7/z, [sp, #-1, mul vl]
+ld1w	A9BB47A5	ld1w { z9.s }, p6/z, [x29, #7, mul vl]	ld1w { z9.s }, p6/z, [x29, #7, mul vl]
+ld1w	26B448A5	ld1w { z6.s }, p5/z, [x1, #-8, mul vl]	ld1w { z6.s }, p5/z, [x1, #-8, mul vl]
+st1w	00E040E5	st1w { z0.s }, p0, [x0]	st1w { z0.s }, p0, [x0]
+st1w	FFFF4FE5	st1w { z31.s }, p7, [sp, #-1, mul vl]	st1w { z31.s }, p7, [sp, #-1, mul vl]
+st1w	A9FB47E5	st1w { z9.s }, p6, [x29, #7, mul vl]	st1w { z9.s }, p6, [x29, #7, mul vl]
+st1w	26F448E5	st1w { z6.s }, p5, [x1, #-8, mul vl]	st1w { z6.s }, p5, [x1, #-8, mul vl]
+ld1d	00A0E0A5	ld1d { z0.d }, p0/z, [x0]	ld1d { z0.d }, p0/z, [x0]
+ld1d	FFBFEFA5	ld1d { z31.d }, p7/z, [sp, #-1, mul vl]	ld1d { z31.d }, p7/z, [sp, #-1, mul vl]
+ld1d	A9BBE7A5	ld1d { z9.d }, p6/z, [x29, #7, mul vl]	ld1d { z9.d }, p6/z, [x29, #7, mul vl]
+ld1d	26B4E8A5	ld1d { z6.d }, p5/z, [x1, #-8, mul vl]	ld1d { z6.d }, p5/z, [x1, #-8, mul vl]
+st1d	00E0E0E5	st1d { z0.d }, p0, [x0]	st1d { z0.d }, p0, [x0]
+st1d	FFFFEFE5	st1d { z31.d }, p7, [sp, #-1, mul vl]	st1d { z31.d }, p7, [sp, #-1, mul vl]
+st1d	A9FBE7E5	st1d { z9.d }, p6, [x29, #7, mul vl]	st1d { z9.d }, p6, [x29, #7, mul vl]
+st1d	26F4E8E5	st1d { z6.d }, p5, [x1, #-8, mul vl]	st1d { z6.d }, p5, [x1, #-8, mul vl]
+ptrue	C5E15825	ptrue p5.h, #14	ptrue p5.h, #14
