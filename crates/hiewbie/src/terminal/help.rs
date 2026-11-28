@@ -7,7 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::is_control_char;
-use super::render::dialog_surface;
+use super::render::{dialog_surface, dialog_surface_with_tinted_shadow};
 
 const PANEL: Style = Style::new().fg(Color::Black).bg(Color::Green);
 const BODY: Style = PANEL.fg(Color::LightYellow);
@@ -16,6 +16,7 @@ const SELECTED: Style = Style::new().fg(Color::White).bg(Color::Black);
 #[derive(Clone, Copy, Debug)]
 pub(super) enum HelpTopic {
     Files,
+    HistoryFiles,
     FileFilter,
     View(ViewMode),
     Edit(ViewMode),
@@ -27,6 +28,7 @@ impl HelpTopic {
     fn title(self) -> &'static str {
         match self {
             Self::Files => "[FileList]",
+            Self::HistoryFiles => "[HistoryFiles]",
             Self::FileFilter => "[GetStringPattern]",
             Self::View(ViewMode::Text) => "[Text]",
             Self::View(ViewMode::Hex) => "[Hex]",
@@ -42,6 +44,7 @@ impl HelpTopic {
     fn sections(self) -> [&'static [Entry]; 3] {
         match self {
             Self::Files => [FILE_PICKER, &[], &[]],
+            Self::HistoryFiles => [FILE_HISTORY_HELP, &[], &[]],
             Self::FileFilter => [FILE_FILTER, &[], &[]],
             Self::View(ViewMode::Text) => [TEXT, TEXT_MORE, VIEW_FALLBACKS],
             Self::View(ViewMode::Hex) => [HEX, HEX_MORE, VIEW_FALLBACKS],
@@ -120,14 +123,14 @@ impl Help {
             area.width,
             area.height.saturating_sub(1),
         );
-        let content = dialog_surface(
-            frame,
-            center,
-            area.width.saturating_sub(8),
-            height.max(5).min(center.height),
-            Line::from(self.topic.title()).centered(),
-            PANEL,
-        );
+        let width = area.width.saturating_sub(8);
+        let height = height.max(5).min(center.height);
+        let title = Line::from(self.topic.title()).centered();
+        let content = if matches!(self.topic, HelpTopic::HistoryFiles) {
+            dialog_surface_with_tinted_shadow(frame, center, width, height, title, PANEL)
+        } else {
+            dialog_surface(frame, center, width, height, title, PANEL)
+        };
         self.rows = usize::from(content.height).max(1);
         self.keep_selection_visible(len);
 
@@ -216,8 +219,8 @@ impl Entry {
 }
 
 const ESCAPE: Entry = key("Escape", "Exit the current file");
-const FILE_HISTORY: Entry = key("Ctrl-Backspace", "Browse file history (planned)");
-const NEXT_FILE: Entry = key("Tab", "Switch to a recent file (planned)");
+const FILE_HISTORY: Entry = key("Ctrl-Backspace", "Browse file history");
+const NEXT_FILE: Entry = key("Tab", "Switch to the next recent file");
 const SCREEN: Entry = key("Alt-P", "Export the screen (planned)");
 const CALCULATOR: Entry = key("Alt-=", "Open the calculator");
 const INFORMATION: Entry = key("Ctrl-Alt", "Show file information (planned)");
@@ -252,7 +255,7 @@ const REPLACE: Entry = function("Ctrl-F3", "Replac", "Replace matching bytes (pl
 const REREAD: Entry = function("Ctrl-F4", "ReRead", "Reload the current buffer (planned)");
 const BASE: Entry = function("Ctrl-F5", "Base", "Set an address base (planned)");
 const OTHER: Entry = function("Ctrl-F7", "Other", "Find a different byte (planned)");
-const ARGUMENTS: Entry = function("Ctrl-F9", "FilArg", "List the command-line files (planned)");
+const ARGUMENTS: Entry = function("Ctrl-F9", "FilArg", "List the command-line files");
 const SAVE_STATE: Entry = function("Ctrl-F10", "SavSta", "Store the file session (planned)");
 const PREV_FILE: Entry = function(
     "Ctrl-F11",
@@ -521,6 +524,19 @@ const CODE_EDIT: &[Entry] = &[
     RESTORE_PREVIOUS,
 ];
 
+const FILE_HISTORY_HELP: &[Entry] = &[
+    function("F2", "Path", "Toggle the full file path"),
+    function("F5", "Mark", "Mark a file for navigation"),
+    function("F8", "Delete", "Remove the selected history entry"),
+    function("F9", "Files", "Open the file browser"),
+    function("Ctrl-F5", "MrkAll", "Mark all rows"),
+    function("Ctrl-F8", "Clear", "Clear history (planned)"),
+    function("Alt-F5", "UnMark", "Remove all marks"),
+    key(
+        "Ctrl-Enter",
+        "Open the highlighted entry with alternate options (planned)",
+    ),
+];
 const FILE_PICKER: &[Entry] = &[
     function("F2", "Hidden", "Show or hide hidden entries"),
     function("F3", "Name", "Sort by filename"),
@@ -529,7 +545,7 @@ const FILE_PICKER: &[Entry] = &[
     function("F6", "Size", "Sort by number of bytes"),
     function("F7", "Unsort", "Use filesystem listing order"),
     function("F8", "Revers", "Reverse the active sort"),
-    function("F9", "Files", "Show file history (planned)"),
+    function("F9", "Files", "Show file history"),
     function("F10", "Filter", "Set a filename mask"),
     function("Alt-F1", "Drive", "Choose a drive (planned)"),
     function("Alt-F2", "Drive", "Choose a drive (planned)"),

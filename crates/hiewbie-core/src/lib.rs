@@ -19,7 +19,7 @@ pub mod symbols;
 
 pub use analysis::{CodeRow, DecodeContext, MAX_CODE_ROWS, MAX_NAVIGATION_HISTORY};
 pub use block::{BlockBoundary, BlockSelection};
-pub use command::{COMMANDS, Command, CommandInfo, Editor, Effect, ViewMode};
+pub use command::{COMMANDS, Command, CommandInfo, Editor, Effect, FileNavigation, ViewMode};
 pub use document::{
     ByteSource, Document, MAX_EDIT_BYTES, MAX_HISTORY_BYTES, MAX_HISTORY_ENTRIES,
     MAX_PENDING_BYTES, MAX_READ_BYTES, MemorySource, Patch,

@@ -64,7 +64,18 @@ pub enum Command {
     SetMode(ViewMode),
     CycleMode,
     BrowseFiles,
+    FileNavigation(FileNavigation),
     Save,
+}
+
+/// View-mode actions for documents retained by a frontend session.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FileNavigation {
+    History,
+    NextRecent,
+    Arguments,
+    PreviousArgument,
+    NextArgument,
 }
 
 impl Command {
@@ -105,6 +116,11 @@ impl Command {
             Self::SetMode(_) => "view.set-mode",
             Self::CycleMode => "view.cycle-mode",
             Self::BrowseFiles => "file.browse",
+            Self::FileNavigation(FileNavigation::History) => "file.history",
+            Self::FileNavigation(FileNavigation::NextRecent) => "file.next-recent",
+            Self::FileNavigation(FileNavigation::Arguments) => "file.arguments",
+            Self::FileNavigation(FileNavigation::PreviousArgument) => "file.previous-argument",
+            Self::FileNavigation(FileNavigation::NextArgument) => "file.next-argument",
             Self::Save => "file.save",
         }
     }
@@ -251,6 +267,26 @@ pub const COMMANDS: &[CommandInfo] = &[
         description: "Open the file selection dialog from view mode",
     },
     CommandInfo {
+        id: "file.history",
+        description: "List visited files and their last positions",
+    },
+    CommandInfo {
+        id: "file.next-recent",
+        description: "Cycle to the next visited file",
+    },
+    CommandInfo {
+        id: "file.arguments",
+        description: "List files provided on the command line",
+    },
+    CommandInfo {
+        id: "file.previous-argument",
+        description: "Open the previous command-line file",
+    },
+    CommandInfo {
+        id: "file.next-argument",
+        description: "Open the next command-line file",
+    },
+    CommandInfo {
         id: "file.save",
         description: "Request persistence of the active edit transaction",
     },
@@ -261,6 +297,7 @@ pub const COMMANDS: &[CommandInfo] = &[
 pub enum Effect {
     None,
     BrowseFiles,
+    FileNavigation(FileNavigation),
     Save,
     ExportBlock(FileRange),
     OpenCalculator,
@@ -667,6 +704,12 @@ impl<S: ByteSource> Editor<S> {
                     return Err(Error::EditingInProgress);
                 }
                 return Ok(Effect::BrowseFiles);
+            }
+            Command::FileNavigation(navigation) => {
+                if self.editing {
+                    return Err(Error::EditingInProgress);
+                }
+                return Ok(Effect::FileNavigation(navigation));
             }
             Command::Save => {
                 self.require_editing()?;

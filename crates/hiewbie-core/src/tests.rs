@@ -576,9 +576,20 @@ fn shared_commands_enforce_edit_state_read_only_and_cursor_rules() {
     editor.dispatch(Command::Goto(offset(1))).unwrap();
     editor.dispatch(Command::CycleMode).unwrap();
     assert_eq!(editor.mode(), ViewMode::Code);
+    let navigation = FileNavigation::History;
+    assert_eq!(
+        editor
+            .dispatch(Command::FileNavigation(navigation))
+            .unwrap(),
+        Effect::FileNavigation(navigation)
+    );
     assert_eq!(editor.cursor(), offset(1));
     editor.dispatch(Command::BeginEdit).unwrap();
     editor.dispatch(Command::WriteByte(b'X')).unwrap();
+    assert!(matches!(
+        editor.dispatch(Command::FileNavigation(navigation)),
+        Err(Error::EditingInProgress)
+    ));
     assert_eq!(editor.cursor(), offset(2));
     editor.dispatch(Command::WriteByte(b'Y')).unwrap();
     assert_eq!(editor.cursor(), offset(2));
@@ -648,6 +659,11 @@ fn command_registry_contains_every_stable_command_once() {
         Command::SetMode(ViewMode::Hex),
         Command::CycleMode,
         Command::BrowseFiles,
+        Command::FileNavigation(FileNavigation::History),
+        Command::FileNavigation(FileNavigation::NextRecent),
+        Command::FileNavigation(FileNavigation::Arguments),
+        Command::FileNavigation(FileNavigation::PreviousArgument),
+        Command::FileNavigation(FileNavigation::NextArgument),
         Command::Save,
     ];
     assert_eq!(commands.len(), COMMANDS.len());

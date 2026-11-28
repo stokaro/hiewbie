@@ -148,6 +148,7 @@ class PtySession:
         read_only: bool = False,
         record: bool = False,
         start_in_picker: bool = False,
+        additional_files: tuple[str, ...] = (),
     ) -> None:
         self.binary = binary
         self.fixture = fixture
@@ -155,6 +156,7 @@ class PtySession:
         self.read_only = read_only
         self.record = record
         self.start_in_picker = start_in_picker
+        self.additional_files = additional_files
         self.master: int | None = None
         self.slave: int | None = None
         self.process: subprocess.Popen[bytes] | None = None
@@ -180,7 +182,7 @@ class PtySession:
             if self.read_only:
                 arguments.append("--read-only")
             if not self.start_in_picker:
-                arguments.extend(["--", self.fixture.name])
+                arguments.extend(["--", self.fixture.name, *self.additional_files])
             environment = dict(os.environ, TERM="xterm-256color")
             # The controlled terminal/recording has a stable color capability.
             environment.pop("NO_COLOR", None)
@@ -570,6 +572,46 @@ def file_picker(binary: Path, directory: Path, *, record: bool) -> list[list]:
             session.fail("F9 did not save exactly the selected file's first byte")
         # Cursor-addressed differential updates refer to the original cells.
         # Keep the wire output intact because the fixture path was synthesized.
+        return session.events
+
+
+def file_history(binary: Path, directory: Path, *, record: bool) -> list[list]:
+    first, mtime_ns = fixture(directory)
+    second = directory / "b.bin"
+    third = directory / "c.bin"
+    second.write_bytes(b"second")
+    third.write_bytes(b"third")
+    with PtySession(
+        binary, first, "command-line documents and visit history",
+        record=record, additional_files=(second.name, third.name),
+    ) as session:
+        def expect_input(data: bytes, label: str, *checks: bytes) -> None:
+            before = len(session.output)
+            session.send(data, label)
+            for code in checks:
+                if code not in session.output[before:]:
+                    session.fail(f"missing history output {code!r} after {label}")
+
+        session.send(F5, "Open Goto on the first file")
+        session.send(b"200\r", "Keep Hex at offset 200 on the first file")
+        expect_input(b"\x1b[20;5~", "Show the three command-line files", b"3 files", b"c.bin")
+        session.send(DOWN, "Select the second command-line file")
+        expect_input(b"\r", "Open the second file", b"b.bin", b"second")
+        expect_input(b"\x1b[24;5~", "Open the next command-line file", b"third")
+        expect_input(b"\t", "Cycle to the prior visit", b"second")
+        expect_input(b"\t", "Restore the first file in Hex", b"00000200")
+        expect_input(b"\x08", "Open the last positions dialog", b"Mode  Offset")
+        session.send(F2, "Show basenames in the history")
+        session.send(ESC, "Cancel history and keep the restored file")
+        session.send(F9, "Open Files on the restored document")
+        expect_input(F9, "Switch from Files to History", b"00000200")
+        session.send(ESC, "Close the file overlays")
+        expect_input(b"\x1b[23;5~", "Wrap backward to the last argument", b"third")
+        session.send(ESC, "Exit from view", expect_exit=True)
+        session.finish()
+        session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
+        if second.read_bytes() != b"second" or third.read_bytes() != b"third":
+            session.fail("file navigation changed bytes")
         return session.events
 
 
@@ -983,6 +1025,7 @@ def main() -> int:
     parser.add_argument("--record-symbols", type=Path, help="record import/export target and metadata navigation with exact byte saves")
     parser.add_argument("--record-search", type=Path, help="record the two-field search, backward repeat, and exact byte save")
     parser.add_argument("--record-block", type=Path, help="record reverse selection, scoped search, and raw block export")
+    parser.add_argument("--record-history", type=Path, help="record file arguments and history restoration")
     parser.add_argument("--record-files", type=Path, help="record startup Files, filtering, selection, F9 cancellation, and save")
     parser.add_argument("--record-cursor", type=Path, help="record native editing and search focus, Help, and mode selection")
     parser.add_argument("--record-calculator", type=Path, help="record calculator focus, evaluation, errors, and return to Hex editing")
@@ -1017,6 +1060,12 @@ def main() -> int:
                 with file_recording_workspace(Path("/tmp")) as demo:
                     file_events = file_picker(binary, demo / "files", record=True)
             print("PASS: startup and F9 file picker, directory and mask, cancel, exact save to selected file")
+            if options.record_history is None:
+                history_events = file_history(binary, root / "history", record=False)
+            else:
+                with file_recording_workspace(Path("/tmp")) as demo:
+                    history_events = file_history(binary, demo / "history", record=True)
+            print("PASS: command-line selection, history cycling, exact offset and mode restoration")
             analysis_events = analyze_edit_save(binary, root / "analysis", record=options.record_analysis is not None)
             print("PASS: PE headers/entry, Code, branch/return, virtual goto, exact byte save")
             symbol_events = symbols_edit_save(binary, root / "symbols", record=options.record_symbols is not None)
@@ -1056,6 +1105,13 @@ def main() -> int:
                 filename=FIXTURE_NAME,
             )
             print(f"Block recording: {options.record_block}")
+        if options.record_history is not None:
+            write_recording(
+                options.record_history,
+                history_events,
+                title="hiewbie file history: arguments, Tab, and restored Hex position",
+            )
+            print(f"History recording: {options.record_history}")
         if options.record_files is not None:
             write_recording(
                 options.record_files,

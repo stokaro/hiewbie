@@ -58,7 +58,10 @@ and restoration of a pending Hex digit.
 change, reopening and canceling F9, and an exact byte save to the selected file.
 This recording uses a generated demo path before rendering. Its terminal
 output retains the original cursor positions and cell widths.
-All ten PTY scenarios run in the existing native Unix CI jobs even without
+`--record-history PATH` records command-line selection, Tab cycling, and
+restoration of a file at its previous Hex offset. It uses the same synthetic
+fixtures and preserves the original terminal output.
+All eleven PTY scenarios run in the existing native Unix CI jobs even without
 recording options. The fixtures are generated. The terminal recordings cover
 [editing](evidence/native-editor.cast),
 [analysis](evidence/executable-analysis.cast),
@@ -66,9 +69,9 @@ recording options. The fixtures are generated. The terminal recordings cover
 [search repeat](evidence/search-repeat.cast),
 [block workflow](evidence/block-workflow.cast),
 [native cursor](evidence/native-cursor.cast),
-[calculator](evidence/calculator.cast), and
-[file selection](evidence/files.cast). Byte assertions, state assertions,
-and cleanup checks are the regression gate.
+[calculator](evidence/calculator.cast),
+[file selection](evidence/files.cast), and [file history](evidence/file-history.cast).
+Byte assertions, state assertions, and cleanup checks are the regression gate.
 
 The export scenario waits for the new destination to appear or for an
 existing destination to be atomically replaced, then checks every byte.

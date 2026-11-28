@@ -64,6 +64,10 @@ beyond 4 GiB, without loading the complete file into memory.
 | Hex / Code view | Alt+`*` / Ctrl+`*` or Ctrl+K | Move the marked endpoint / select the whole file |
 | Completed block | F2 | Write raw bytes to a file. Confirm its path, offset, and format. Use `*` as the offset to append |
 | View | F9 | Browse and open a file |
+| View | Ctrl+Backspace / Tab | Open session history / cycle its files |
+| View | Ctrl+F9 / Ctrl+F11 / Ctrl+F12 | Select / previous / next command-line file |
+| Files / History | F9 | Switch between the directory and history lists |
+| History | F2 / F5 / F8 | Toggle full paths / mark for Tab / remove a history entry |
 | Files | Arrows / Enter / Esc | Select / open a directory or file / cancel |
 | Files | F2 / F3–F8 / F10 | Toggle hidden entries / sort and reverse / set a filename mask |
 | View | F8 / Ctrl+O | Executable headers; F5 entry, F6 regions, F4 fields, S slices |
@@ -88,7 +92,8 @@ beyond 4 GiB, without loading the complete file into memory.
 
 Run `hiewbie` without a filename to browse the working directory. F9 opens
 the same browser from a view, saves in edit mode, and opens parsed exports
-in headers. Text displays
+in headers. Give multiple paths to browse files in argument order. History
+retains the mode and offset of each visited file for the session. Text displays
 printable ASCII bytes, not a decoded
 Unicode document. A single pending hex digit never changes a byte. Bracketed
 paste is recognized and rejected. macOS function keys may require Fn; the Ctrl

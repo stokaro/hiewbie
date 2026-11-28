@@ -8,6 +8,10 @@ from it. The public core exports `COMMANDS` and `Command::id()` from
 | Stable core ID | Arguments | Behavior |
 | --- | --- | --- |
 | `file.browse` | None | Request the native file browser while viewing |
+| `file.history` | None | Show visited files and saved positions |
+| `file.next-recent` | None | Cycle to the next visited file |
+| `file.arguments` | None | Show files supplied on the command line |
+| `file.previous-argument` / `file.next-argument` | None | Move backward or forward through the argument list |
 | `edit.begin` | None | Enter edit mode unless readonly |
 | `edit.discard` | None | Discard the active overlay/history and leave edit mode |
 | `edit.write-byte` | `u8` | Overwrite at the cursor and advance, clamped at EOF |
@@ -79,8 +83,34 @@ while keeping directories available. F1 describes the browser keys.
 
 The browser bounds each directory scan at 16,384 entries and marks a
 truncated listing with `+`. It passes the native path to the same file
-adapter used at startup. File history, argument lists, and per-file view
-restoration remain open.
+adapter used at startup.
+
+### File history and arguments
+
+Ctrl+Backspace opens history from a view. Ctrl+H is the fallback for terminals
+that send BS for Ctrl+Backspace. F9 inside Files opens History. F9 inside
+History returns to Files. Each list replaces the preceding one. Esc returns
+to the current document.
+
+The most recently selected file starts at the top after an explicit open.
+Tab cycles the existing order. If any entries are marked, Tab cycles only
+those entries. F5 toggles a mark and Ctrl+F5 and Alt+F5 mark or unmark the
+entire list. F2 toggles full paths. F8 removes an inactive entry from the list.
+File reads still use the native file adapter and the session's read-only setting.
+
+Launch with `hiewbie first.bin second.bin` to use argument navigation. Ctrl+F9
+shows the supplied names in order. Enter opens the selected file. Esc leaves
+the document open and keeps the highlighted argument as the starting point for
+Ctrl+F11 and Ctrl+F12. These keys cycle backward or forward and wrap at the ends. If the current
+file came from outside the argument list, the commands enter at the last or
+first argument. A failed open leaves the current document and argument
+position intact. Headless inspection commands take one file.
+
+The session keeps up to 64 visited paths. Reopening a visited file restores
+its mode and byte position and uses the saved Hex or Code viewport origin
+when it still fits. An unvisited file opened from either list starts in
+Text at zero. On-disk history, bookmarks, and other per-file analysis state
+remain separate compatibility work.
 
 ### Terminal focus
 

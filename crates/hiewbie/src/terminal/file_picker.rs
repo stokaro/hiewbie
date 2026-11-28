@@ -30,7 +30,7 @@ pub(super) fn browse(
     guard: &mut TerminalGuard,
     state: &mut Option<FilePicker>,
     mut editor: Option<&mut Ui<FileSource>>,
-) -> io::Result<Option<FileSource>> {
+) -> io::Result<BrowseOutcome> {
     if state.is_none() {
         let current_file = editor
             .as_ref()
@@ -40,7 +40,7 @@ pub(super) fn browse(
             Err(error) => {
                 if let Some(ui) = editor {
                     ui.notice(format!("Cannot read the working directory: {error}"));
-                    return Ok(None);
+                    return Ok(BrowseOutcome::Close);
                 }
                 return Err(error);
             }
@@ -48,6 +48,7 @@ pub(super) fn browse(
         *state = Some(FilePicker::new(directory, current_file));
     }
     let picker = state.as_mut().expect("the browser has been initialized");
+    picker.history_available = editor.is_some();
     picker.reload();
     loop {
         guard.set_input_caret(picker.filter_input.is_some() && picker.help.is_none())?;
@@ -62,16 +63,17 @@ pub(super) fn browse(
         match event::read()? {
             Event::Key(key) => match picker.key(key) {
                 Action::Continue => {}
-                Action::Close => return Ok(None),
+                Action::Close => return Ok(BrowseOutcome::Close),
+                Action::History => return Ok(BrowseOutcome::History),
                 Action::Open(path) => {
                     if editor
                         .as_ref()
                         .is_some_and(|ui| ui.editor.document().source().path() == path)
                     {
-                        return Ok(None);
+                        return Ok(BrowseOutcome::Close);
                     }
                     match FileSource::open(&path) {
-                        Ok(source) => return Ok(Some(source)),
+                        Ok(source) => return Ok(BrowseOutcome::Open(source)),
                         Err(error) => picker.report_error(&path, &error),
                     }
                 }
@@ -82,8 +84,15 @@ pub(super) fn browse(
     }
 }
 
+pub(super) enum BrowseOutcome {
+    Close,
+    History,
+    Open(FileSource),
+}
+
 enum Action {
     Continue,
+    History,
     Close,
     Open(PathBuf),
 }
@@ -173,6 +182,7 @@ pub(super) struct FilePicker {
     reverse: bool,
     show_hidden: bool,
     limited: bool,
+    history_available: bool,
     filter: String,
     filter_input: Option<FilterInput>,
     error: Option<String>,
@@ -199,6 +209,7 @@ impl FilePicker {
             reverse: false,
             show_hidden: false,
             limited: false,
+            history_available: false,
             filter: "*".into(),
             filter_input: None,
             error: None,
@@ -347,6 +358,7 @@ impl FilePicker {
             KeyCode::End => self.selected = last,
             KeyCode::F(1) => self.help = Some(Help::new(HelpTopic::Files)),
             KeyCode::F(2..=8) => self.change_order(key.code),
+            KeyCode::F(9) if self.history_available => return Action::History,
             KeyCode::F(10) => self.filter_input = Some(FilterInput::new(&self.filter)),
             _ => {}
         }
@@ -467,7 +479,7 @@ impl FilePicker {
                     "Help", "Hidden", "byName", "byExt", "byTime", "Size", "Unsort", "Revers",
                     "FilHis", "Filter", "", "",
                 ],
-                &[9],
+                if self.history_available { &[] } else { &[9] },
             );
         }
         if let Some(error) = &self.error {
