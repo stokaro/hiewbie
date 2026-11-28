@@ -64,8 +64,12 @@ source, rebased after each save.
 
 F4 opens the mode chooser. Up and Down move the highlight and Enter selects.
 F1, F2, and F3 select Text, Hex, and Decode directly. F4 while the chooser is
-open cycles the view and closes the chooser. Contextual Help supports arrows,
-Page Up and Down, Home, and End. F1, Enter, or Esc closes it.
+open cycles the view and closes the chooser. F1 opens a contextual index for
+the current view, edit session, or Search prompt. Up and Down move the highlight.
+Page Down selects the last row of the next page. Page Up selects the first row
+of the previous page. Home and End select the first and last entries. Enter and
+Esc dismiss Help and restore the previous caret or prompt state. The highlighted
+entry is informational. Commands marked `(planned)` describe the original binding.
 
 A paired byte highlight marks the current byte while viewing. An underline
 marks the next Hex digit, ASCII byte, active search field, or Goto entry.

@@ -2,6 +2,7 @@
 
 mod analysis;
 mod block;
+mod help;
 mod hex_view;
 mod render;
 mod search;
@@ -34,6 +35,7 @@ use ratatui::crossterm::{
 
 use analysis::{AnalysisDialog, AnalysisPage};
 use block::{BlockExportRequest, BlockWrite};
+use help::{Help, HelpTopic};
 use search::SearchDialog;
 
 pub(crate) fn printable(byte: u8) -> char {
@@ -280,7 +282,7 @@ enum Dialog {
     Search(SearchDialog),
     SearchNotice(&'static str),
     BlockWrite(BlockWrite),
-    Help { selected: usize },
+    Help(Help),
     Mode(ModeChoice),
     LineFeed(text_view::LineFeed),
     Analysis(AnalysisDialog),
@@ -495,8 +497,12 @@ impl<S: ByteSource> Ui<S> {
         match key.code {
             KeyCode::Esc => self.cancel_or_exit(),
             KeyCode::F(1) => {
-                self.pending_nibble = None;
-                self.dialog = Some(Dialog::Help { selected: 0 });
+                let topic = if self.editor.is_editing() {
+                    HelpTopic::Edit(self.editor.mode())
+                } else {
+                    HelpTopic::View(self.editor.mode())
+                };
+                self.dialog = Some(Dialog::Help(Help::new(topic)));
                 UiAction::Continue
             }
             KeyCode::Left => self.dispatch(Command::Move(-1)),
@@ -541,7 +547,7 @@ impl<S: ByteSource> Ui<S> {
         }
         match self.dialog.as_ref() {
             Some(Dialog::Input(_)) => true,
-            Some(Dialog::Search(search)) => !search.help,
+            Some(Dialog::Search(search)) => search.help.is_none(),
             Some(Dialog::BlockWrite(dialog)) => dialog.focus != block::BlockField::Format,
             None => self.editor.is_editing() && !self.editor.document().is_empty(),
             _ => false,
@@ -839,22 +845,9 @@ impl<S: ByteSource> Ui<S> {
                 self.analysis_key(dialog, key);
                 return UiAction::Continue;
             }
-            Dialog::Help { selected } => {
-                if key.modifiers.is_empty() {
-                    let last = render::HELP_LINES.len().saturating_sub(1);
-                    let next = match key.code {
-                        KeyCode::F(1) | KeyCode::Enter => return UiAction::Continue,
-                        KeyCode::Up => selected.saturating_sub(1),
-                        KeyCode::Down => selected.saturating_add(1).min(last),
-                        KeyCode::PageUp => selected.saturating_sub(10),
-                        KeyCode::PageDown => selected.saturating_add(10).min(last),
-                        KeyCode::Home => 0,
-                        KeyCode::End => last,
-                        _ => selected,
-                    };
-                    self.dialog = Some(Dialog::Help { selected: next });
-                } else {
-                    self.dialog = Some(Dialog::Help { selected });
+            Dialog::Help(mut help) => {
+                if !help.closes(key) {
+                    self.dialog = Some(Dialog::Help(help));
                 }
                 return UiAction::Continue;
             }

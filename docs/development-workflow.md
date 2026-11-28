@@ -51,7 +51,7 @@ independent cursor movement, followed by an exact one-byte save.
 `--record-block PATH` records reverse block marking, scoped search, an exact
 edit, export cancellation, raw export, and confirmed append.
 `--record-cursor PATH` records native Hex and ASCII caret coordinates and
-shapes, Search field focus, Help, and the mode chooser. All eight PTY scenarios run in the existing native Unix CI jobs even without recording
+shapes, restoration of pending Hex and Search input after Help, and the mode chooser. All eight PTY scenarios run in the existing native Unix CI jobs even without recording
 options. The symbol fixture contains no external executable bytes. The
 checked-in [editing](evidence/native-editor.cast) and
 [analysis](evidence/executable-analysis.cast) recordings, together with the

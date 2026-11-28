@@ -23,7 +23,7 @@ pub(super) struct SearchDialog {
     pub(super) scope: Option<FileRange>,
     pub(super) input: String,
     pub(super) error: Option<String>,
-    pub(super) help: bool,
+    pub(super) help: Option<super::Help>,
 }
 
 impl SearchDialog {
@@ -81,16 +81,14 @@ impl<S: ByteSource> Ui<S> {
             scope: None,
             input: String::new(),
             error: None,
-            help: false,
+            help: None,
         }));
     }
 
     pub(super) fn search_key(&mut self, mut dialog: SearchDialog, key: KeyEvent) {
-        if dialog.help {
-            if key.modifiers.is_empty()
-                && matches!(key.code, KeyCode::F(1) | KeyCode::Enter | KeyCode::Esc)
-            {
-                dialog.help = false;
+        if let Some(help) = &mut dialog.help {
+            if help.closes(key) {
+                dialog.help = None;
             }
         } else if is_control_char(key, 'c') || key.code == KeyCode::Esc && key.modifiers.is_empty()
         {
@@ -110,7 +108,9 @@ impl<S: ByteSource> Ui<S> {
                     }
                     Err(error) => dialog.error = Some(escaped_text(&error)),
                 },
-                (KeyCode::F(1), KeyModifiers::NONE) => dialog.help = true,
+                (KeyCode::F(1), KeyModifiers::NONE) => {
+                    dialog.help = Some(super::Help::new(super::HelpTopic::Search));
+                }
                 (KeyCode::F(2), KeyModifiers::NONE) => {
                     dialog.direction = match dialog.direction {
                         SearchDirection::Forward => SearchDirection::Backward,

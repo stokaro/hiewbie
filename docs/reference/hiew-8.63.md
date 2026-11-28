@@ -70,6 +70,20 @@ The sanitized [observation record](../evidence/hiew-8.63-windows-observation.jso
 preserve the environment, visible state transitions, implementation guidance,
 and explicit gates for remaining unknowns.
 
+### Contextual Help
+
+F1 opens a green command index with a double black frame and white-on-black
+selected row. The page depends on the underlying view, edit session, or Search
+prompt. Page Down selects the last row of the next page, and Page Up selects
+the first row of the previous page. Enter and Escape close Help. F1 leaves an
+open Help page in place. Closing Help above an input field restores its caret.
+
+Hiewbie reproduces the frame and paging. It uses independently written command
+descriptions and identifies bindings that are still planned. The complete Help
+catalog and mouse interaction remain open. The reference rejected a 52 by 17
+console. Hiewbie clips the panel and keeps paging available in narrow terminals.
+[Paired Windows observations](../evidence/hiew-8.63-windows-help.json)
+
 ## Corrections to the existing editor
 
 These changes address existing M1 commands and coexist with the initial

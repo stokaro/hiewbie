@@ -22,7 +22,6 @@ const SELECTED: Style = Style::new().fg(Color::Black).bg(Color::Cyan);
 pub(super) const MARK: Style = Style::new().fg(Color::Yellow).bg(Color::Magenta);
 const ADDRESS_COLUMNS: usize = 18;
 pub(super) const PANEL: Style = Style::new().fg(Color::Black).bg(Color::Gray);
-const HELP_PANEL: Style = Style::new().fg(Color::LightYellow).bg(Color::Green);
 pub(super) const FOCUSED_ROW: Style = Style::new().fg(Color::White).bg(Color::Black);
 const ERROR_PANEL: Style = Style::new().fg(Color::LightYellow).bg(Color::Red);
 const ACTIVE_SEARCH_FIELD: Style = Style::new().fg(Color::White).bg(Color::Cyan);
@@ -144,6 +143,16 @@ impl<S: ByteSource> Ui<S> {
             }
             self.render_status_message(frame, message);
         }
+        let help = match self.dialog.as_mut() {
+            Some(Dialog::Help(help)) => Some(help),
+            Some(Dialog::Search(search)) => search.help.as_mut(),
+            _ => None,
+        };
+        if let Some(help) = help {
+            render_full_function_bar(frame, row(area, area.height - 1), &[""; 12], &[]);
+            help.render(frame, area);
+            return;
+        }
         self.render_function_bar(frame, row(area, area.height - 1));
         if self.editor.is_searching() {
             let content = draw_dialog(
@@ -163,15 +172,6 @@ impl<S: ByteSource> Ui<S> {
             }
         }
         match self.dialog.as_ref() {
-            Some(Dialog::Help { selected }) => {
-                render_help(
-                    frame,
-                    area,
-                    self.editor.mode(),
-                    self.editor.is_editing(),
-                    *selected,
-                );
-            }
             Some(Dialog::Input(input)) => render_prompt(frame, area, input),
             Some(Dialog::Search(search)) => render_search(frame, area, search),
             Some(Dialog::SearchNotice(message)) => render_search_notice(frame, area, message),
@@ -185,7 +185,7 @@ impl<S: ByteSource> Ui<S> {
                 super::text_view::render_line_feed(frame, area, *selected)
             }
             Some(Dialog::Analysis(dialog)) => self.render_analysis_dialog(frame, area, dialog),
-            None => {}
+            Some(Dialog::Help(_)) | None => {}
         }
     }
 
@@ -536,10 +536,10 @@ impl<S: ByteSource> Ui<S> {
                 Some(Dialog::LineFeed(_)) => {
                     Some(["CR/LF", "CR", "LF", "NULL", "", "Next", "", "", "", ""])
                 }
-                Some(Dialog::Search(s)) if !s.help => {
+                Some(Dialog::Search(_)) => {
                     Some(["Help", "Direct", "", "Area", "GoLast", "", "", "", "", ""])
                 }
-                Some(Dialog::Help { .. } | Dialog::SearchNotice(_)) => Some([""; 10]),
+                Some(Dialog::SearchNotice(_)) => Some([""; 10]),
                 Some(Dialog::Input(input)) if input.kind == PromptKind::Goto => Some([""; 10]),
                 _ => None,
             }
@@ -567,9 +567,6 @@ impl<S: ByteSource> Ui<S> {
                 }
                 Some(Dialog::Input(input)) if input.kind == PromptKind::RawBase => {
                     Some(" Enter sets raw base | Ctrl+U clear | Esc cancel ")
-                }
-                Some(Dialog::Search(search)) if search.help => {
-                    Some(" F1 / Enter / Esc close search help ")
                 }
                 Some(Dialog::BlockWrite(_)) => {
                     Some(" Tab field | Enter accept | Ctrl+U clear | Esc cancel ")
@@ -599,15 +596,7 @@ impl<S: ByteSource> Ui<S> {
                     &[6, 9, 10, 11, 12],
                 )
             };
-            let slots = (area.width / 8).clamp(10, 12);
-            render_function_slots(frame, area, &labels[..usize::from(slots)], disabled);
-            let tail = area.width.saturating_sub(slots * 8);
-            if tail != 0 {
-                frame.render_widget(
-                    Paragraph::new("▒".repeat(usize::from(tail))).style(FOCUSED_ROW),
-                    Rect::new(area.right() - tail, area.y, tail, 1),
-                );
-            }
+            render_full_function_bar(frame, area, &labels, disabled);
             return;
         }
         if self.text_navigation() {
@@ -646,6 +635,23 @@ impl<S: ByteSource> Ui<S> {
             ]
         };
         render_function_slots(frame, area, &labels, &[]);
+    }
+}
+
+fn render_full_function_bar(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    labels: &[&str; 12],
+    disabled: &[usize],
+) {
+    let slots = (area.width / 8).clamp(10, 12);
+    render_function_slots(frame, area, &labels[..usize::from(slots)], disabled);
+    let tail = area.width.saturating_sub(slots * 8);
+    if tail != 0 {
+        frame.render_widget(
+            Paragraph::new("▒".repeat(usize::from(tail))).style(FOCUSED_ROW),
+            Rect::new(area.right() - tail, area.y, tail, 1),
+        );
     }
 }
 
@@ -768,60 +774,6 @@ fn draw_dialog(
     content
 }
 
-pub(super) const HELP_LINES: &[&str] = &[
-    "Hex, ASCII Text, and Code share one document and file cursor.",
-    "View  Enter cycle; F4 select mode; F3/Ctrl+E edit; Esc quit",
-    "      F5/Ctrl+G goto; F7/Ctrl+F search; F8/Ctrl+O headers",
-    "      Shift+F7 / Ctrl+Enter / Ctrl+R repeat (same direction, no wrap)",
-    "Code  1..9 direct branch; Backspace return; / resynchronize",
-    "      Up/Down instructions; Left/Right bytes; PgUp/PgDn pages",
-    "      Unknown backward boundaries use one byte/ISA alignment.",
-    "      Ctrl+F1/Ctrl+B x86 bitness; Shift+F1/Ctrl+A decoder",
-    "Profile 0 Auto; 1..3 x86 16/32/64; 4 ARM; 5 Thumb; 6 AArch64",
-    "      L/B/E little/big/automatic endian; R raw; V raw base",
-    "      Big-endian decode unsupported; raw bytes remain available.",
-    "Headers F5 entry; F6 regions; F7 imports; F9 exports; N symbols",
-    "Edit  F9/Ctrl+S save; Esc discard; Tab hex/ASCII; Ctrl+Z/Y undo/redo",
-    "      F3 restores current byte; Backspace restores previous byte.",
-    "      Two digits commit one byte; Backspace cancels a digit first.",
-    "      Code editing changes bytes; textual assembly is planned.",
-    "Goto  Hex default, decimal suffix t, +/- relative; .address is VA",
-    "      V: image VA; R: raw base address; F: unmapped file offset",
-    "Find  Tab hex/UTF-8 text; Esc cancels scan; Ctrl+Home/End file edges",
-    "Block * start/finish/clear; [ / ] endpoints; Alt+* resize",
-    "      Ctrl+*/Ctrl+K select all; F4 in Search toggles File/Block",
-    "      F2 exports a completed block; * in the offset field appends",
-    "Paste rejected. Global references and multi-file planned.",
-    "F9 in view means Open (planned), never Save. '-' means planned.",
-    "Legacy terminals may intercept keys; use the Ctrl alternatives.",
-    "Close help with F1, Enter, or Esc.",
-];
-
-fn render_help(frame: &mut Frame<'_>, area: Rect, mode: ViewMode, editing: bool, selected: usize) {
-    let suffix = if editing { " editing" } else { "" };
-    let content = dialog_surface(
-        frame,
-        area,
-        area.width.saturating_sub(2),
-        area.height.saturating_sub(2),
-        Line::from(format!("[{mode}{suffix}]")).centered(),
-        HELP_PANEL,
-    );
-    let height = usize::from(content.height);
-    let first = selected.saturating_sub(height.saturating_sub(1));
-    for (line, text) in HELP_LINES.iter().enumerate().skip(first).take(height) {
-        let style = if line == selected {
-            FOCUSED_ROW
-        } else {
-            HELP_PANEL
-        };
-        frame.render_widget(
-            Paragraph::new(*text).style(style),
-            row(content, (line - first) as u16),
-        );
-    }
-}
-
 fn render_mode_picker(frame: &mut Frame<'_>, area: Rect, selected: ModeChoice) {
     let content = dialog_surface(
         frame,
@@ -934,9 +886,7 @@ fn render_search(frame: &mut Frame<'_>, area: Rect, search: &SearchDialog) {
         SearchDirection::Backward => "Backward",
     };
     let panel = PANEL;
-    let title = if search.help {
-        " Search help ".into()
-    } else {
+    let title = {
         let scope = if search.scope.is_some() {
             "Block"
         } else {
@@ -948,21 +898,7 @@ fn render_search(frame: &mut Frame<'_>, area: Rect, search: &SearchDialog) {
         };
         format!("══[{direction} •{scope} •{case}•Even]")
     };
-    let height = if search.help { 9 } else { 7 };
-    let content = dialog_surface(frame, area, 75, height, title, panel);
-    if search.help {
-        frame.render_widget(
-            Paragraph::new(vec![
-                Line::raw("Tab or Up/Down switches field. Ctrl+U clears the query."),
-                Line::raw("F2 reverses the scan. F5 goes to the last match."),
-                Line::raw("F4 selects the file or a completed block."),
-                Line::raw("UTF-8 folds ASCII letters only. Hex matches exact bytes."),
-            ])
-            .style(panel),
-            content,
-        );
-        return;
-    }
+    let content = dialog_surface(frame, area, 75, 7, title, panel);
 
     let alternate = search
         .alternate_input()

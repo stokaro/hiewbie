@@ -32,13 +32,13 @@ and the parent epic remain open.
 | UI-003 | Partial | [T], [ACLI], [Hex observation]: Raw/PE Hex title and access states, VA/file-offset display, and changed-byte colors now have paired Windows evidence. Decoder profile, overrides, and full state coverage remain open. |
 | UI-004 | Partial | [A], [T]: cursor survives all three views; branch return restores position and interpretation; bookmarks and reference-specific per-view behavior pending. |
 | UI-005 | Partial | [T], [Observation]: view/edit/search/recovery and mode/header/profile dialogs resolve their own commands; the two-field search dialog has its own help and contextual bindings; block tracking, active-mark cancellation, scoped search and Write block have tests. Transient modifier and other overlay details remain open. |
-| UI-006 | Partial | [T], [Commands], [Hex observation]: Hex uses the observed F-key label positions and dims unsupported commands. Dialog bars, other modes, and modifier layers remain open. |
+| UI-006 | Partial | [T], [Commands], [Hex observation]: Hex uses the observed F-key label positions and dims unsupported commands. Contextual Help uses the observed blank bar and wide slots. Other dialog bars, modes, and modifier layers remain open. |
 | UI-007 | Implemented | [T], [P]: all currently implemented operations are keyboard-accessible. |
-| UI-008 | Partial | [T], [P], [Hex observation], [Dialog observation], [Text observation]: Raw and PE Hex, selected dialogs, and the single-byte Text body and line-feed picker have paired Windows evidence. Code, Help content, and header fields still need paired validation. |
+| UI-008 | Partial | [T], [P], [Hex observation], [Dialog observation], [Text observation], [Help observation]: Raw and PE Hex, selected dialogs, the single-byte Text view and line-feed selector, and contextual Help geometry have paired Windows evidence. The Text scrollbar, Code, Help content, and header fields still have gaps. |
 | UI-009 | Partial | [T], [Observation]: blue/cyan default aligns with the observed palette; block bytes use yellow on magenta. Search focus, modal alerts, and Help use state-specific colors. Complete palette and accessible theme coverage remain open. |
 | UI-010 | Partial | [T], [Commands]: Ctrl alternatives and keyboard header/profile dialogs; comprehensive command-menu and intercepted-key coverage pending. |
 | UI-011 | Partial | [T], [ST], [Input], [Commands], [Reference], [Observation]: visible deviations and unavailable commands are explicit; the observed runtime now covers primary views and dialogs, while the remaining matrix stays open. |
-| UI-012 | Partial | [T], [Commands]: contextual help and shared command inventory cover current analysis; key-event diagnostics and comprehensive command index UI pending. |
+| UI-012 | Partial | [T], [P], [Help observation], [Commands]: view, edit, and Search Help render contextual rows and preserve modal state. Complete original command lists, a shared command registry, and key-event diagnostics remain open. |
 | UI-013 | Implemented | [F], [D], [A], [T]: bounded viewport, metadata reads and per-row decoding; no eager whole-file disassembly or indexing. |
 | UI-014 | Implemented | [CLI], [P]: ordinary editing has no network/service dependency. |
 | UI-015 | Partial | [P], [Input]: acquired-mode guard and normal exit; ConPTY/signal/failure matrix pending. |
@@ -286,6 +286,7 @@ and the parent epic remain open.
 [Cursor replay]: evidence/native-cursor.cast
 [Dialog observation]: evidence/hiew-8.63-windows-dialogs.json
 [Hex observation]: evidence/hiew-8.63-windows-hex.json
+[Help observation]: evidence/hiew-8.63-windows-help.json
 [Text observation]: evidence/hiew-8.63-windows-text.json
 [Search replay]: evidence/search-repeat.cast
 [Recording]: evidence/executable-analysis.cast
