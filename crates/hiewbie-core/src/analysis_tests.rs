@@ -99,6 +99,112 @@ fn identical_pe_and_arm64_macho_workflows_are_independent_of_host_cpu() {
     }
 }
 
+fn complete_reference_search(editor: &mut Editor<MemorySource>, budget: usize) -> SearchProgress {
+    for _ in 0..editor.document().len().max(1) {
+        match editor.step_search(budget).unwrap().unwrap() {
+            SearchProgress::Pending { .. } => {}
+            result => return result,
+        }
+    }
+    panic!("reference search did not advance");
+}
+
+#[test]
+fn raw_reference_search_follows_instructions_and_preserves_return_history() {
+    let mut bytes = vec![0xcc; 0x80];
+    bytes[..2].copy_from_slice(&[0xeb, 0x3e]);
+    bytes[8..13].copy_from_slice(&[0xe8, 0x33, 0, 0, 0]);
+    bytes[0x10..0x15].copy_from_slice(&[0xa1, 0x40, 0, 0, 0]);
+    bytes[0x50..0x52].copy_from_slice(&[0xeb, 0xee]);
+    // A branch encoding inside MOV's immediate, visible only in bytewise scanning.
+    bytes[0x70..0x75].copy_from_slice(&[0xb8, 0xeb, 0xcd, 0, 0]);
+    let mut editor = editor(bytes);
+    editor
+        .dispatch(Command::Goto(FileOffset::new(0x40)))
+        .unwrap();
+    editor.dispatch(Command::FindReferences).unwrap();
+    for expected in [0, 8, 0x50] {
+        let result = complete_reference_search(&mut editor, 1);
+        assert_eq!(result, SearchProgress::Found(FileOffset::new(expected)));
+        assert_eq!(editor.mode(), ViewMode::Code);
+        assert_eq!(editor.cursor().get(), expected);
+        editor.dispatch(Command::NextReference).unwrap();
+    }
+    assert_eq!(
+        complete_reference_search(&mut editor, 1),
+        SearchProgress::NotFound
+    );
+    assert_eq!(editor.cursor().get(), 0x50);
+    for expected in [0x50, 8, 0, 0x50] {
+        editor.dispatch(Command::ReturnBranch).unwrap();
+        assert_eq!(editor.cursor().get(), expected);
+    }
+    editor
+        .dispatch(Command::Goto(FileOffset::new(0x40)))
+        .unwrap();
+    editor.dispatch(Command::ToggleReferenceAlignment).unwrap();
+    editor.dispatch(Command::FindReferences).unwrap();
+    for expected in [0, 8, 0x50, 0x71] {
+        assert_eq!(
+            complete_reference_search(&mut editor, 1),
+            SearchProgress::Found(FileOffset::new(expected))
+        );
+        editor.dispatch(Command::NextReference).unwrap();
+    }
+    assert_eq!(
+        complete_reference_search(&mut editor, 1),
+        SearchProgress::NotFound
+    );
+    assert!(!editor.document().is_dirty());
+}
+
+#[test]
+fn mapped_reference_search_matches_virtual_operands_and_rejects_stale_continuation() {
+    let mut bytes = pe32();
+    let optional = 0x98;
+    let section = optional + 224;
+    bytes.copy_within(section..section + 40, section + 16);
+    bytes[section..section + 16].fill(0);
+    put16(&mut bytes, 0x84, 0x8664);
+    put16(&mut bytes, 0x94, 240);
+    put16(&mut bytes, optional, 0x20b);
+    put64(&mut bytes, optional + 24, 0x1_4000_0000);
+    bytes[0x200..].fill(0xcc);
+    bytes[0x200..0x205].copy_from_slice(&[0xe8, 0x3b, 0, 0, 0]);
+    bytes[0x210..0x217].copy_from_slice(&[0x48, 0x8b, 0x05, 0x29, 0, 0, 0]);
+    bytes[0x220..0x222].copy_from_slice(&[0x48, 0xb8]);
+    put64(&mut bytes, 0x222, 0x1_4000_1040);
+    let mut editor = editor(bytes);
+    editor
+        .dispatch(Command::Goto(FileOffset::new(0x240)))
+        .unwrap();
+    editor.dispatch(Command::FindReferences).unwrap();
+    assert_eq!(editor.cursor().get(), 0x240);
+    assert!(matches!(
+        editor.step_search(3).unwrap(),
+        Some(SearchProgress::Pending { .. })
+    ));
+    editor.cancel_search();
+    assert_eq!(editor.mode(), ViewMode::Hex);
+    assert_eq!(editor.cursor().get(), 0x240);
+    assert!(!editor.is_searching());
+    editor.dispatch(Command::FindReferences).unwrap();
+    for expected in [0x200, 0x210, 0x220] {
+        assert_eq!(
+            complete_reference_search(&mut editor, 3),
+            SearchProgress::Found(FileOffset::new(expected)),
+        );
+        editor.dispatch(Command::NextReference).unwrap();
+    }
+    editor
+        .document_mut()
+        .overwrite(FileOffset::new(0x220), &[0xcc])
+        .unwrap();
+    assert!(editor.step_search(3).is_err());
+    assert!(editor.dispatch(Command::NextReference).is_err());
+    assert_eq!(editor.cursor().get(), 0x220);
+}
+
 #[test]
 fn modes_share_cursor_and_pending_bytes() {
     let mut editor = raw(vec![0x90, 0xc3], DecodeMode::X86_64);
@@ -502,14 +608,18 @@ fn displayed_branch_labels_reach_letters_and_survive_cursor_movement() {
 }
 
 #[test]
-fn compact_visual_nops_preserve_plain_disassembly_and_instruction_boundaries() {
-    let mut editor = editor(vec![0x90, 0x90, 0x90, 0xC3]);
-    let rows = editor.code_rows(3).unwrap();
+fn compact_visual_padding_preserves_plain_disassembly_and_instruction_boundaries() {
+    let mut editor = editor(vec![0x90, 0x90, 0x90, 0xCC, 0xCC, 0xC3]);
+    let rows = editor.code_rows(5).unwrap();
     assert_eq!(rows[1].offset, FileOffset::new(1));
     assert_eq!(rows[1].instruction.bytes(), [0x90]);
+    assert_eq!(rows[4].offset, FileOffset::new(4));
+    assert_eq!(rows[4].instruction.bytes(), [0xCC]);
     let rows = editor.code_viewport(FileOffset::new(0), 3).unwrap();
     assert_eq!(rows[0].instruction.bytes(), [0x90, 0x90, 0x90]);
     assert_eq!(rows[1].offset, FileOffset::new(3));
+    assert_eq!(rows[1].instruction.bytes(), [0xCC, 0xCC]);
+    assert_eq!(rows[2].offset, FileOffset::new(5));
     editor.dispatch(Command::Move(1)).unwrap();
     editor.dispatch(Command::MoveCode(1)).unwrap();
     assert_eq!(editor.cursor(), FileOffset::new(3));

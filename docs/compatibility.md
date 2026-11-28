@@ -84,13 +84,14 @@ bindings stay planned. Validate contextual details before declaring HIEW parity.
 | View | F5 | Goto |
 | Hex view | F6 | Find data reference |
 | Code view | F6 / Ctrl+F6 | References / next reference |
+| Code view | Alt+F9 | Toggle instruction-aligned and byte-by-byte reference scanning |
 | Text view | F6 / Ctrl+F6 | Select line endings / toggle tab expansion |
 | View | F7 / Ctrl+Enter / Shift+F7 | Search / repeat / repeat |
 | Search | F2 / F4 / F5 / F6 / F7 | Direction / block scope / last hit / Unicode alignment / instruction input |
 | Hex / Code view | F8 | Executable headers |
 | Text view | F8 | Select translation table |
 | PE header | F5 / F6 / F7 / F9 | Entry / sections / imports / exports |
-| Code | Default labels 1-9,A-Z / 0 | Follow target / return; JumpTable is configurable |
+| Code | Default labels 1-9,A-Z / 0 | Follow target / return or cycle reference hits; JumpTable is configurable |
 | View | Backspace | Return after goto/find/reference navigation |
 | View | + / - | Save the screen in the first free slot / restore the active slot |
 | View | Alt+1…8 / Alt+Minus / Alt+0 | Restore a numbered slot / remove the active slot / clear all views' bookmarks |

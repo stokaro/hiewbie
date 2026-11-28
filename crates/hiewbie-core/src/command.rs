@@ -8,6 +8,7 @@ use crate::bookmark::{
 use crate::calculator::{self, CalculationError};
 use crate::formats::{Endian, Executable, FileRange, VirtualAddress};
 use crate::instructions::DecodeMode;
+use crate::references::{ReferenceScan, ReferenceSearch};
 use crate::search::SearchSession;
 use crate::symbols::{SymbolTable, SymbolTarget};
 use crate::{ByteSource, Document, Error, FileOffset, SearchProgress, SearchRepeat, SearchRequest};
@@ -63,6 +64,9 @@ pub enum Command {
     SetRaw(bool),
     FollowBranch(usize),
     ReturnBranch,
+    FindReferences,
+    NextReference,
+    ToggleReferenceAlignment,
     MoveCode(i32),
     ResyncCode,
     SetMode(ViewMode),
@@ -120,6 +124,9 @@ impl Command {
             Self::SetRaw(_) => "analysis.set-raw",
             Self::FollowBranch(_) => "navigate.follow-branch",
             Self::ReturnBranch => "navigate.return-branch",
+            Self::FindReferences => "analysis.find-references",
+            Self::NextReference => "analysis.next-reference",
+            Self::ToggleReferenceAlignment => "analysis.toggle-reference-alignment",
             Self::MoveCode(_) => "navigate.code",
             Self::ResyncCode => "analysis.resynchronize",
             Self::SetMode(_) => "view.set-mode",
@@ -268,12 +275,24 @@ pub const COMMANDS: &[CommandInfo] = &[
         description: "Select raw interpretation or restore executable detection",
     },
     CommandInfo {
+        id: "analysis.find-references",
+        description: "Find the first x86 reference to the cursor address",
+    },
+    CommandInfo {
+        id: "analysis.next-reference",
+        description: "Continue the current x86 reference search",
+    },
+    CommandInfo {
+        id: "analysis.toggle-reference-alignment",
+        description: "Toggle between instruction and byte alignment for reference searches",
+    },
+    CommandInfo {
         id: "navigate.follow-branch",
         description: "Follow a numbered direct destination from freshly decoded bytes",
     },
     CommandInfo {
         id: "navigate.return-branch",
-        description: "Restore the file position and interpretation before a branch",
+        description: "Restore the position before a branch or cycle through reference hits",
     },
     CommandInfo {
         id: "navigate.code",
@@ -343,6 +362,7 @@ pub struct Editor<S: ByteSource> {
     read_only: bool,
     analysis: Analysis,
     search: SearchSession,
+    references: ReferenceSearch,
     block: Option<BlockMark>,
     bookmarks: Bookmarks,
 }
@@ -358,6 +378,7 @@ impl<S: ByteSource> Editor<S> {
             read_only,
             analysis: Analysis::default(),
             search: SearchSession::default(),
+            references: ReferenceSearch::default(),
             block: None,
             bookmarks: Bookmarks::default(),
         }
@@ -474,11 +495,11 @@ impl<S: ByteSource> Editor<S> {
         &mut self,
         start: FileOffset,
         limit: usize,
-        group_nops: bool,
+        group_padding: bool,
     ) -> Result<Vec<CodeRow>, Error> {
         let rows = self
             .analysis
-            .rows(&mut self.document, start, limit, group_nops)?;
+            .rows(&mut self.document, start, limit, group_padding)?;
         let selected_row = rows.iter().find_map(|row| {
             let end = row.offset.get() + row.instruction.length as u64;
             (row.offset <= self.cursor && self.cursor.get() < end).then_some((row.offset, end))
@@ -486,7 +507,7 @@ impl<S: ByteSource> Editor<S> {
         self.analysis.numbered_window = Some(CodeWindow {
             start,
             limit,
-            group_nops,
+            group_padding,
             generation: self.document.generation(),
             selected_row,
         });
@@ -540,11 +561,13 @@ impl<S: ByteSource> Editor<S> {
     }
 
     pub fn start_search(&mut self, request: SearchRequest) {
+        self.references.pending = None;
         self.search
             .start(request, self.cursor, self.document.generation());
     }
 
     pub fn repeat_search(&mut self) -> SearchRepeat {
+        self.references.pending = None;
         self.search
             .repeat(self.cursor, self.document.generation(), self.document.len())
     }
@@ -555,14 +578,49 @@ impl<S: ByteSource> Editor<S> {
 
     pub fn cancel_search(&mut self) {
         self.search.cancel();
+        self.references.pending = None;
     }
 
     #[must_use]
     pub fn is_searching(&self) -> bool {
-        self.search.is_pending()
+        self.search.is_pending() || self.is_searching_references()
+    }
+
+    #[must_use]
+    pub fn is_searching_references(&self) -> bool {
+        self.references.pending.is_some()
+    }
+
+    /// Scan position for the progress title, including the last completed scan.
+    pub fn reference_scan_position(&self) -> Option<FileOffset> {
+        self.references
+            .pending
+            .or(self.references.resume)
+            .map(|scan| self.clamp(scan.position().get()))
     }
 
     pub fn step_search(&mut self, budget: usize) -> Result<Option<SearchProgress>, Error> {
+        if let Some(mut scan) = self.references.pending.take() {
+            self.refresh_analysis();
+            if !scan.is_current(&self.analysis, self.document.generation()) {
+                return Err(analysis_error(
+                    "document or decode profile changed during reference search",
+                ));
+            }
+            let progress = scan.step(&self.analysis, &mut self.document, budget)?;
+            match progress {
+                SearchProgress::Pending { .. } => self.references.pending = Some(scan),
+                SearchProgress::Found(offset) => {
+                    self.references.resume = Some(scan);
+                    self.set_mode(ViewMode::Code);
+                    self.analysis.walk.clear();
+                    self.cursor = offset;
+                    self.remember_code_location(true);
+                }
+                SearchProgress::NotFound => self.references.resume = Some(scan),
+            }
+            return Ok(Some(progress));
+        }
         let progress = self.search.step(&mut self.document, budget)?;
         if let Some(SearchProgress::Found(offset)) = progress {
             self.dispatch(Command::Goto(offset))?;
@@ -577,6 +635,7 @@ impl<S: ByteSource> Editor<S> {
                     return Err(Error::ReadOnly);
                 }
                 if !self.editing {
+                    self.references.pending = None;
                     self.document.discard();
                     self.finish_block();
                     self.editing = true;
@@ -770,7 +829,19 @@ impl<S: ByteSource> Editor<S> {
                 self.analysis.invalidate();
             }
             Command::FollowBranch(number) => self.follow_branch(number)?,
-            Command::ReturnBranch => self.return_branch()?,
+            Command::ReturnBranch => self.return_code()?,
+            Command::FindReferences => self.start_references(false)?,
+            Command::NextReference => self.start_references(true)?,
+            Command::ToggleReferenceAlignment if !self.editing && self.mode == ViewMode::Code => {
+                self.references.bytewise = !self.references.bytewise;
+                self.references.pending = None;
+                self.references.resume = None;
+            }
+            Command::ToggleReferenceAlignment => {
+                return Err(analysis_error(
+                    "reference scan mode is available in Code view",
+                ));
+            }
             Command::MoveCode(count) => self.move_code(count)?,
             Command::ResyncCode => {
                 self.analysis.walk.clear();
@@ -900,7 +971,7 @@ impl<S: ByteSource> Editor<S> {
             .numbered_window
             .filter(|window| window.generation == self.document.generation());
         let rows = if let Some(window) = window {
-            self.decode_window(window.start, window.limit, window.group_nops)?
+            self.decode_window(window.start, window.limit, window.group_padding)?
         } else {
             self.code_rows(MAX_CODE_ROWS)?
         };
@@ -917,12 +988,7 @@ impl<S: ByteSource> Editor<S> {
             .analysis
             .branch_offset(target.address, self.document.len())?;
         let target_mode = target.mode;
-        self.analysis.remember(Location {
-            offset: self.cursor,
-            interpretation: self.analysis.interpretation,
-            symbol_mode: self.analysis.symbol_mode,
-            generation: self.document.generation(),
-        });
+        self.remember_code_location(false);
         if self.decode_context().mode != Some(target_mode) {
             self.analysis.interpretation.mode = Some(target_mode);
             self.analysis.symbol_mode = None;
@@ -932,7 +998,44 @@ impl<S: ByteSource> Editor<S> {
         Ok(())
     }
 
-    fn return_branch(&mut self) -> Result<(), Error> {
+    fn start_references(&mut self, resume: bool) -> Result<(), Error> {
+        if self.editing || self.mode == ViewMode::Text || (resume && self.mode != ViewMode::Code) {
+            return Err(analysis_error(
+                "reference search is available in Hex and Code view",
+            ));
+        }
+        self.refresh_analysis();
+        let generation = self.document.generation();
+        let scan = if resume {
+            self.references
+                .resume
+                .filter(|scan| scan.is_current(&self.analysis, generation))
+                .ok_or_else(|| analysis_error("no current reference search; use F6 first"))?
+        } else {
+            ReferenceScan::new(
+                &self.analysis,
+                self.cursor,
+                self.document.len(),
+                generation,
+                self.references.bytewise,
+            )?
+        };
+        self.search.cancel();
+        self.references.pending = Some(scan);
+        Ok(())
+    }
+
+    fn remember_code_location(&mut self, reference: bool) {
+        self.analysis.remember(Location {
+            offset: self.cursor,
+            interpretation: self.analysis.interpretation,
+            symbol_mode: self.analysis.symbol_mode,
+            generation: self.document.generation(),
+            reference,
+        });
+    }
+
+    fn return_code(&mut self) -> Result<(), Error> {
         let location = self
             .analysis
             .history
@@ -953,6 +1056,10 @@ impl<S: ByteSource> Editor<S> {
             self.analysis.symbol_mode = location.symbol_mode;
         }
         self.analysis.history.pop_back();
+        if location.reference {
+            // HIEW cycles through reference hits, starting with the most recent hit.
+            self.analysis.history.push_front(location);
+        }
         self.cursor = location.offset;
         Ok(())
     }
@@ -965,10 +1072,9 @@ impl<S: ByteSource> Editor<S> {
             });
         }
         self.refresh_analysis();
-        let window = self
-            .analysis
-            .numbered_window
-            .filter(|window| window.generation == self.document.generation() && window.group_nops);
+        let window = self.analysis.numbered_window.filter(|window| {
+            window.generation == self.document.generation() && window.group_padding
+        });
         if count != 0
             && let Some((start, end)) = window.and_then(|value| value.selected_row)
             && start <= self.cursor

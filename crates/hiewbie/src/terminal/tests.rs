@@ -609,6 +609,69 @@ fn shift_f7_repeats_search_only_from_view_without_modifier_collisions() {
 }
 
 #[test]
+fn x86_references_switch_hex_to_decode_and_share_the_search_dialog() {
+    let mut fixture = [0xcc; 0x40];
+    fixture[..2].copy_from_slice(&[0xeb, 0x1e]);
+    fixture[8..13].copy_from_slice(&[0xe8, 0x13, 0, 0, 0]);
+    let mut ui = ui(&fixture);
+    ui.dispatch(Command::Goto(FileOffset::new(0x20)));
+    assert!(screen(&mut ui, 80, 25).contains("6DatRef"));
+    key(&mut ui, KeyCode::F(6));
+    assert!(screen(&mut ui, 80, 25).contains("Processing..."));
+    assert!(!ui.has_input_caret());
+    ui.advance_search();
+    assert_eq!(ui.editor.mode(), ViewMode::Code);
+    assert_eq!(ui.editor.cursor().get(), 0);
+    let first = screen(&mut ui, 80, 25);
+    assert!(first.contains("6Refer"));
+    assert!(first.contains("00000000: EB1E"));
+    control(&mut ui, KeyCode::F(6));
+    ui.advance_search();
+    assert_eq!(ui.editor.cursor().get(), 8);
+    control(&mut ui, KeyCode::Char('t'));
+    ui.advance_search();
+    let missed = screen(&mut ui, 80, 25);
+    assert!(missed.contains("Target not found"));
+    assert!(missed.contains("╔═"));
+    assert!(missed.lines().next().unwrap().contains("0000003F│▓"));
+    assert_eq!(ui.editor.cursor().get(), 8);
+    control(&mut ui, KeyCode::F(6));
+    assert!(ui.dialog.is_none());
+    assert!(!ui.editor.is_searching());
+    key(&mut ui, KeyCode::Backspace);
+    assert_eq!(ui.editor.cursor().get(), 8);
+    key(&mut ui, KeyCode::Char('0'));
+    assert_eq!(ui.editor.cursor().get(), 0);
+    key(&mut ui, KeyCode::Char('0'));
+    assert_eq!(ui.editor.cursor().get(), 8);
+    key(&mut ui, KeyCode::F(3));
+    key(&mut ui, KeyCode::F(6));
+    assert!(ui.editor.is_editing());
+    assert!(!ui.editor.is_searching());
+    assert_eq!(bytes(&mut ui), fixture);
+}
+
+#[test]
+fn long_reference_scan_progresses_in_full_size_steps_and_can_be_canceled() {
+    let mut ui = ui(&vec![0xcc; SEARCH_STEP_BYTES * 3]);
+    let start = FileOffset::new(0x20);
+    ui.dispatch(Command::Goto(start));
+    control(&mut ui, KeyCode::Char('d'));
+    ui.advance_search();
+    assert!(ui.editor.is_searching_references());
+    assert_eq!(
+        ui.scan_position,
+        Some(FileOffset::new((SEARCH_STEP_BYTES - 14) as u64))
+    );
+    assert!(screen(&mut ui, 80, 25).contains("Processing..."));
+    key(&mut ui, KeyCode::Esc);
+    assert!(!ui.editor.is_searching());
+    assert_eq!(ui.editor.cursor(), start);
+    assert_eq!(ui.editor.mode(), ViewMode::Hex);
+    assert!(!ui.editor.document().is_dirty());
+}
+
+#[test]
 fn search_text_is_utf8_and_hex_patterns_are_bounded() {
     let mut ui = ui("a\u{0436}z".as_bytes());
     key(&mut ui, KeyCode::F(7));

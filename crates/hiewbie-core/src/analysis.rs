@@ -19,7 +19,7 @@ pub const BRANCH_LABELS: &[u8] = b"123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 pub(crate) struct CodeWindow {
     pub start: FileOffset,
     pub limit: usize,
-    pub group_nops: bool,
+    pub group_padding: bool,
     pub generation: u64,
     pub selected_row: Option<(FileOffset, u64)>,
 }
@@ -60,6 +60,7 @@ pub(crate) struct Location {
     pub interpretation: Interpretation,
     pub symbol_mode: Option<DecodeMode>,
     pub generation: u64,
+    pub reference: bool,
 }
 
 #[derive(Debug, Default)]
@@ -301,7 +302,7 @@ impl Analysis {
         document: &mut Document<S>,
         start: FileOffset,
         limit: usize,
-        group_nops: bool,
+        group_padding: bool,
     ) -> Result<Vec<CodeRow>, Error> {
         if limit > MAX_CODE_ROWS {
             return Err(Error::LimitExceeded {
@@ -360,14 +361,18 @@ impl Analysis {
             if !mapped {
                 instruction.direct_branch = None;
             }
-            if group_nops && context.endian == Endian::Little && mode.is_x86() && buffer[0] == 0x90
+            let first = buffer[0];
+            if group_padding
+                && context.endian == Endian::Little
+                && mode.is_x86()
+                && matches!(first, 0x90 | 0xcc)
             {
                 let length = buffer[..count]
                     .iter()
-                    .take_while(|byte| **byte == 0x90)
+                    .take_while(|byte| **byte == first)
                     .count();
                 instruction.length = length;
-                instruction.bytes[..length].fill(0x90);
+                instruction.bytes[..length].fill(first);
             }
             let numbered = instruction.direct_branch.as_ref().and_then(|target| {
                 if let Some(index) = branch_destinations.iter().position(|known| known == target) {

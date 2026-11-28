@@ -109,8 +109,8 @@ impl<S: ByteSource> Ui<S> {
         self.render_byte_title(frame, area, &address, &detail, &column);
     }
 
-    pub(super) fn render_code_title(&self, frame: &mut Frame<'_>, area: Rect) {
-        let cursor = self.editor.cursor();
+    pub(super) fn render_code_title(&self, frame: &mut Frame<'_>, area: Rect, scan: Option<u64>) {
+        let cursor = scan.map_or_else(|| self.editor.cursor(), FileOffset::new);
         let profile = self.editor.decode_context();
         let editing = self.editor.is_editing();
         let image = self.editor.executable().filter(|_| !editing);
