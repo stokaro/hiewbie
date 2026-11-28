@@ -190,8 +190,8 @@ cover visiting, switching, and reopening files.
 
 | Requirement | Status | Evidence and remaining difference |
 | --- | --- | --- |
-| CALC-001 | Partial | [Calculator tests], [A], [T], [Calculator observation], [Calculator replay]: 64-bit wrapping HIEW expressions, bases, diagnostics, data reads, and native dialog. Ctrl+E and the shared core API provide checked signed arithmetic. Expression grammar edge cases and full parity coverage remain open. |
-| CALC-002 | Partial | [Commands], [Calculator tests]: legacy tags encode signedness and width, and use little-endian byte order. Explicit byte-order control remains open. |
+| CALC-001 | Implemented | [Calculator contract], [Calculator tests], [A], [T], [Calculator observation], [Calculator replay]: wrapping and checked 64-bit expressions with a documented precedence/base/operator corpus, bounded cursor reads and precise errors; regression coverage preserves pending bytes, undo/redo, cursor and search state. The title identifies checked evaluation. Broader original-runtime differential capture remains in [#24](https://github.com/stokaro/hiewbie/issues/24); independent corpus results are not new reference observations. |
+| CALC-002 | Implemented | [Calculator contract], [Commands], [Calculator tests], [T], [Calculator replay]: tag case and b/w/d/q identify signedness and 8/16/32/64-bit width. Explicit per-read :le/:be suffixes select byte order; bare tags preserve legacy LE. All widths, sign extension, mixed orders, unaligned/EOF reads and invalid qualifiers have generated tests. |
 
 ## CRYPT
 
@@ -291,6 +291,7 @@ cover visiting, switching, and reopening files.
 [Calculator observation]: evidence/hiew-8.63-windows-calculator.json
 [Calculator replay]: evidence/calculator.cast
 [Calculator tests]: ../crates/hiewbie-core/src/calculator_tests.rs
+[Calculator contract]: calculator.md
 [Cursor replay]: evidence/native-cursor.cast
 [Dialog observation]: evidence/hiew-8.63-windows-dialogs.json
 [Hex observation]: evidence/hiew-8.63-windows-hex.json

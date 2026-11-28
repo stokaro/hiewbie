@@ -844,13 +844,23 @@ def calculator(binary: Path, directory: Path, *, record: bool) -> list[list]:
         expect_input(b"1+2*3\r", "Evaluate the expression", b"\x1b[13;11H7", b"\x1b[14;72H111")
         expect_input(b"\x1bOP", "F1 opens calculator help", b"[Calculator]", b"\x1b[?25l")
         expect_input(ESC, "Restore the expression caret", b"\x1b[4 q", b"\x1b[11;12H")
-        expect_input(PAGE_UP + b"7FFFFFFFFFFFFFFF+1" + CTRL_E, "Ctrl+E checks signed overflow", b"Error:", b"overflow")
+        expect_input(PAGE_UP + b"7FFFFFFFFFFFFFFF+1" + CTRL_E, "Ctrl+E checks signed overflow", b"[checked i64]", b"Error:", b"overflow")
         expect_input(b"\r", "Enter evaluates the same expression with wrapping arithmetic", b"-9223372036854775808")
-        expect_input(b"\x1b[5~1/0\r", "Page Up clears the expression before testing division by zero", b"Error:", b"Division", b"zero")
+        expect_input(PAGE_UP + b"@W:le\r", "Read the same two bytes in little-endian order", b"256")
+        expect_input(PAGE_UP + b"@W:be\r", "Read the same two bytes in big-endian order", b"\x1b[13;11H1  ")
+        expect_input(PAGE_UP + b"@W:be+@W:le" + CTRL_E, "Combine explicit orders in checked arithmetic", b"[checked i64]", b"257")
+        expect_input(b"\x1bOP\x1b[F", "Read endian and checked-mode Help", b"@W:le / @W:be", b"Ctrl-E", b"checks", b"overflow")
+        expect_input(ESC, "Restore the mixed-order expression caret after Help", b"\x1b[4 q", b"\x1b[11;18H")
+        expect_input(PAGE_UP + b"@W:middle\r", "Reject an unsupported byte order", b"Error:", b":le", b":be", b"tag")
+        expect_input(b"\x1b[5~1/0\r", "Page Up clears the expression before testing division by zero", b"Division")
         expect_input(ESC, "Return to the pending low nibble", b"\x1b[2;15H")
         session.send(b"5", "Complete the pending byte")
         session.expect_file(FIXTURE_BYTES, mtime_ns=mtime_ns)
         expect_input(b"\x0c", "Ctrl+L reopens Calculator and restores its result", b"Error:", b"Division", b"zero")
+        session.send(ESC, "Close Calculator before selecting the completed edit")
+        session.send(LEFT, "Return to the completed pending byte")
+        session.send(b"\x0c", "Reopen Calculator over the logical edit")
+        expect_input(PAGE_UP + b"@W:be\r", "Big-endian reads include the pending A5 byte", b"Sig:42241")
         session.send(ESC, "Close Calculator")
         session.send(ESC, "Discard the Hex edit")
         session.send(ESC, "Exit without modifying the file", expect_exit=True)
@@ -1117,7 +1127,7 @@ def main() -> int:
             cursor_events = native_cursor(binary, root / "cursor", record=options.record_cursor is not None)
             print("PASS: native edit/search cursor shape, cell position, and default restoration")
             calculator_events = calculator(binary, root / "calculator", record=options.record_calculator is not None)
-            print("PASS: calculator evaluation, Help, diagnostic, and restoration of pending Hex input")
+            print("PASS: calculator wrapping/checked/endian evaluation, Help, diagnostics, and pending Hex input")
             discard_resize(binary, root / "discard")
             print("PASS: narrow resize, 80x25 restoration, discard preserves bytes and mtime")
             read_only(binary, root / "readonly")
@@ -1224,7 +1234,7 @@ def main() -> int:
             write_recording(
                 options.record_calculator,
                 calculator_events,
-                title="hiewbie Calculator: evaluation, diagnostics, and return to Hex editing",
+                title="hiewbie Calculator: wrapping, checked and endian reads, Help, and Hex editing",
                 filename=FIXTURE_NAME,
             )
             print(f"Calculator recording: {options.record_calculator}")

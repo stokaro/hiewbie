@@ -46,7 +46,7 @@ from it. The public core exports `COMMANDS` and `Command::id()` from
 | `analysis.resynchronize` | None | Start decoding at the selected byte and clear cached movement boundaries |
 | `view.set-mode` | `Hex`, `Text`, or `Code` | Select a view without changing bytes |
 | `view.cycle-mode` | None | Cycle Text → Hex → Code → Text |
-| `tools.calculator` | None | Open the Calculator without changing document state |
+| `tools.calculator` | None | Open the read-only 64-bit Calculator with wrapping/checked arithmetic and explicit `:le`/`:be` reads |
 | `file.save` | None | Return a native-save effect; require edit mode and write capability |
 
 The native frontend owns help and input dialogs, key translation, current input
@@ -171,6 +171,8 @@ Alt+= or Ctrl+L opens the Calculator in view or edit mode. Enter evaluates
 the expression. Insert toggles between overwrite and insert, Page Up clears
 the input, and Esc closes the dialog. Reopening restores the expression and
 the last result. F1 shows operators, number bases, and the cursor-value tags.
+The [expression contract](calculator.md) specifies precedence, associativity,
+limits, errors and the distinction between observed HIEW behavior and additions.
 
 The shared `Editor::calculate` uses hexadecimal by default. Use `0x` or
 `h` for explicit hexadecimal, or the `i`, `o`, and `t` suffixes for
@@ -185,13 +187,21 @@ multiplication, division, and remainder. Both forms accept full 64-bit bit
 patterns. Checked shifts require a count from 0 through 63 and still shift
 the bit pattern with zero fill. The same expression can be evaluated again
 with Enter using HIEW arithmetic.
+The title marks the last checked result or error with `[checked i64]`; Enter
+restores the original Calculator title. Clearing the field retains the last
+result and its mode label.
 
 `@b`, `@w`, `@d`, and `@q` read signed little-endian values of 1, 2,
 4, or 8 bytes. The uppercase versions read the same widths as unsigned
-values. `@o` uses the local address from the current executable or raw
-mapping. `@O` uses the file offset. Reads see the pending byte transaction
-and report short reads. A single pending hex digit stays in the editor and
-is applied only after the user completes the byte.
+values. The additive suffixes `:le` and `:be` explicitly select little or big
+endian for that read; they are case-insensitive. For example, `@W:be` reads an
+unsigned big-endian word and `@w:be` sign-extends the same two bytes. Different
+orders may appear in one expression, and bare tags remain little endian.
+Unknown widths or orders are errors. `@o` uses the local address from the current
+executable or raw mapping. `@O` uses the file offset. Reads see the pending byte
+transaction and report short reads. Offset tags reject byte-order suffixes. A
+single pending hex digit stays in the editor and is applied only after the user
+completes the byte.
 
 ### Text view
 
