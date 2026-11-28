@@ -128,7 +128,7 @@ cover visiting, switching, and reopening files.
 | ISA-009 | Implemented | [D], [T], [ACLI]: mode/bitness, endian, instruction lengths and backend version are reported; parsed CPU and explicit profile remain distinct. |
 | ISA-010 | Implemented | [D], [T], [ACLI]: Decoded, Unknown, InvalidForMode, Truncated, and Unsupported preserve raw bytes and guarantee progress for nonempty input. InvalidForMode covers recognized legacy-only opcodes in long mode. |
 | ISA-011 | Implemented | [A], [T], [ACLI]: unknown machines, malformed metadata and unsupported instruction order preserve raw viewing and byte editing. |
-| ISA-012 | Partial | [D], [A], [T], [P]: visible direct branches have 1–9/A–Z labels and return via 0 or Backspace. Includes ARM/Thumb mode exchange. Indirect and far resolution remain open. |
+| ISA-012 | Partial | [D], [A], [T], [P], [Decode operand observation]: Decode labels follow direct branches, mapped x86 data operands, and near indirect x86 targets whose complete pointer and destination have checked file mappings. Return supports ARM/Thumb mode exchange and Hex to Decode. Far and loader-resolved destinations remain open. |
 | ISA-013 | Partial | [A], [T], [Analysis], [Symbols], [Reference observations]: raw x86 near branches and selected mapped memory and literal operands are searchable in bounded steps. General references, loader symbol resolution and control-flow analysis remain open. |
 | ISA-014 | Implemented | [A], [T]: current logical bytes drive re-decoding after edits and undo. Generation and profile changes invalidate dependent reference continuation. Profile changes and resynchronization clear saved viewport labels. |
 | ISA-015 | Implemented | [A], [T], [Commands]: Code-view / resynchronizes at the selected byte; instruction navigation retraces known boundaries or uses a bounded byte/alignment fallback. |
@@ -303,6 +303,7 @@ cover visiting, switching, and reopening files.
 [Bookmark observation]: evidence/hiew-8.63-windows-bookmarks.json
 [Bookmark replay]: evidence/bookmarks.cast
 [Decode observation]: evidence/hiew-8.63-windows-decode.json
+[Decode operand observation]: evidence/hiew-8.63-windows-x86-operands.json
 [x86 Decode coverage]: x86-decode-coverage.md
 [Reference observations]: evidence/hiew-8.63-windows-references.json
 [Decode replay]: evidence/decode.cast

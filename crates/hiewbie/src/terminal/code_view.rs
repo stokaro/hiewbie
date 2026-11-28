@@ -1,5 +1,5 @@
-use hiewbie_core::formats::BinaryFormat;
-use hiewbie_core::instructions::{DecodeMode, DecodeStatus};
+use hiewbie_core::formats::{BinaryFormat, VirtualAddress};
+use hiewbie_core::instructions::{AddressOperand, DecodeMode, DecodeStatus};
 use hiewbie_core::{BRANCH_LABELS, ByteSource, CodeRow, FileOffset};
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -109,17 +109,23 @@ impl<S: ByteSource> Ui<S> {
             }
             let used = row.instruction.length * 2;
             spans.push(Span::raw(" ".repeat(30 - used)));
-            let incoming = rows.iter().find_map(|source| {
-                (source.instruction.direct_branch.as_ref()?.address == row.instruction.address)
+            let mut labels = rows.iter().filter_map(|source| {
+                (destination_address(source) == Some(row.instruction.address))
                     .then(|| branch_label(source))
                     .flatten()
+            });
+            let incoming = labels.next().map(|first| {
+                if labels.any(|label| label != first) {
+                    '*'
+                } else {
+                    first
+                }
             });
             spans.push(incoming.map_or_else(
                 || Span::raw(" "),
                 |label| Span::styled(label.to_string(), BRANCH),
             ));
-            let mut instruction =
-                instruction_spans(row, context.mode, incoming.is_some(), mapped, wide);
+            let mut instruction = instruction_spans(row, context.mode, mapped, wide);
             if row.instruction.bytes() == [0xC3] && context.mode.is_some_and(DecodeMode::is_x86) {
                 instruction.extend([Span::raw(" ; "), Span::raw(format!("{}-", "-^".repeat(15)))]);
             }
@@ -174,10 +180,19 @@ fn branch_label(row: &CodeRow) -> Option<char> {
         .map(char::from)
 }
 
+fn destination_address(row: &CodeRow) -> Option<VirtualAddress> {
+    if let Some(target) = row.instruction.direct_branch {
+        return Some(target.address);
+    }
+    match row.operand? {
+        AddressOperand::Indirect { .. } => row.indirect_target,
+        operand => Some(operand.address()),
+    }
+}
+
 fn instruction_spans(
     row: &CodeRow,
     mode: Option<DecodeMode>,
-    marked: bool,
     mapped: bool,
     wide: bool,
 ) -> Vec<Span<'static>> {
@@ -228,6 +243,25 @@ fn instruction_spans(
             }
             (name, operands)
         }
+        "jmp" | "call"
+            if matches!(
+                instruction.address_operand,
+                Some(AddressOperand::Indirect { .. })
+            ) =>
+        {
+            for (intel, hiew) in [
+                ("word ptr ", "w,"),
+                ("dword ptr ", "d,"),
+                ("qword ptr ", "q,"),
+            ] {
+                if let Some(memory) = operands.strip_prefix(intel) {
+                    memory_size = Some(hiew);
+                    operands = memory;
+                    break;
+                }
+            }
+            (name, operands)
+        }
         "pclmullqlqdq" | "pclmulhqlqdq" | "pclmullqhqdq" | "pclmulhqhqdq" => {
             selector = instruction.bytes().last().copied();
             ("pclmulqdq", operands)
@@ -235,7 +269,7 @@ fn instruction_spans(
         "jmp" if instruction.bytes().first() == Some(&0xEB) => ("jmps", operands),
         _ => (name, operands),
     };
-    let mnemonic_style = if marked || name == "retn" {
+    let mnemonic_style = if name == "retn" {
         BYTE_BODY.fg(Color::Cyan)
     } else {
         BYTE_BODY
@@ -258,12 +292,22 @@ fn instruction_spans(
             format!("0{}", address_digits(address, wide))
         };
         spans.push(Span::styled(address, BYTE_BODY.fg(Color::LightGreen)));
-        append_branch_indicator(&mut spans, row);
     } else {
         if let Some(size) = memory_size {
             spans.push(Span::styled(size, MEMORY));
         }
-        spans.extend(operand_spans(operands, mode));
+        if let Some(AddressOperand::Literal(address)) = row.operand
+            && let Some((register, _)) = operands.split_once(',')
+        {
+            spans.extend(operand_spans(register, mode));
+            spans.push(Span::raw(","));
+            spans.push(Span::styled(
+                absolute_operand(address.get(), mode),
+                BYTE_BODY.fg(Color::LightGreen),
+            ));
+        } else {
+            spans.extend(operand_spans(operands, mode));
+        }
         if let Some(selector) = selector {
             spans.push(Span::raw(","));
             spans.push(Span::styled(
@@ -272,14 +316,19 @@ fn instruction_spans(
             ));
         }
     }
+    append_branch_indicator(&mut spans, row);
     spans
 }
 
 fn append_branch_indicator(spans: &mut Vec<Span<'static>>, row: &CodeRow) {
     if let Some(label) = branch_label(row)
-        && let Some(target) = row.instruction.direct_branch.as_ref()
+        && let Some(address) = row
+            .instruction
+            .direct_branch
+            .map(|branch| branch.address)
+            .or_else(|| row.operand.map(AddressOperand::address))
     {
-        let arrow = if target.address < row.instruction.address {
+        let arrow = if address < row.instruction.address {
             '↑'
         } else {
             '↓'
@@ -297,18 +346,23 @@ fn hex_literal(digits: &str) -> String {
     }
 }
 
+fn absolute_operand(address: u64, mode: Option<DecodeMode>) -> String {
+    if address == 0 {
+        "0".to_owned()
+    } else if address > u64::from(u32::MAX) {
+        address_digits(address, true)
+    } else if mode == Some(DecodeMode::X86_16) && address <= u64::from(u16::MAX) {
+        format!("{address:05X}")
+    } else {
+        format!("{address:09X}")
+    }
+}
+
 fn memory_operand(source: &str, mode: Option<DecodeMode>) -> String {
     if let Some(digits) = source.strip_prefix("0x")
         && let Ok(address) = u64::from_str_radix(digits, 16)
     {
-        let text = if address > u64::from(u32::MAX) {
-            address_digits(address, true)
-        } else if mode == Some(DecodeMode::X86_16) && address <= u64::from(u16::MAX) {
-            format!("{address:05X}")
-        } else {
-            format!("{address:09X}")
-        };
-        return format!("[{text}]");
+        return format!("[{}]", absolute_operand(address, mode));
     }
     let mut result = String::new();
     let mut negative = false;

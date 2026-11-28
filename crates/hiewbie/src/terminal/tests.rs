@@ -1316,6 +1316,43 @@ fn code_pe64_absolute_memory_uses_split_addresses_only_when_wide() {
 }
 
 #[test]
+fn code_pe64_operand_labels_open_hex_at_the_byte_and_restore_the_code_window() {
+    let mut image = pe_fixture();
+    // Data at an unaligned byte followed by a near-jump slot at offset 0x218.
+    image[0x200..0x20d].copy_from_slice(&[0x4c, 0x8b, 0x0d, 10, 0, 0, 0, 0xff, 0x25, 11, 0, 0, 0]);
+    image[0x211] = 0x5a;
+    image[0x217] = 0xc3;
+    image[0x218..0x220].copy_from_slice(&0x1_4000_1017_u64.to_le_bytes());
+    let mut ui = ui(&image);
+    ui.editor.dispatch(Command::GotoEntry).unwrap();
+    key(&mut ui, KeyCode::Enter);
+    let code = screen(&mut ui, 120, 25);
+    assert!(code.contains("mov          r9,[00000001`40001011] --↓1"));
+    assert!(code.contains("jmp          q,[00000001`40001018] --↓2"));
+    key(&mut ui, KeyCode::Down);
+    let _ = screen(&mut ui, 120, 25);
+    key(&mut ui, KeyCode::Char('1'));
+    assert_eq!(ui.editor.mode(), ViewMode::Hex);
+    assert_eq!(ui.editor.cursor().get(), 0x211);
+    assert!(
+        screen(&mut ui, 120, 25)
+            .lines()
+            .nth(1)
+            .unwrap()
+            .starts_with("↑.00000001`40001010:  00 5A")
+    );
+    key(&mut ui, KeyCode::Backspace);
+    assert_eq!(ui.editor.mode(), ViewMode::Code);
+    assert_eq!(ui.editor.cursor().get(), 0x207);
+    assert_eq!(ui.top, 0x200);
+    let _ = screen(&mut ui, 120, 25);
+    key(&mut ui, KeyCode::Char('2'));
+    assert_eq!(ui.editor.mode(), ViewMode::Code);
+    assert_eq!(ui.editor.cursor().get(), 0x217);
+    assert_eq!(bytes(&mut ui), image);
+}
+
+#[test]
 fn code_edit_restore_keys_preserve_the_view_branch_return_history() {
     let original = pe_fixture();
     let mut ui = code_at_entry();

@@ -1,13 +1,15 @@
 use std::fmt;
 
-use crate::analysis::{Analysis, BRANCH_LABELS, CodeWindow, Location, analysis_error};
+use crate::analysis::{
+    Analysis, BRANCH_LABELS, CodeWindow, Location, LocationKind, analysis_error,
+};
 use crate::block::{BlockBoundary, BlockMark, BlockSelection};
 use crate::bookmark::{
     BOOKMARK_SLOTS, Bookmark, BookmarkCommand, BookmarkMark, BookmarkViewport, Bookmarks,
 };
 use crate::calculator::{self, CalculationError};
 use crate::formats::{Endian, Executable, FileRange, VirtualAddress};
-use crate::instructions::DecodeMode;
+use crate::instructions::{AddressOperand, DecodeMode};
 use crate::references::{ReferenceScan, ReferenceSearch};
 use crate::search::SearchSession;
 use crate::symbols::{SymbolTable, SymbolTarget};
@@ -345,6 +347,7 @@ pub const COMMANDS: &[CommandInfo] = &[
 pub enum Effect {
     None,
     RestoreBookmark(BookmarkViewport),
+    PositionViewport(FileOffset),
     BrowseFiles,
     FileNavigation(FileNavigation),
     Save,
@@ -616,7 +619,7 @@ impl<S: ByteSource> Editor<S> {
                     self.set_mode(ViewMode::Code);
                     self.analysis.walk.clear();
                     self.cursor = offset;
-                    self.remember_code_location(true);
+                    self.remember_code_location(LocationKind::ReferenceHit);
                 }
                 SearchProgress::NotFound => self.references.resume = Some(scan),
             }
@@ -829,8 +832,8 @@ impl<S: ByteSource> Editor<S> {
                 }
                 self.analysis.invalidate();
             }
-            Command::FollowBranch(number) => self.follow_branch(number)?,
-            Command::ReturnBranch => self.return_code()?,
+            Command::FollowBranch(number) => return self.follow_branch(number),
+            Command::ReturnBranch => return self.return_code(),
             Command::FindReferences => self.start_references(false)?,
             Command::NextReference => self.start_references(true)?,
             Command::ToggleReferenceAlignment if !self.editing && self.mode == ViewMode::Code => {
@@ -963,7 +966,15 @@ impl<S: ByteSource> Editor<S> {
         Ok(())
     }
 
-    fn follow_branch(&mut self, number: usize) -> Result<(), Error> {
+    /// A data operand opened in Hex has the same return shortcut as Code.
+    pub fn has_data_operand_return(&self) -> bool {
+        self.analysis
+            .history
+            .back()
+            .is_some_and(|location| matches!(location.kind, LocationKind::DataOperand { .. }))
+    }
+
+    fn follow_branch(&mut self, number: usize) -> Result<Effect, Error> {
         if !(1..=BRANCH_LABELS.len()).contains(&number) {
             return Err(Error::Analysis("branch label must be 1–9 or A–Z".into()));
         }
@@ -979,24 +990,41 @@ impl<S: ByteSource> Editor<S> {
         let row = rows
             .iter()
             .find(|row| row.branch_number == Some(number))
-            .ok_or_else(|| Error::Analysis("no such direct branch in this code window".into()))?;
-        let target = row
-            .instruction
-            .direct_branch
-            .as_ref()
-            .ok_or_else(|| Error::Analysis("the selected row has no direct branch".into()))?;
-        let offset = self
-            .analysis
-            .branch_offset(target.address, self.document.len())?;
-        let target_mode = target.mode;
-        self.remember_code_location(false);
-        if self.decode_context().mode != Some(target_mode) {
+            .ok_or_else(|| Error::Analysis("no such destination in this code window".into()))?;
+        let (offset, target_mode) = if let Some(branch) = row.instruction.direct_branch {
+            let offset = self
+                .analysis
+                .branch_offset(branch.address, self.document.len())?;
+            (offset, Some(branch.mode))
+        } else if let Some(AddressOperand::Indirect { slot, width }) = row.operand {
+            let (_, offset) =
+                self.analysis
+                    .indirect_destination(&mut self.document, slot, width)?;
+            (offset, self.decode_context().mode)
+        } else if let Some(operand) = row.operand {
+            let offset = self
+                .analysis
+                .operand_offset(operand.address(), self.document.len())?;
+            self.remember_code_location(LocationKind::DataOperand {
+                top: window.map_or(self.cursor, |window| window.start),
+            });
+            self.analysis.reset_code_window();
+            self.set_mode(ViewMode::Hex);
+            self.cursor = offset;
+            return Ok(Effect::PositionViewport(offset));
+        } else {
+            return Err(analysis_error("the selected row has no destination"));
+        };
+        self.remember_code_location(LocationKind::Branch);
+        if let Some(target_mode) = target_mode
+            && self.decode_context().mode != Some(target_mode)
+        {
             self.analysis.interpretation.mode = Some(target_mode);
             self.analysis.symbol_mode = None;
         }
         self.analysis.walk.clear();
         self.cursor = offset;
-        Ok(())
+        Ok(Effect::None)
     }
 
     fn start_references(&mut self, resume: bool) -> Result<(), Error> {
@@ -1026,17 +1054,17 @@ impl<S: ByteSource> Editor<S> {
         Ok(())
     }
 
-    fn remember_code_location(&mut self, reference: bool) {
+    fn remember_code_location(&mut self, kind: LocationKind) {
         self.analysis.remember(Location {
             offset: self.cursor,
             interpretation: self.analysis.interpretation,
             symbol_mode: self.analysis.symbol_mode,
             generation: self.document.generation(),
-            reference,
+            kind,
         });
     }
 
-    fn return_code(&mut self) -> Result<(), Error> {
+    fn return_code(&mut self) -> Result<Effect, Error> {
         let location = self
             .analysis
             .history
@@ -1057,12 +1085,16 @@ impl<S: ByteSource> Editor<S> {
             self.analysis.symbol_mode = location.symbol_mode;
         }
         self.analysis.history.pop_back();
-        if location.reference {
+        self.cursor = location.offset;
+        if let LocationKind::DataOperand { top } = location.kind {
+            self.set_mode(ViewMode::Code);
+            return Ok(Effect::PositionViewport(top));
+        }
+        if matches!(location.kind, LocationKind::ReferenceHit) {
             // HIEW cycles through reference hits, starting with the most recent hit.
             self.analysis.history.push_front(location);
         }
-        self.cursor = location.offset;
-        Ok(())
+        Ok(Effect::None)
     }
 
     fn move_code(&mut self, count: i32) -> Result<(), Error> {

@@ -40,9 +40,13 @@ operands, signed displacements, scaled indexes, x87 size markers, string and
 conditional-move mnemonics, and vector selectors. A paired Windows run matched
 the opcode bytes, mnemonic and operand cells, and instruction colors for 42
 rows before the first rejected encoding in each stream. Headless output
-retains the adapter's Intel syntax. Full mnemonic and operand parity, original
-rejection lengths for unrecognized extensions, and memory-reference arrows
-remain open.
+retains the adapter's Intel syntax. Full mnemonic and operand parity and
+original rejection lengths for unrecognized extensions remain open.
+
+[Mapped operand observations](evidence/hiew-8.63-windows-x86-operands.json)
+cover numbered memory and literal references, a file-backed indirect slot,
+and return from Hex to Decode. The original used separate numbers for a
+memory operand and a direct branch that shared the same address.
 
 Complete, unambiguous legacy opcodes rejected in long mode have an
 `InvalidForMode` status. Ambiguous opcode space such as legacy BOUND and EVEX

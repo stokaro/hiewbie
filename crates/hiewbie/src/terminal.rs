@@ -480,6 +480,10 @@ impl<S: ByteSource> Ui<S> {
                 }
                 UiAction::Continue
             }
+            Ok(Effect::PositionViewport(offset)) => {
+                self.top = offset.get().min(self.editor.cursor().get());
+                UiAction::Continue
+            }
             Ok(Effect::BrowseFiles) => UiAction::BrowseFiles,
             Ok(Effect::FileNavigation(navigation)) => UiAction::NavigateFile(navigation),
             Ok(Effect::Save) => UiAction::Save,
@@ -843,7 +847,11 @@ impl<S: ByteSource> Ui<S> {
                 self.open_analysis(AnalysisPage::Overview);
                 UiAction::Continue
             }
-            KeyCode::Backspace | KeyCode::Char('0') if self.code_navigation() => {
+            KeyCode::Backspace | KeyCode::Char('0')
+                if self.code_navigation()
+                    || (self.editor.mode() == ViewMode::Hex
+                        && self.editor.has_data_operand_return()) =>
+            {
                 self.dispatch(Command::ReturnBranch)
             }
             KeyCode::Char('/') if self.code_navigation() => self.dispatch(Command::ResyncCode),
