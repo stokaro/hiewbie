@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "observation_date": "2026-11-28",
+  "reference_version": "8.63",
+  "environment": {
+    "runtime": "x64 Windows Server Core LTSC 2022 console in a Hyper-V-isolated container",
+    "input": "Win32 console key events for Code and Ctrl+F1 profile switching",
+    "fixtures": "LLVM MC 23.1.6 generated raw streams, sixteen-byte NOP-padded extension slots, and a generated PE32+ image"
+  },
+  "compatibility_examples": [
+    {"mode": 16, "bytes": "648B4002", "text": "mov ax,fs:[bx][si][2]"},
+    {"mode": 16, "bytes": "64A13412", "text": "mov ax,fs:[01234]"},
+    {"mode": 16, "bytes": "F3A4", "text": "rep movsb"},
+    {"mode": 16, "bytes": "0F44C3", "text": "cmovz ax,bx"},
+    {"mode": 32, "bytes": "8B448BE0", "text": "mov eax,[ebx][ecx]*4[-020]"},
+    {"mode": 32, "bytes": "DB6C2410", "text": "fld t,[esp][010]"},
+    {"mode": 64, "bytes": "498B445CE0", "text": "mov rax,[r12][rbx]*2[-020]"},
+    {"mode": 64, "bytes": "4C8B0D20000000", "address": "0000000140001000", "text": "mov r9,[00000001`40001027] --↓1"},
+    {"mode": 64, "bytes": "658B042534120000", "address": "0000000140001007", "text": "mov eax,gs:[000001234]"},
+    {"mode": 64, "bytes": "660F3A44CA01", "text": "pclmulqdq xmm1,xmm2,1"},
+    {"mode": 64, "bytes": "C4E26D98CB", "text": "vfmadd132ps ymm1,ymm2,ymm3"},
+    {"mode": 64, "bytes": "480FC7F0", "text": "rdrand rax"}
+  ],
+  "rejection_examples": [
+    {"mode": 16, "source": "C5F877", "shown": "C5", "text": "#UD(mod)"},
+    {"mode": 32, "source": "C4E27D58CA", "shown": "C4E27D58", "text": "#UD"},
+    {"mode": 64, "source": "C4E27D58CA", "shown": "C4E27D58", "text": "#UD"},
+    {"mode": 32, "source": "C4E270F2DA", "shown": "C4E270F2", "text": "#UD"},
+    {"mode": 64, "source": "C4E2F0F2DA", "shown": "C4E2F0F2", "text": "#UD"},
+    {"mode": 32, "source": "C4E26AF5C8", "shown": "C4E26AF5", "text": "#UD"},
+    {"mode": 64, "source": "C4E2EAF5C8", "shown": "C4E2EAF5", "text": "#UD"},
+    {"mode": "32/64", "source": "8FE868A2CB40", "shown": "8FE8", "text": "#UD"},
+    {"mode": "32/64", "source": "0F38CBCA", "shown": "0F38CB", "text": "#UD"},
+    {"mode": 64, "source": "62F164CA58CC", "shown": "62", "text": "#UD(64)"},
+    {"mode": 64, "source": "60", "shown": "60", "text": "#UD(64)", "lookahead": "900F"}
+  ],
+  "paired_checks": {
+    "candidate": "GNU-target x64 build in the same Windows console",
+    "terminal_size": "120x40",
+    "matching_rows_by_mode": {"16": 9, "32": 16, "64": 17},
+    "comparison": "The opcode bytes, mnemonic and operand cells, and foreground and background on nonblank instruction cells matched in the three raw streams up to the first encoding rejected by HIEW. The separate 60900F fixture matched on the initial #UD(64) row."
+  },
+  "truncated_input": "On the raw 60900F fixture in 64-bit mode, the final lone 0F is displayed as sldt [rax]. The adapter reports Truncated and advances one byte.",
+  "limits": "The samples cover individual encodings from established and newer extensions. TUI data-reference arrows and original rejection lengths for valid newer instructions remain open."
+}

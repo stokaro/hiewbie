@@ -114,6 +114,8 @@ pub enum DecodeStatus {
     Decoded,
     /// Rejected or unknown to this backend; not a definitive ISA-validity claim.
     Unknown,
+    /// A recognized encoding is unavailable in the selected instruction mode.
+    InvalidForMode,
     Truncated,
     Unsupported,
 }
@@ -208,6 +210,7 @@ fn fallback(
     text.append(match status {
         DecodeStatus::Decoded => "",
         DecodeStatus::Unknown => " ; unknown to backend",
+        DecodeStatus::InvalidForMode => " ; invalid in this instruction mode",
         DecodeStatus::Truncated => " ; truncated instruction",
         DecodeStatus::Unsupported => " ; unsupported instruction endianness",
     });

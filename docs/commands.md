@@ -294,6 +294,10 @@ The Decode viewport shows addresses, contiguous opcode bytes, mnemonic and
 operands on rows between the title and function keys. The x86 view groups runs
 of single-byte NOPs and INT3 instructions into bounded rows. Up and Down select an instruction while
 keeping it visible, and Page Up and Page Down move by displayed rows.
+Recognized legacy-only instructions in long mode display `#UD(64)`.
+Incomplete and unrecognized encodings preserve the current byte for
+inspection. See the [x86 Decode capability table](x86-decode-coverage.md)
+for tested encodings and HIEW 8.63 observations.
 
 In Code view outside edit mode, 1–9 and A–Z follow direct destinations labeled
 in the displayed window. 0 or Backspace returns after a branch or cycles through

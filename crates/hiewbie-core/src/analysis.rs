@@ -83,10 +83,14 @@ impl Analysis {
     pub fn invalidate(&mut self) {
         self.symbol_mode = None;
         self.generation = None;
-        self.numbered_window = None;
         self.executable = None;
         self.problem = None;
         self.clear_symbols();
+        self.reset_code_window();
+    }
+
+    pub fn reset_code_window(&mut self) {
+        self.numbered_window = None;
         self.walk.clear();
     }
 
@@ -98,7 +102,7 @@ impl Analysis {
         self.executable = None;
         self.problem = None;
         self.clear_symbols();
-        self.walk.clear();
+        self.reset_code_window();
         if !self.interpretation.raw {
             match formats::inspect(document, self.interpretation.slice) {
                 Ok(executable) => self.executable = executable,
@@ -293,7 +297,7 @@ impl Analysis {
         self.problem = None;
         self.clear_symbols();
         self.generation = Some(document.generation());
-        self.walk.clear();
+        self.reset_code_window();
         Ok(offset)
     }
 

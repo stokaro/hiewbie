@@ -811,11 +811,11 @@ impl<S: ByteSource> Editor<S> {
             Command::SetDecodeMode(mode) => {
                 self.analysis.interpretation.mode = mode;
                 self.analysis.symbol_mode = None;
-                self.analysis.walk.clear();
+                self.analysis.reset_code_window();
             }
             Command::SetEndian(endian) => {
                 self.analysis.interpretation.endian = endian;
-                self.analysis.walk.clear();
+                self.analysis.reset_code_window();
             }
             Command::SetRawBase(base) => {
                 self.analysis.interpretation.base = Some(base);
@@ -845,7 +845,7 @@ impl<S: ByteSource> Editor<S> {
             }
             Command::MoveCode(count) => self.move_code(count)?,
             Command::ResyncCode => {
-                self.analysis.walk.clear();
+                self.analysis.reset_code_window();
                 self.mode = ViewMode::Code;
             }
             Command::Bookmark(command) => return self.bookmark(command),

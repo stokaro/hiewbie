@@ -2,6 +2,7 @@ use std::cell::Cell;
 use std::io;
 use std::rc::Rc;
 
+use hiewbie_core::instructions::DecodeMode;
 use hiewbie_core::{Document, MemorySource};
 use ratatui::backend::TestBackend;
 
@@ -1220,6 +1221,98 @@ fn code_branch_follow_return_and_instruction_steps_use_shared_commands() {
     key(&mut ui, KeyCode::Char('/'));
     assert_eq!(ui.editor.cursor().get(), 0x201);
     assert_eq!(bytes(&mut ui), pe_fixture());
+}
+
+#[test]
+fn code_operands_match_observed_x86_extension_rows() {
+    for (mode, bytes, expected) in [
+        (
+            DecodeMode::X86_16,
+            &[0x64, 0x8b, 0x40, 2][..],
+            "mov          ax,fs:[bx][si][2]",
+        ),
+        (
+            DecodeMode::X86_16,
+            &[0x64, 0xa1, 0x34, 0x12],
+            "mov          ax,fs:[01234]",
+        ),
+        (DecodeMode::X86_16, &[0xf3, 0xa4], "rep movsb"),
+        (
+            DecodeMode::X86_16,
+            &[0x0f, 0x44, 0xc3],
+            "cmovz        ax,bx",
+        ),
+        (
+            DecodeMode::X86_32,
+            &[0x8b, 0x44, 0x8b, 0xe0],
+            "mov          eax,[ebx][ecx]*4[-020]",
+        ),
+        (
+            DecodeMode::X86_32,
+            &[0x64, 0xa1, 0x34, 0x12, 0, 0],
+            "mov          eax,fs:[000001234]",
+        ),
+        (
+            DecodeMode::X86_32,
+            &[0xdb, 0x6c, 0x24, 0x10],
+            "fld          t,[esp][010]",
+        ),
+        (
+            DecodeMode::X86_64,
+            &[0xdd, 0x44, 0x24, 0x10],
+            "fld          q,[rsp][010]",
+        ),
+        (
+            DecodeMode::X86_64,
+            &[0x4c, 0x8b, 0x0d, 0x20, 0, 0, 0],
+            "mov          r9,[000000027]",
+        ),
+        (
+            DecodeMode::X86_64,
+            &[0x66, 0x0f, 0x3a, 0x63, 0xca, 0],
+            "pcmpistri    xmm1,xmm2,0",
+        ),
+        (
+            DecodeMode::X86_64,
+            &[0x66, 0x0f, 0x3a, 0x44, 0xca, 1],
+            "pclmulqdq    xmm1,xmm2,1",
+        ),
+        (
+            DecodeMode::X86_64,
+            &[0xc4, 0xe2, 0x6d, 0x98, 0xcb],
+            "vfmadd132ps  ymm1,ymm2,ymm3",
+        ),
+        (DecodeMode::X86_64, &[0x60], "#UD(64)"),
+    ] {
+        let mut ui = ui(bytes);
+        ui.editor
+            .dispatch(Command::SetDecodeMode(Some(mode)))
+            .unwrap();
+        ui.editor
+            .dispatch(Command::SetMode(ViewMode::Code))
+            .unwrap();
+        let output = screen(&mut ui, 120, 25);
+        let row = output.lines().nth(1).unwrap();
+        let instruction: String = row.chars().skip(43).collect();
+        assert_eq!(instruction, expected, "{mode:?} {bytes:02X?}");
+    }
+}
+
+#[test]
+fn code_pe64_absolute_memory_uses_split_addresses_only_when_wide() {
+    let mut image = pe_fixture();
+    let instructions = [
+        0x4c, 0x8b, 0x0d, 0x20, 0, 0, 0, 0x65, 0x8b, 0x04, 0x25, 0x34, 0x12, 0, 0,
+    ];
+    image[0x200..0x200 + instructions.len()].copy_from_slice(&instructions);
+    let mut ui = ui(&image);
+    ui.editor.dispatch(Command::GotoEntry).unwrap();
+    ui.editor
+        .dispatch(Command::SetMode(ViewMode::Code))
+        .unwrap();
+    let output = screen(&mut ui, 120, 25);
+    assert!(output.contains("mov          r9,[00000001`40001027]"));
+    assert!(output.contains("mov          eax,gs:[000001234]"));
 }
 
 #[test]
