@@ -17,7 +17,7 @@ use hiewbie_core::{ByteSource, Command, Document, Editor, FileOffset, parse_virt
 
 const HELP: &str = "hiewbie - a HIEW-inspired terminal hex editor and binary inspector
 
-Usage: hiewbie [OPTIONS] [FILE]
+Usage: hiewbie [OPTIONS] [FILE ...]
 
 Options:
   -r, --read-only      Inspect without allowing an edit transaction
@@ -57,6 +57,8 @@ Start without a file to open the file browser.
 View: F9 opens the file browser; Enter cycles Text/Hex/Code; F4 selects a mode; F3/Ctrl+E begins editing;
       F5/Ctrl+G goes to an offset; F7/Ctrl+F searches;
       Shift+F7, Ctrl+Enter, or Ctrl+R repeats the search.
+      Ctrl+Backspace opens History; Tab cycles visited files.
+      Ctrl+F9 selects command-line files; Ctrl+F11/F12 moves between them.
 Code: F8/Ctrl+O shows headers; Shift+F1/Ctrl+A opens the analysis profile.
       Ctrl+F1/Ctrl+B cycles x86 bitness; / resynchronizes; Backspace returns.
       The profile selects architecture, instruction byte order, and raw base.
@@ -71,7 +73,7 @@ F1 opens help. Esc exits from view mode. Bracketed paste is rejected.
 
 PE/ELF/Mach-O inspection covers headers, load mappings, and selected symbol tables.
 Symbols are loaded on request; coverage notes identify unparsed loader metadata.
-Relocations, textual assembly, and multiple command-line files remain planned.
+Relocations and textual assembly remain planned.
 Big-endian instruction decoding is explicitly unsupported.
 ";
 
@@ -92,6 +94,7 @@ enum OutputMode {
 #[derive(Debug, Eq, PartialEq)]
 struct Options {
     path: PathBuf,
+    additional_paths: Vec<PathBuf>,
     read_only: bool,
     output: OutputMode,
     offset: Option<String>,
@@ -113,7 +116,7 @@ enum Invocation {
 
 fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, String> {
     let mut args = args.into_iter();
-    let mut path = None;
+    let mut paths = Vec::new();
     let mut read_only = false;
     let mut output = None;
     let mut offset = None;
@@ -236,9 +239,7 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
                 ));
             }
         }
-        if path.replace(PathBuf::from(arg)).is_some() {
-            return Err("only one file can be opened by this initial editor".into());
-        }
+        paths.push(PathBuf::from(arg));
     }
 
     if entry && offset.is_some() {
@@ -247,7 +248,8 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
     if slice.is_some() && (raw || base.is_some()) {
         return Err("--slice cannot be combined with --raw or --base".into());
     }
-    let Some(path) = path else {
+    let mut paths = paths.into_iter();
+    let Some(path) = paths.next() else {
         if output.is_some()
             || entry
             || offset.is_some()
@@ -261,8 +263,12 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Invocation, St
         }
         return Ok(Invocation::Browse { read_only });
     };
+    if output.is_some() && paths.len() != 0 {
+        return Err("noninteractive inspection accepts one file".into());
+    }
     Ok(Invocation::Run(Options {
         path,
+        additional_paths: paths.collect(),
         read_only,
         output: output.unwrap_or(OutputMode::Interactive),
         offset,
@@ -348,17 +354,23 @@ fn run(options: Options) -> Result<(), String> {
             Err(error) => Err(format!("cannot print inspection: {error}")),
         };
     }
-    run_terminal(Some((editor, &options.path)), options.read_only)
+    run_terminal(
+        Some((editor, &options.path)),
+        options.read_only,
+        options.additional_paths,
+    )
 }
 
 fn run_terminal(
     start: Option<(Editor<FileSource>, &std::path::Path)>,
     read_only: bool,
+    additional_paths: Vec<PathBuf>,
 ) -> Result<(), String> {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         return Err("interactive editing requires terminal input and output; use --dump, --headers, --disassemble, --symbols, --imports, or --exports for noninteractive inspection".into());
     }
-    terminal::run(start, read_only).map_err(|error| format!("terminal error: {error}"))
+    terminal::run(start, read_only, additional_paths)
+        .map_err(|error| format!("terminal error: {error}"))
 }
 
 fn write_headers<S: ByteSource>(editor: &mut Editor<S>, output: &mut impl Write) -> io::Result<()> {
@@ -589,7 +601,7 @@ fn main() -> ExitCode {
             println!("hiewbie {}", env!("CARGO_PKG_VERSION"));
             return ExitCode::SUCCESS;
         }
-        Ok(Invocation::Browse { read_only }) => run_terminal(None, read_only),
+        Ok(Invocation::Browse { read_only }) => run_terminal(None, read_only, Vec::new()),
         Ok(Invocation::Run(options)) => run(options),
         Err(error) => Err(error),
     };
@@ -624,7 +636,7 @@ mod tests {
             &["--dump"][..],
             &["--entry"],
             &["--offset", "12"],
-            &["a", "b"],
+            &["--dump", "a", "b"],
             &["--bad"],
             &["--offset"],
             &["--offset", "1", "--offset=2", "a"],
@@ -639,6 +651,7 @@ mod tests {
             args(&["--dump", "--offset=256t", "-r", "--", "-a b.bin"]).unwrap(),
             Invocation::Run(Options {
                 path: PathBuf::from("-a b.bin"),
+                additional_paths: Vec::new(),
                 read_only: true,
                 output: OutputMode::Dump,
                 offset: Some("256t".into()),
@@ -649,6 +662,23 @@ mod tests {
                 raw: false,
                 slice: None,
             })
+        );
+    }
+
+    #[test]
+    fn cli_keeps_multiple_native_paths_in_argument_order() {
+        let Invocation::Run(options) =
+            args(&["first.bin", "--", "-second file.bin", "first.bin"]).unwrap()
+        else {
+            panic!("expected interactive invocation");
+        };
+        assert_eq!(options.path, PathBuf::from("first.bin"));
+        assert_eq!(
+            options.additional_paths,
+            [
+                PathBuf::from("-second file.bin"),
+                PathBuf::from("first.bin")
+            ]
         );
     }
 

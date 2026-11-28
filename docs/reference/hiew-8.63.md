@@ -280,6 +280,24 @@ remains unverified.
 
 [Paired Windows observations](../evidence/hiew-8.63-windows-files.json)
 
+### History and command-line files
+
+In the recorded Windows runtime, Ctrl+Backspace opens a wide table with mode,
+file offset, and path. F9 in Files leads to the same table. F9 in History goes
+back to Files. Either dialog closes to the document with Esc. F2 toggles
+full paths. F5 places a bullet before the mode, and Tab then cycles the
+marked entries. Without marks, Tab walks all visited files and wraps
+without reordering the list. Choosing a visited file restores its view and
+position. F8 removes the highlighted inactive row and leaves the file intact.
+
+Ctrl+F9 presents a separate compact menu of the names as passed on the
+command line. Its footer counts the arguments. Ctrl+F11 and Ctrl+F12
+traverse those arguments with wraparound. Esc keeps the current document
+and the last highlighted argument becomes the starting point for traversal.
+These modified keys were confirmed with Windows console key events.
+
+[Paired Windows observations](../evidence/hiew-8.63-windows-history.json)
+
 ### Navigation state is richer than a single cursor
 
 Original bookmarks preserve eight screen states independently for each mode.

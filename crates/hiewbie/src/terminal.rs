@@ -14,16 +14,18 @@ mod text_view;
 #[cfg(windows)]
 mod windows_cursor;
 
+mod file_history;
 mod file_picker;
 
 use std::io::{self, Stdout};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use hiewbie::file::{BlockExport, ExportProgress, FileSource, SaveError, save_document};
 use hiewbie_core::formats::{BinaryFormat, VirtualAddress};
 use hiewbie_core::{
-    BlockBoundary, ByteSource, Command, Document, Editor, Effect, FileOffset, ViewMode,
+    BlockBoundary, ByteSource, Command, Document, Editor, Effect, FileNavigation, FileOffset,
+    ViewMode,
 };
 use ratatui::Terminal;
 use ratatui::backend::{Backend, CrosstermBackend};
@@ -41,6 +43,8 @@ use ratatui::crossterm::{
 use analysis::{AnalysisDialog, AnalysisPage};
 use block::{BlockExportRequest, BlockWrite};
 use calculator::Calculator;
+use file_history::{FileSession, ListKind, Selection};
+use file_picker::BrowseOutcome;
 use help::{Help, HelpTopic};
 use search::SearchDialog;
 
@@ -157,7 +161,11 @@ impl Drop for TerminalGuard {
     }
 }
 
-pub(crate) fn run(start: Option<(Editor<FileSource>, &Path)>, read_only: bool) -> io::Result<()> {
+pub(crate) fn run(
+    start: Option<(Editor<FileSource>, &Path)>,
+    read_only: bool,
+    additional_paths: Vec<PathBuf>,
+) -> io::Result<()> {
     let mut guard = TerminalGuard::enter()?;
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal: Terminal<CrosstermBackend<Stdout>> = Terminal::new(backend)?;
@@ -165,13 +173,15 @@ pub(crate) fn run(start: Option<(Editor<FileSource>, &Path)>, read_only: bool) -
     // cursor position from terminals that cannot answer the report request.
     terminal.backend_mut().clear()?;
     let mut picker = None;
+    let first_argument = start.as_ref().map(|(_, path)| *path);
     let mut ui = match start {
         Some((editor, path)) => Ui::new(editor, path.to_string_lossy().into_owned()),
         None => match file_picker::browse(&mut terminal, &mut guard, &mut picker, None)? {
-            Some(source) => ui_for_picked_file(source, read_only),
-            None => return Ok(()),
+            BrowseOutcome::Open(source) => ui_for_picked_file(source, read_only),
+            BrowseOutcome::Close | BrowseOutcome::History => return Ok(()),
         },
     };
+    let mut files = FileSession::new(&ui, first_argument, additional_paths, read_only);
     let mut redraw = true;
     let mut export: Option<BlockExport> = None;
 
@@ -200,13 +210,32 @@ pub(crate) fn run(start: Option<(Editor<FileSource>, &Path)>, read_only: bool) -
             match action {
                 UiAction::Exit => break,
                 UiAction::BrowseFiles => {
-                    match file_picker::browse(&mut terminal, &mut guard, &mut picker, Some(&mut ui))
-                    {
-                        Ok(Some(source)) => {
-                            ui = ui_for_picked_file(source, read_only);
-                        }
-                        Ok(None) => {}
-                        Err(error) => return Err(error),
+                    choose_file(
+                        &mut terminal,
+                        &mut guard,
+                        &mut picker,
+                        &mut ui,
+                        &mut files,
+                        None,
+                    )?;
+                }
+                UiAction::NavigateFile(navigation) => {
+                    let list = match navigation {
+                        FileNavigation::History => Some(ListKind::Recent),
+                        FileNavigation::Arguments => Some(ListKind::Arguments),
+                        _ => None,
+                    };
+                    if let Some(list) = list {
+                        choose_file(
+                            &mut terminal,
+                            &mut guard,
+                            &mut picker,
+                            &mut ui,
+                            &mut files,
+                            Some(list),
+                        )?;
+                    } else {
+                        files.advance(&mut ui, navigation);
                     }
                 }
                 UiAction::Save => match save_document(ui.editor.document_mut()) {
@@ -268,6 +297,33 @@ pub(crate) fn run(start: Option<(Editor<FileSource>, &Path)>, read_only: bool) -
     Ok(())
 }
 
+fn choose_file(
+    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    guard: &mut TerminalGuard,
+    picker: &mut Option<file_picker::FilePicker>,
+    ui: &mut Ui<FileSource>,
+    files: &mut FileSession,
+    mut list: Option<ListKind>,
+) -> io::Result<()> {
+    loop {
+        list = if let Some(kind) = list {
+            match files.pick(terminal, guard, ui, kind)? {
+                Selection::Close => return Ok(()),
+                Selection::Files => None,
+            }
+        } else {
+            match file_picker::browse(terminal, guard, picker, Some(ui))? {
+                BrowseOutcome::Close => return Ok(()),
+                BrowseOutcome::History => Some(ListKind::Recent),
+                BrowseOutcome::Open(source) => {
+                    files.open_source(ui, source);
+                    return Ok(());
+                }
+            }
+        };
+    }
+}
+
 fn ui_for_picked_file(source: FileSource, read_only: bool) -> Ui<FileSource> {
     let label = source.path().to_string_lossy().into_owned();
     let mut ui = Ui::new(Editor::new(Document::new(source), read_only), label);
@@ -279,6 +335,7 @@ fn ui_for_picked_file(source: FileSource, read_only: bool) -> Ui<FileSource> {
 enum UiAction {
     Continue,
     BrowseFiles,
+    NavigateFile(FileNavigation),
     Save,
     ExportBlock(BlockExportRequest),
     CancelBlockExport,
@@ -396,6 +453,7 @@ impl<S: ByteSource> Ui<S> {
         match self.editor.dispatch(command) {
             Ok(Effect::None) => UiAction::Continue,
             Ok(Effect::BrowseFiles) => UiAction::BrowseFiles,
+            Ok(Effect::FileNavigation(navigation)) => UiAction::NavigateFile(navigation),
             Ok(Effect::Save) => UiAction::Save,
             Ok(Effect::ExportBlock(range)) => {
                 self.dialog = Some(Dialog::BlockWrite(BlockWrite::new(range)));
@@ -702,10 +760,7 @@ impl<S: ByteSource> Ui<S> {
                 self.dispatch(Command::FollowBranch((number as u8 - b'0') as usize))
             }
             KeyCode::F(9) => self.dispatch(Command::BrowseFiles),
-            KeyCode::Tab => {
-                self.notice("Tab next-file is not implemented; only one file is open");
-                UiAction::Continue
-            }
+            KeyCode::Tab => self.dispatch(Command::FileNavigation(FileNavigation::NextRecent)),
             KeyCode::F(_) | KeyCode::Insert | KeyCode::Delete => {
                 self.notice(
                     "This command is not implemented; F1 lists the available raw-byte commands",
@@ -798,6 +853,18 @@ impl<S: ByteSource> Ui<S> {
     }
 
     fn control_key(&mut self, key: KeyEvent) -> UiAction {
+        if key.modifiers == KeyModifiers::CONTROL && !self.editor.is_editing() {
+            let navigation = match key.code {
+                KeyCode::Backspace | KeyCode::Char('h') => Some(FileNavigation::History),
+                KeyCode::F(9) => Some(FileNavigation::Arguments),
+                KeyCode::F(11) => Some(FileNavigation::PreviousArgument),
+                KeyCode::F(12) => Some(FileNavigation::NextArgument),
+                _ => None,
+            };
+            if let Some(navigation) = navigation {
+                return self.dispatch(Command::FileNavigation(navigation));
+            }
+        }
         if key.modifiers.intersects(
             KeyModifiers::ALT | KeyModifiers::SUPER | KeyModifiers::HYPER | KeyModifiers::META,
         ) {

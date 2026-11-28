@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "observation_date": "2026-11-28",
+  "reference_version": "8.63",
+  "environment": {
+    "runtime": "x64 Windows console in a Hyper-V-isolated Windows Server Core LTSC 2022 container",
+    "candidate": "GNU-target x64 Rust build running in the same container",
+    "input": "Win32 console key events, including Ctrl state and hardware scan codes",
+    "fixtures": "Generated raw files with distinct byte patterns"
+  },
+  "history": {
+    "terminal_size": "100x30",
+    "surface_bounds_zero_based": [
+      4,
+      2,
+      92,
+      26
+    ],
+    "layout": "Cyan panel, inset double border, dark gray close marker and black background shadow",
+    "table": "Mode and offset in the top border, vertical separators in each row, white-on-black selection, and a bullet for marked visits",
+    "workflow": "Keep a.bin in Hex at offset 0x200, open b.bin from Files, open History and observe both positions, toggle its mark and path display, dismiss Help, remove the inactive entry, and switch between History and Files"
+  },
+  "arguments": {
+    "terminal_size": "80x25",
+    "surface_bounds_zero_based": [
+      30,
+      2,
+      20,
+      21
+    ],
+    "layout": "Untitled cyan panel, inset double border, centered argument count in the bottom border, and an unlabeled function bar",
+    "workflow": "Display names in command-line order, move the highlight, cancel without changing the document, then move to the following argument and wrap forward and backward"
+  },
+  "comparison": {
+    "method": "Compare aligned console cells inside each dialog, including the border, close marker, selection, and palette. Verify the black background of the offset shadow and compare the settled function bar separately.",
+    "limits": "The paired list region excludes the underlying view and nested Help. In the two Ctrl+Backspace opening frames, HIEW shows the transient Ctrl bar. The candidate shows the settled bar. Persistent history, all modifier layers, and the full platform matrix remain open.",
+    "paired_list_frames": 12,
+    "matching_surface_and_shadow_background": 12,
+    "matching_function_bar_glyphs": 10
+  }
+}

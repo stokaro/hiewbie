@@ -167,7 +167,7 @@ impl<S: ByteSource> Ui<S> {
                 5,
                 Line::default(),
                 PANEL,
-                false,
+                DialogFrame::WithoutClose,
             );
             if content.height != 0 {
                 frame.render_widget(
@@ -736,7 +736,40 @@ pub(super) fn dialog_surface<'a>(
     title: impl Into<Line<'a>>,
     style: Style,
 ) -> Rect {
-    draw_dialog(frame, area, width, height, title.into(), style, true)
+    draw_dialog(
+        frame,
+        area,
+        width,
+        height,
+        title.into(),
+        style,
+        DialogFrame::Default,
+    )
+}
+
+pub(super) fn dialog_surface_with_tinted_shadow<'a>(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    width: u16,
+    height: u16,
+    title: impl Into<Line<'a>>,
+    style: Style,
+) -> Rect {
+    draw_dialog(
+        frame,
+        area,
+        width,
+        height,
+        title.into(),
+        style,
+        DialogFrame::TintedShadow,
+    )
+}
+
+enum DialogFrame {
+    Default,
+    WithoutClose,
+    TintedShadow,
 }
 
 fn draw_dialog(
@@ -746,7 +779,7 @@ fn draw_dialog(
     height: u16,
     title: Line<'_>,
     style: Style,
-    show_close: bool,
+    frame_style: DialogFrame,
 ) -> Rect {
     let available = Rect::new(area.x, area.y, area.width, area.height.saturating_sub(1));
     let surface = popup(area, width, height.min(available.height));
@@ -757,14 +790,19 @@ fn draw_dialog(
         surface.height,
     )
     .intersection(available);
-    frame.render_widget(Clear, shadow);
+    if !matches!(frame_style, DialogFrame::TintedShadow) {
+        frame.render_widget(Clear, shadow);
+    }
     frame.render_widget(
         Block::default().style(Style::new().bg(Color::Black)),
         shadow,
     );
     frame.render_widget(Clear, surface);
     frame.render_widget(Block::default().style(style), surface);
-    if show_close && surface.width >= 3 && surface.height >= 5 {
+    if !matches!(frame_style, DialogFrame::WithoutClose)
+        && surface.width >= 3
+        && surface.height >= 5
+    {
         frame.render_widget(
             Paragraph::new("[x]").style(style.fg(Color::DarkGray)),
             Rect::new(surface.right() - 3, surface.y, 3, 1),
@@ -772,7 +810,13 @@ fn draw_dialog(
     }
 
     let inset = surface.inner(Margin::new(
-        if surface.width >= 27 { 2 } else { 1 },
+        if surface.width >= 27
+            || (surface.width >= 6 && matches!(frame_style, DialogFrame::TintedShadow))
+        {
+            2
+        } else {
+            1
+        },
         u16::from(surface.height >= 5),
     ));
     let border = Block::default()
