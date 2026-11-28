@@ -1,6 +1,6 @@
 use iced_x86::{
     Decoder, DecoderError, DecoderOptions, Formatter, FormatterOutput, FormatterTextKind,
-    Instruction, IntelFormatter, Mnemonic, OpKind, Register,
+    Instruction, IntelFormatter, MemorySizeOptions, Mnemonic, OpKind, Register,
 };
 
 use super::{
@@ -8,6 +8,8 @@ use super::{
     MAX_INSTRUCTION_BYTES, TextBuffer, fallback, instruction,
 };
 use crate::formats::VirtualAddress;
+
+mod hiew;
 
 impl FormatterOutput for TextBuffer {
     fn write(&mut self, text: &str, _kind: FormatterTextKind) {
@@ -20,7 +22,7 @@ pub(super) fn decode(
     address: VirtualAddress,
     profile: InstructionProfile,
 ) -> DecodedInstruction {
-    if let Some((length, message)) = hiew_legacy_rejection(bytes, profile) {
+    if let Some((length, message)) = hiew::rejected_row(bytes, profile) {
         return instruction(
             &bytes[..length],
             address,
@@ -30,10 +32,10 @@ pub(super) fn decode(
         );
     }
     let mode = profile.mode;
-    // The mode enum constrains the bitness to the decoder's three supported values.
-    let mut decoder = Decoder::with_ip(mode.bitness(), bytes, address.get(), DecoderOptions::NONE);
+    let (mut decoder, prefix) = decoder_at(bytes, address.get(), profile);
     let decoded = decoder.decode();
-    if decoded.is_invalid() || decoded.len() == 0 || decoded.len() > bytes.len() {
+    let length = decoded.len() + prefix.ignored;
+    if decoded.is_invalid() || decoded.len() == 0 || length > bytes.len() {
         let status = if mode == DecodeMode::X86_64 && recognized_legacy_only(bytes, address) {
             // For an otherwise undefined opcode the backend may report
             // NoMoreBytes at EOF even when the legacy encoding is complete.
@@ -45,6 +47,15 @@ pub(super) fn decode(
         };
         return fallback(bytes, address, mode, status);
     }
+    if let Some(message) = prefix.rejection {
+        return instruction(
+            &bytes[..length],
+            address,
+            message.to_owned(),
+            DecodeStatus::InvalidEncoding,
+            None,
+        );
+    }
     let direct_branch = near_branch(&decoded).map(|address| BranchTarget { address, mode });
     let mut formatter = IntelFormatter::new();
     formatter.options_mut().set_hex_prefix("0x");
@@ -53,10 +64,17 @@ pub(super) fn decode(
     formatter
         .options_mut()
         .set_small_hex_numbers_in_decimal(false);
+    if profile.hiew_x86 && mode == DecodeMode::X86_32 && decoded.mnemonic() == Mnemonic::Bound {
+        formatter
+            .options_mut()
+            .set_memory_size_options(MemorySizeOptions::Never);
+    }
     let mut text = TextBuffer::new();
-    formatter.format(&decoded, &mut text);
+    let mut displayed = decoded;
+    displayed.set_code(hiew::display_code(decoded.code(), profile));
+    formatter.format(&displayed, &mut text);
     let mut result = instruction(
-        &bytes[..decoded.len()],
+        &bytes[..length],
         address,
         text.finish(),
         DecodeStatus::Decoded,
@@ -67,32 +85,21 @@ pub(super) fn decode(
     result
 }
 
-fn hiew_legacy_rejection(
+fn decoder_at(
     bytes: &[u8],
+    address: u64,
     profile: InstructionProfile,
-) -> Option<(usize, &'static str)> {
-    if !profile.hiew_x86 || profile.mode != DecodeMode::X86_16 {
-        return None;
-    }
+) -> (Decoder<'_>, hiew::PrefixOverride) {
     let bytes = &bytes[..bytes.len().min(MAX_INSTRUCTION_BYTES)];
-    let opcode = bytes.iter().position(|&byte| {
-        !matches!(
-            byte,
-            0x26 | 0x2e | 0x36 | 0x3e | 0x64 | 0x65 | 0x66 | 0x67 | 0xf0 | 0xf2 | 0xf3
-        )
-    })?;
-    // These leads select LES, LDS, or BOUND in HIEW 8.63's 16-bit view.
-    // Keep prefixes and the opcode in the rejected row. The next row
-    // starts at the register-only ModR/M byte.
-    if !matches!(&bytes[opcode..], [0xc4 | 0xc5 | 0x62, 0xc0..=0xff, ..]) {
-        return None;
-    }
-    let message = if bytes[..opcode].contains(&0xf0) {
-        "#UD(lock)"
-    } else {
-        "#UD(mod)"
-    };
-    Some((opcode + 1, message))
+    let prefix = hiew::memory_prefix(bytes, profile);
+    // Keep the decoded next IP at the end of the full input encoding.
+    let decoder = Decoder::with_ip(
+        profile.mode.bitness(),
+        &bytes[prefix.ignored..],
+        address.wrapping_add(prefix.ignored as u64),
+        DecoderOptions::NONE,
+    );
+    (decoder, prefix)
 }
 
 fn static_memory_address(instruction: &Instruction) -> Option<VirtualAddress> {
@@ -192,25 +199,21 @@ pub(crate) fn scan_references(
         let Some(ip) = address.get().checked_add(start as u64) else {
             break;
         };
-        if let Some((length, _)) = hiew_legacy_rejection(&bytes[start..], profile) {
+        if let Some((length, _)) = hiew::rejected_row(&bytes[start..], profile) {
             start += if bytewise { 1 } else { length };
             continue;
         }
-        let mut decoder = Decoder::with_ip(
-            profile.mode.bitness(),
-            &bytes[start..],
-            ip,
-            DecoderOptions::NONE,
-        );
+        let (mut decoder, prefix) = decoder_at(&bytes[start..], ip, profile);
         let instruction = decoder.decode();
         let valid = !instruction.is_invalid();
         let next = start
             + if valid && !bytewise {
-                instruction.len().max(1)
+                (instruction.len() + prefix.ignored).max(1)
             } else {
                 1
             };
         if valid
+            && prefix.rejection.is_none()
             && (near_branch(&instruction) == Some(target)
                 || (mapped && has_data_reference(&instruction, target.get())))
         {

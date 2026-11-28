@@ -1379,6 +1379,46 @@ fn code_uses_encoded_x86_displacements_and_hides_implicit_fld_destination() {
 }
 
 #[test]
+fn code_matches_the_observed_32_and_64_bit_extension_rows() {
+    for row in include_str!("../../../../tests/fixtures/x86-32-64-hiew-8.63.tsv").lines() {
+        if row.starts_with('#') {
+            continue;
+        }
+        let fields: Vec<_> = row.split('\t').collect();
+        let [bits, _, offset, _, hex, _, _, opcodes, expected] = fields.as_slice() else {
+            panic!("malformed fixture row: {row}");
+        };
+        let mode = match *bits {
+            "32" => DecodeMode::X86_32,
+            "64" => DecodeMode::X86_64,
+            _ => panic!("unexpected fixture bitness: {bits}"),
+        };
+        let offset = usize::from_str_radix(offset, 16).unwrap();
+        let mut bytes = vec![0x90; offset];
+        bytes.extend(
+            (0..hex.len())
+                .step_by(2)
+                .map(|index| u8::from_str_radix(&hex[index..index + 2], 16).unwrap()),
+        );
+        let mut ui = ui(&bytes);
+        ui.editor
+            .dispatch(Command::SetDecodeMode(Some(mode)))
+            .unwrap();
+        ui.editor
+            .dispatch(Command::Goto(FileOffset::new(offset as u64)))
+            .unwrap();
+        key(&mut ui, KeyCode::Enter);
+        ui.top = offset as u64;
+        let output = screen(&mut ui, 120, 25);
+        let instruction = output.lines().nth(1).unwrap();
+        let opcode_cells: String = instruction.chars().skip(12).take(30).collect();
+        let operand_cells: String = instruction.chars().skip(43).collect();
+        assert_eq!(opcode_cells.trim_end(), *opcodes, "{row}");
+        assert_eq!(operand_cells.trim_end(), *expected, "{row}");
+    }
+}
+
+#[test]
 fn code_pe64_absolute_memory_uses_split_addresses_only_when_wide() {
     let mut image = pe_fixture();
     let instructions = [

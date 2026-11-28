@@ -194,6 +194,40 @@ fn raw_reference_search_follows_instructions_and_preserves_return_history() {
 }
 
 #[test]
+fn hiew_wide_aligned_scan_finds_the_branch_after_invalid_vex_l() {
+    for mode in [DecodeMode::X86_32, DecodeMode::X86_64] {
+        // The portable VPXOR consumes EB as ModR/M. HIEW rejects its
+        // 256-bit form and sees a short jump beginning with EB.
+        let data = vec![0xc5, 0xed, 0xef, 0xeb, 1, 0x90, 0xc3];
+        let target = FileOffset::new(6);
+        let mut portable = raw(data.clone(), mode);
+        portable.dispatch(Command::Goto(target)).unwrap();
+        portable.dispatch(Command::FindReferences).unwrap();
+        assert_eq!(
+            complete_reference_search(&mut portable, 1),
+            SearchProgress::NotFound
+        );
+
+        let mut hiew = raw(data, mode).with_hiew_x86_decode();
+        hiew.dispatch(Command::SetMode(ViewMode::Code)).unwrap();
+        let rows = hiew.code_viewport(FileOffset::new(0), 5).unwrap();
+        assert_eq!(rows[0].instruction.text, "#UD(vex.L)");
+        assert_eq!(rows[1].offset, FileOffset::new(3));
+        assert_eq!(rows[1].branch_number, Some(1));
+        hiew.dispatch(Command::MoveCode(1)).unwrap();
+        assert_eq!(hiew.cursor(), FileOffset::new(3));
+        hiew.dispatch(Command::FollowBranch(1)).unwrap();
+        assert_eq!(hiew.cursor(), target);
+        hiew.dispatch(Command::FindReferences).unwrap();
+        assert_eq!(
+            complete_reference_search(&mut hiew, 1),
+            SearchProgress::Found(FileOffset::new(3)),
+        );
+        assert!(!hiew.document().is_dirty());
+    }
+}
+
+#[test]
 fn mapped_reference_search_matches_virtual_operands_and_rejects_stale_continuation() {
     let mut bytes = pe32();
     let optional = 0x98;

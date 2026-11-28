@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "observation_date": "2026-11-28",
+  "reference_version": "8.63",
+  "environment": {
+    "runtime": "x64 Windows Server Core LTSC 2022 console in Hyper-V",
+    "candidate": "GNU-target x64 build",
+    "input": "Win32 console key events",
+    "fixtures": "49 independent LLVM MC 23.1.6 encodings and 132 hand-encoded boundary and operand probes in NOP-padded raw slots"
+  },
+  "boundary_examples": [
+    {"mode": "32/64", "input": "C5E9EFCB", "shown": "C5E9EFCB", "mnemonic": "vpxor"},
+    {"mode": "32/64", "input": "C5EDEFCB", "shown": "C5EDEF", "diagnostic": "#UD(vex.L)"},
+    {"mode": "32/64", "input": "66C5EDEFCB", "shown": "66C5ED", "diagnostic": "#UD()"},
+    {"mode": "32/64", "input": "F3C4E26D00CB", "shown": "F3C4E26D", "diagnostic": "#UD()"},
+    {"mode": "32/64", "input": "C4E27D58CA", "shown": "C4E27D58", "diagnostic": "#UD"},
+    {"mode": "32/64", "input": "8FE868A2CB40", "shown": "8FE8", "diagnostic": "#UD"},
+    {"mode": "32/64", "input": "F08FE8", "shown": "F08F", "diagnostic": "#UD(lock)"},
+    {"mode": "32", "input": "62F164CA58CC", "shown": "62", "diagnostic": "#UD(mod)"},
+    {"mode": "64", "input": "62F164CA58CC", "shown": "62", "diagnostic": "#UD(64)"},
+    {"mode": "32/64", "input": "F30FAE2510000000", "shown": "F30FAE2510000000", "diagnostic": "#UD()"}
+  ],
+  "system_and_scalar_spellings": {
+    "F30FBCC8": "bsf ecx,eax",
+    "660FAE38": "clflush with a memory operand",
+    "F30FAE00": "fxsave with a memory operand",
+    "F30FAE0510000000": "At file offset 0x20, the 64-bit RIP-relative target is 0x38. The row consumes all eight bytes, including F3."
+  },
+  "reference_search": {
+    "fixture_bytes": "C5EDEFEB0190C3",
+    "modes": [32, 64],
+    "target_offset": "6",
+    "matched_offset": "3",
+    "observed_first_row": "C5EDEF #UD(vex.L)",
+    "observed_jump": "EB01 jmps 000000006 --↓1"
+  },
+  "paired_checks": {
+    "matching_32_bit_rows": 90,
+    "matching_64_bit_rows": 91,
+    "comparison": "At equal console dimensions, the selected rows match opcode bytes, mnemonic and operand cells, and colors on nonblank instruction cells."
+  },
+  "limits": "The rules cover the observed encodings and adjacent controls in the versioned corpus. Other extension families and prefix combinations still need evidence."
+}

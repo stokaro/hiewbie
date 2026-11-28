@@ -301,9 +301,10 @@ for tested encodings and HIEW 8.63 observations.
 
 Interactive 16-bit Decode uses HIEW's legacy LES, LDS, and BOUND boundaries.
 A register-only form displays `#UD(mod)` or `#UD(lock)` and decoding resumes
-at the ModR/M byte. Instruction movement and aligned F6 searches share these
-boundaries. Headless `--disassemble` uses the portable decoder's instruction
-interpretation.
+at the ModR/M byte. The 32- and 64-bit views reproduce the tested VEX, XOP,
+EVEX, and system-opcode diagnostics and their different byte spans.
+Instruction movement and aligned F6 searches share these boundaries.
+Headless `--disassemble` uses the portable decoder's instruction interpretation.
 
 In Code view outside edit mode, 1–9 and A–Z follow destinations labeled in the
 displayed window. Direct branches keep Code open. In a mapped x86 image,
