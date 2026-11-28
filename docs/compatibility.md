@@ -54,7 +54,10 @@ ARM64, broader endianness, and additional instruction sets are hiewbie additions
 - **UI-005**: Resolve commands by state: viewing, editing, selection, or active dialog.
 - **UI-006**: Show the effective bindings for the current state and modifiers.
 - **UI-007**: Support keyboard-only operation; mouse operation is supplementary.
-- **UI-008**: Retain the familiar dense layout at 80x25; use larger terminals effectively.
+- **UI-008**: Match the HIEW 8.63 screen at first glance when the terminal
+  dimensions, terminal settings, and application state match. Include border
+  types, padding, shadows, field positions, and native caret in the comparison.
+  Preserve the dense 80x25 layout and verify resize behavior separately.
 - **UI-009**: Offer original-style colors plus accessible alternatives without workflow changes.
 - **UI-010**: Keep every command reachable when the terminal cannot transmit its usual chord.
 - **UI-011**: Record visible deviations explicitly; never silently redefine a familiar command.
